@@ -46,30 +46,26 @@ function RolePills() {
 function UserSwitch() {
   const { me, setMeId } = useKB();
   const [open, setOpen] = useState(false);
-  const label = `${me.displayName} · ${me.legalEntity} / ${me.branch}`;
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="hidden lg:block">
-        <div className="text-sm font-medium" data-testid="text-user-name">
+    <div className="flex items-center gap-2 border-l pl-2 ml-1">
+      <div className="text-right hidden sm:block">
+        <div className="text-xs font-bold" data-testid="text-user-name">
           {me.displayName}
         </div>
-        <div className="text-xs text-muted-foreground" data-testid="text-user-scope">
-          {me.legalEntity} · {me.branch} · {me.department}
+        <div className="text-[10px] text-muted-foreground font-medium" data-testid="text-user-scope">
+          {me.legalEntity} · {me.branch}
         </div>
       </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-full bg-slate-800 text-white hover:bg-slate-700"
+        onClick={() => setOpen(true)}
+      >
+        <span className="text-[10px] font-bold">Я</span>
+      </Button>
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <Button
-            data-testid="button-switch-user"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-          >
-            <Building2 className="h-4 w-4" />
-            Профиль
-          </Button>
-        </SheetTrigger>
         <SheetContent className="w-[420px] sm:w-[460px]">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -178,15 +174,15 @@ export function AppShell({
       <header className="sticky top-0 z-40 border-b bg-background/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <Sparkles className="h-4 w-4" />
+            <div className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg bg-[#0ea5e9] text-white shadow-sm">
+              <BookOpen className="h-4 w-4" />
             </div>
             <div>
-              <div className="font-serif text-lg leading-none" data-testid="text-app-title">
+              <div className="font-bold text-sm tracking-tight" data-testid="text-app-title">
                 Портал инструкций
               </div>
-              <div className="mt-0.5 hidden sm:block text-xs text-muted-foreground">
-                База знаний с контролем актуальности
+              <div className="mt-0 hidden sm:block text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                база знаний с контролем
               </div>
             </div>
           </div>
@@ -217,21 +213,26 @@ export function AppShell({
           <div className="ml-auto flex items-center gap-2">
             {onSearch ? (
               <div className="relative hidden lg:block">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
                 <Input
                   data-testid="input-global-search"
                   value={search || ""}
                   onChange={(e) => onSearch(e.target.value)}
-                  placeholder="Поиск по названию, паспорту, тегам и содержимому…"
-                  className="w-[460px] rounded-2xl pl-9"
+                  placeholder="Поиск..."
+                  className="w-[200px] h-9 rounded-lg pl-9 bg-muted/40 border-none text-sm"
                 />
               </div>
             ) : null}
 
-            {actions}
+            {actions && (
+              <div className="hidden md:block">
+                {actions}
+              </div>
+            )}
 
-            <Button data-testid="button-notifications" variant="ghost" size="icon" className="rounded-xl">
-              <Bell className="h-4 w-4" />
+            <Button data-testid="button-notifications" variant="ghost" size="icon" className="rounded-full relative">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-orange-500 text-[10px] font-bold text-white flex items-center justify-center border-2 border-background">3</span>
             </Button>
             <UserSwitch />
 

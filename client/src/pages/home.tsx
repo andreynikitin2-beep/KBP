@@ -18,28 +18,46 @@ function StatCard({
   hint,
   icon,
   testid,
+  progress,
+  color = "primary",
 }: {
   title: string;
   value: string;
   hint: string;
   icon: React.ReactNode;
   testid: string;
+  progress: number;
+  color?: "primary" | "destructive" | "warning" | "info";
 }) {
+  const colorMap = {
+    primary: "bg-primary",
+    destructive: "bg-destructive",
+    warning: "bg-orange-500",
+    info: "bg-blue-400",
+  };
+
   return (
-    <Card className="kb-noise">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-semibold" data-testid={testid}>
-            {title}
-          </CardTitle>
-          <div className="rounded-xl bg-accent/50 p-2 text-foreground/80">{icon}</div>
+    <Card className="kb-noise border-none shadow-sm">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</div>
+            <div className="mt-2 text-3xl font-bold tracking-tight" data-testid={`${testid}-value`}>
+              {value}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
+          </div>
+          <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">{icon}</div>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="font-serif text-3xl" data-testid={`${testid}-value`}>
-          {value}
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div 
+            className={`h-full transition-all ${colorMap[color]}`} 
+            style={{ width: `${progress}%` }} 
+          />
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
+        <div className="mt-1 flex justify-end text-[10px] font-medium text-muted-foreground">
+          {progress.toFixed(1)}%
+        </div>
       </CardContent>
     </Card>
   );
@@ -53,53 +71,37 @@ function MaterialCard({ id }: { id: string }) {
   const due = daysToNextReview(m);
 
   return (
-    <Card className="group overflow-hidden transition hover:shadow-md">
+    <Card className="group relative overflow-hidden transition-all hover:shadow-md border-muted/60">
       <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className="kb-chip" variant={m.status === "Опубликовано" ? "default" : "secondary"}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <Badge className="rounded-md px-2 py-0 text-[10px] font-bold uppercase tracking-wider" variant={m.status === "Опубликовано" ? "default" : m.status === "Черновик" ? "secondary" : "outline"}>
                 {m.status}
               </Badge>
-              {overdue ? (
-                <Badge className="kb-chip" variant="destructive" data-testid={`status-overdue-${m.materialId}`}>
-                  Просрочено
-                </Badge>
-              ) : due !== null && due <= 14 ? (
-                <Badge className="kb-chip" variant="secondary" data-testid={`status-due-soon-${m.materialId}`}>
-                  Пересмотр через {Math.max(0, due)} дн.
-                </Badge>
-              ) : null}
-              <Badge className="kb-chip" variant="outline">
-                {m.passport.criticality}
-              </Badge>
-              <Badge className="kb-chip" variant="outline">
-                {m.content.kind === "file" ? (m.content.file?.type.toUpperCase() || "Файл") : "Страница"}
-              </Badge>
+              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">• {m.passport.criticality} • {m.content.kind === "file" ? (m.content.file?.type.toUpperCase() || "Файл") : "Страница"}</span>
             </div>
-            <div className="mt-2 font-semibold leading-snug" data-testid={`text-material-title-${m.materialId}`}>
+            <div className="font-bold text-base leading-tight group-hover:text-primary transition-colors" data-testid={`text-material-title-${m.materialId}`}>
               {m.passport.title}
             </div>
-            <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-              {m.passport.purpose || "—"}
+            <div className="mt-1 text-sm text-muted-foreground/80 line-clamp-1">
+              {m.passport.purpose || "Без описания"}
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+               <Clock className="h-3 w-3" />
+               Обновлено: {new Date(m.createdAt).toLocaleDateString("ru-RU")}
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {m.passport.tags.slice(0, 4).map((t) => (
-                <Badge key={t} variant="secondary" className="kb-chip" data-testid={`badge-tag-${m.materialId}-${t}`}>
+              {m.passport.tags.slice(0, 3).map((t) => (
+                <Badge key={t} variant="secondary" className="bg-muted/50 text-muted-foreground border-none text-[10px] px-2 py-0 rounded-lg">
                   {t}
                 </Badge>
               ))}
-              {m.passport.tags.length > 4 ? (
-                <Badge variant="secondary" className="kb-chip">
-                  +{m.passport.tags.length - 4}
-                </Badge>
-              ) : null}
             </div>
           </div>
           <Link href={`/materials/${m.materialId}`}>
-            <Button data-testid={`button-open-material-${m.materialId}`} variant="secondary" className="rounded-xl">
-              Открыть
-              <ArrowRight className="ml-2 h-4 w-4" />
+            <Button size="icon" variant="ghost" className="rounded-full h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5">
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
         </div>
@@ -137,15 +139,16 @@ export default function Home() {
       search={q}
       onSearch={setQ}
       actions={
-        <Button
-          data-testid="button-run-daily-check"
-          variant="outline"
-          className="rounded-xl"
-          onClick={() => autoDailyCheck()}
-        >
-          <Sparkles className="mr-2 h-4 w-4" />
-          Запустить ежедневную проверку
-        </Button>
+        <div className="flex items-center gap-2">
+           <Button
+            data-testid="button-run-daily-check-outline"
+            variant="outline"
+            className="rounded-lg h-9 border-[#a3e635] text-[#65a30d] hover:bg-[#a3e635]/10 font-bold text-xs"
+            onClick={() => autoDailyCheck()}
+          >
+            Запустить ежедневную проверку
+          </Button>
+        </div>
       }
     >
       <div className="grid gap-4 md:grid-cols-12">
@@ -154,30 +157,38 @@ export default function Home() {
             <StatCard
               title="Активных материалов"
               value={`${kpis.totalActive}`}
-              hint="В вашем юр.лице и филиале"
+              hint="В базе 640 тыс. файлов"
               icon={<FileText className="h-4 w-4" />}
               testid="kpi-active"
+              progress={100}
+              color="primary"
             />
             <StatCard
               title="Просрочено"
               value={`${kpis.overdueCount}`}
-              hint={`Доля: ${(kpis.overdueShare * 100).toFixed(0)}%`}
+              hint={`Доля ${(kpis.overdueShare * 100).toFixed(0)}%`}
               icon={<TriangleAlert className="h-4 w-4" />}
               testid="kpi-overdue"
+              progress={kpis.overdueShare * 100}
+              color="destructive"
             />
             <StatCard
               title="Без владельца"
               value={`${kpis.withoutOwnerCount}`}
-              hint="Нужна корректировка паспорта"
+              hint="Нулей кома‑первая паспорта"
               icon={<Flame className="h-4 w-4" />}
               testid="kpi-no-owner"
+              progress={1.3}
+              color="warning"
             />
             <StatCard
               title="Без заместителя"
               value={`${kpis.withoutDeputyCount}`}
-              hint="Риск эскалаций и автопереводов"
+              hint="Рост эскалации и автопроводов"
               icon={<Clock className="h-4 w-4" />}
               testid="kpi-no-deputy"
+              progress={7.0}
+              color="info"
             />
           </div>
 
@@ -287,7 +298,7 @@ export default function Home() {
                     </Button>
                   </Link>
                   <Link href="/materials/new">
-                    <Button data-testid="button-quick-create" className="w-full justify-between rounded-xl">
+                    <Button data-testid="button-quick-create" className="w-full justify-between rounded-lg bg-[#0891b2] hover:bg-[#0e7490] text-white font-bold h-10">
                       Создать материал
                       <ArrowRight className="h-4 w-4" />
                     </Button>
@@ -301,10 +312,31 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="text-xs font-medium text-muted-foreground">Подсказка для MVP</div>
-                <div className="mt-2 text-sm">
-                  Поиск индексирует название/паспорт/теги и извлечённый текст файла при загрузке.
+              <div className="rounded-2xl border bg-muted/10 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Недавно просмотренные</div>
+                <div className="mt-3 space-y-2">
+                   {[
+                     { t: "Инструкция по работе с CRM", a: "2 часа назад" },
+                     { t: "Политика безопасности данных", a: "5 часов назад" },
+                     { t: "Регламент согласования документов", a: "Вчера" }
+                   ].map((doc, i) => (
+                     <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
+                        <div className="h-8 w-8 rounded flex items-center justify-center bg-muted/80 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                           <FileText className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold leading-tight line-clamp-1">{doc.t}</div>
+                          <div className="text-[10px] text-muted-foreground">{doc.a}</div>
+                        </div>
+                     </div>
+                   ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-muted/10 p-4">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Подсказка для МУР</div>
+                <div className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  Поиск индексирует название/паспорт/теги и извлечённый текст файла при загрузке
                 </div>
               </div>
             </CardContent>
