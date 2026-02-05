@@ -180,19 +180,19 @@ export default function MaterialWizard() {
                   </div>
                   <div>
                     <Label>Заместитель</Label>
-                    <Select value={deputyId || ""} onValueChange={(v) => setDeputyId(v || undefined)}>
-                      <SelectTrigger data-testid="select-deputy" className="mt-1 rounded-xl">
-                        <SelectValue placeholder="Не выбран" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Не выбран</SelectItem>
-                        {demoUsers.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.displayName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <Select value={deputyId || "none"} onValueChange={(v) => setDeputyId(v === "none" ? undefined : v)}>
+                        <SelectTrigger data-testid="select-deputy" className="mt-1 rounded-xl">
+                          <SelectValue placeholder="Не выбран" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Не выбран</SelectItem>
+                          {demoUsers.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                   </div>
                 </div>
 
