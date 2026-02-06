@@ -187,7 +187,6 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-
       {overdue ? (
         <Card className="mb-4 border-destructive/30 bg-destructive/5">
           <CardContent className="p-4">
@@ -207,10 +206,9 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       ) : null}
-
       {(current.status === "Черновик" || current.status === "На согласовании") && (
         <Card className="mb-4 border-blue-200/60 bg-blue-50/30" data-testid="card-approval-workflow">
-          <CardContent className="p-4">
+          <CardContent className="p-4 bg-[#ede59fc2]">
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-blue-100/60 p-2 text-blue-500">
                 <FileUp className="h-4 w-4" />
@@ -348,7 +346,6 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-
       {current.status === "Опубликовано" && canConfirm && (
         <Card className="mb-4 border-emerald-200/60 bg-emerald-50/30" data-testid="card-confirm-actuality">
           <CardContent className="p-4">
@@ -384,7 +381,6 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-
       {current.status === "На пересмотре" && (canConfirm || me.roles.includes("Администратор")) && (
         <Card className="mb-4 border-amber-200/60 bg-amber-50/30" data-testid="card-review-actions">
           <CardContent className="p-4">
@@ -455,7 +451,6 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8">
           <Card className="overflow-hidden">
