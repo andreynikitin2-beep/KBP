@@ -39,12 +39,23 @@ Preferred communication style: Simple, everyday language.
 - Content model: `MaterialVersion.content.page` stores `{ html: string }` (was blocks array, migrated to HTML in Batch 12)
 - CSS styles for both editor (.tiptap) and viewer (.tiptap-content) in `client/src/index.css`
 
+**AD/SSO Integration & User Management (Batch 11):**
+- User type extended: `source` (ad/local), `adAccountName`, `lastSyncAt`, `deactivatedAt`
+- Users are now mutable state in kbStore (not static demoUsers import)
+- AD sync: `syncADUsers()` action updates lastSyncAt for AD users, handles deactivation cascade
+- Deactivation cascade: if owner/deputy deactivated → their published materials move to "На пересмотре" + email to admin
+- Local user creation: `createLocalUser()` action with full form in admin panel
+- User deactivation/reactivation: `deactivateUser()`, `reactivateUser()` actions
+- policySeed.adIntegration: enabled, mode (SAML/OIDC/LDAP/demo), ssoUrl, syncFrequencyMinutes, syncStatus, syncLog[]
+- Admin tabs: AD/SSO config + sync log, Пользователи (list + create local + deactivate/reactivate)
+- All files use `users` from kbStore instead of importing `demoUsers` directly
+
 **Key Pages:**
 - `/` — Home dashboard with KPIs, overdue materials, recent activity
 - `/catalog` — Hierarchical catalog browser with scope-based access control
 - `/materials/new` — Material creation wizard (multi-step form)
 - `/materials/:id` — Material detail view with passport, versions, RFC workflow, audit
-- `/admin` — Admin panel with notifications log, user management, CSV export
+- `/admin` — Admin panel with 7 tabs: Политики, AD/SSO, Пользователи, Права, Группы, Отчёты, Email-журнал
 
 **Domain Logic** (`kbLogic.ts`):
 - Role-based access control (Читатель, Автор, Владелец, Заместитель владельца, Администратор)
