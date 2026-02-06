@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import {
+  ArrowLeft,
   BadgeCheck,
   CalendarClock,
   CircleAlert,
+  Eye,
   FileDown,
   FilePlus2,
   FileText,
@@ -57,6 +59,17 @@ export default function MaterialView() {
   }, [allVersions]);
 
   const [activeTab, setActiveTab] = useState("passport");
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  const displayVersion = useMemo(() => {
+    if (selectedVersionId) {
+      return allVersions.find(v => v.id === selectedVersionId) || current;
+    }
+    return current;
+  }, [selectedVersionId, allVersions, current]);
+
+  const isViewingOldVersion = displayVersion !== null && current !== null && displayVersion.id !== current.id;
+
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnComment, setReturnComment] = useState("");
   const [rfcTitle, setRfcTitle] = useState("");
@@ -193,9 +206,10 @@ export default function MaterialView() {
   const showReturn = current ? canReturnForRevision(me, current) : false;
 
   const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
-  const materialGroup = current ? visibilityGroups.find((g) => g.id === current.passport.visibilityGroupId) : null;
-  const owner = current ? users.find((u) => u.id === current.passport.ownerId) : null;
-  const deputy = current ? users.find((u) => u.id === current.passport.deputyId) : null;
+  const dv = displayVersion || current;
+  const materialGroup = dv ? visibilityGroups.find((g) => g.id === dv.passport.visibilityGroupId) : null;
+  const owner = dv ? users.find((u) => u.id === dv.passport.ownerId) : null;
+  const deputy = dv ? users.find((u) => u.id === dv.passport.deputyId) : null;
 
   const rfcList = useMemo(() => rfcs.filter((r) => r.materialId === materialId), [rfcs, materialId]);
 
@@ -294,7 +308,37 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-      {overdue ? (
+      {isViewingOldVersion && displayVersion && (
+        <Card className="mb-4 border-amber-400/60 bg-amber-50/40" data-testid="card-old-version-banner">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-amber-100/60 p-2 text-amber-600">
+                  <Eye className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="font-semibold text-amber-800">
+                    Просмотр версии {displayVersion.version} ({displayVersion.status})
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Это не актуальная версия материала. Текущая версия: {current.version}
+                  </div>
+                </div>
+              </div>
+              <Button
+                data-testid="button-back-to-current"
+                variant="outline"
+                className="rounded-xl border-amber-300 text-amber-700 hover:bg-amber-100/50 shrink-0"
+                onClick={() => setSelectedVersionId(null)}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                К актуальной версии
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {!isViewingOldVersion && overdue ? (
         <Card className="mb-4 border-destructive/30 bg-destructive/5">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
@@ -313,7 +357,7 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       ) : null}
-      {(current.status === "Черновик" || current.status === "На согласовании") && (
+      {!isViewingOldVersion && (current.status === "Черновик" || current.status === "На согласовании") && (
         <Card className="mb-4 border-blue-200/60 bg-blue-50/30" data-testid="card-approval-workflow">
           <CardContent className="p-4 bg-[#ede59fc2]">
             <div className="flex items-start gap-3">
@@ -453,7 +497,7 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-      {current.status === "Опубликовано" && canConfirm && (
+      {!isViewingOldVersion && current.status === "Опубликовано" && canConfirm && (
         <Card className="mb-4 border-emerald-200/60 bg-emerald-50/30" data-testid="card-confirm-actuality">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
@@ -488,7 +532,7 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
-      {current.status === "На пересмотре" && (canConfirm || me.roles.includes("Администратор")) && (
+      {!isViewingOldVersion && current.status === "На пересмотре" && (canConfirm || me.roles.includes("Администратор")) && (
         <Card className="mb-4 border-amber-200/60 bg-amber-50/30" data-testid="card-review-actions">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
@@ -560,20 +604,27 @@ export default function MaterialView() {
       )}
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8">
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden relative">
+            {isViewingOldVersion && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden" aria-hidden="true">
+                <div className="text-[64px] font-bold text-red-500/[0.07] whitespace-nowrap select-none" style={{ transform: "rotate(-30deg)" }}>
+                  Неактуальная версия · Неактуальная версия · Неактуальная версия
+                </div>
+              </div>
+            )}
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge className="kb-chip" variant={current.status === "Опубликовано" ? "default" : "secondary"} data-testid="status-material">
-                  {current.status}
+                <Badge className="kb-chip" variant={dv.status === "Опубликовано" ? "default" : "secondary"} data-testid="status-material">
+                  {dv.status}
                 </Badge>
                 <Badge className="kb-chip" variant="secondary" data-testid="badge-version">
-                  Версия {current.version}
+                  Версия {dv.version}
                 </Badge>
                 <Badge className="kb-chip" variant="outline" data-testid="badge-criticality">
-                  {current.passport.criticality}
+                  {dv.passport.criticality}
                 </Badge>
                 <Badge className="kb-chip" variant="outline" data-testid="badge-scope">
-                  {current.passport.legalEntity}
+                  {dv.passport.legalEntity}
                 </Badge>
                 {materialGroup && !materialGroup.isSystem && (
                   <Badge className="kb-chip" variant="secondary" data-testid="badge-visibility-group">
@@ -581,26 +632,28 @@ export default function MaterialView() {
                     {materialGroup.title}
                   </Badge>
                 )}
-                {dueDays !== null ? (
+                {!isViewingOldVersion && dueDays !== null ? (
                   <Badge className="kb-chip" variant={dueDays < 0 ? "destructive" : "secondary"} data-testid="badge-review-due">
                     <CalendarClock className="mr-1 h-3.5 w-3.5" />
                     {dueDays < 0 ? `Просрочено на ${Math.abs(dueDays)} дн.` : `Пересмотр через ${dueDays} дн.`}
                   </Badge>
                 ) : null}
-                <button
-                  data-testid="button-toggle-subscription"
-                  className="ml-auto p-1 rounded-full hover:bg-muted/50 transition-colors"
-                  onClick={() => toggleSubscription(current.materialId)}
-                  title={isSubscribed(current.materialId) ? "Отписаться" : "Подписаться"}
-                >
-                  <Heart
-                    className={`h-5 w-5 transition-colors ${
-                      isSubscribed(current.materialId)
-                        ? "fill-red-500 text-red-500"
-                        : "text-muted-foreground/40"
-                    }`}
-                  />
-                </button>
+                {!isViewingOldVersion && (
+                  <button
+                    data-testid="button-toggle-subscription"
+                    className="ml-auto p-1 rounded-full hover:bg-muted/50 transition-colors"
+                    onClick={() => toggleSubscription(current.materialId)}
+                    title={isSubscribed(current.materialId) ? "Отписаться" : "Подписаться"}
+                  >
+                    <Heart
+                      className={`h-5 w-5 transition-colors ${
+                        isSubscribed(current.materialId)
+                          ? "fill-red-500 text-red-500"
+                          : "text-muted-foreground/40"
+                      }`}
+                    />
+                  </button>
+                )}
               </div>
             </CardHeader>
             <Separator />
@@ -628,7 +681,7 @@ export default function MaterialView() {
                 </TabsList>
 
                 <TabsContent value="passport" className="mt-4">
-                  {isDraft ? (
+                  {isDraft && !isViewingOldVersion ? (
                     <div className="space-y-4">
                       {previousVersion && (
                         <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-3 text-sm text-muted-foreground flex items-center gap-2">
@@ -848,19 +901,19 @@ export default function MaterialView() {
                             <div>
                               <div className="text-xs text-muted-foreground">Последний пересмотр</div>
                               <div className="mt-1 font-semibold" data-testid="text-last-review">
-                                {fmt(current.passport.lastReviewedAt)}
+                                {fmt(dv.passport.lastReviewedAt)}
                               </div>
                             </div>
                             <div>
                               <div className="text-xs text-muted-foreground">Следующий пересмотр</div>
                               <div className="mt-1 font-semibold" data-testid="text-next-review">
-                                {fmt(current.passport.nextReviewAt)}
+                                {fmt(dv.passport.nextReviewAt)}
                               </div>
                             </div>
                             <div>
                               <div className="text-xs text-muted-foreground">Период (по критичности)</div>
                               <div className="mt-1 font-semibold" data-testid="text-review-period">
-                                {current.passport.reviewPeriodDays ? `${current.passport.reviewPeriodDays} дн.` : "—"}
+                                {dv.passport.reviewPeriodDays ? `${dv.passport.reviewPeriodDays} дн.` : "—"}
                               </div>
                             </div>
                           </div>
@@ -869,7 +922,7 @@ export default function MaterialView() {
                         <Card className="p-4 md:col-span-2">
                           <div className="text-xs text-muted-foreground">Теги</div>
                           <div className="mt-2 flex flex-wrap gap-1.5" data-testid="list-tags">
-                            {current.passport.tags.map((t) => (
+                            {dv.passport.tags.map((t) => (
                               <Badge key={t} variant="secondary" className="kb-chip" data-testid={`badge-tag-${t}`}>
                                 {t}
                               </Badge>
@@ -878,7 +931,7 @@ export default function MaterialView() {
                           <Separator className="my-3" />
                           <div className="text-xs text-muted-foreground">Группы тегов</div>
                           <div className="mt-2 grid gap-2 md:grid-cols-2" data-testid="list-tag-groups">
-                            {current.passport.tagGroups.map((g) => (
+                            {dv.passport.tagGroups.map((g) => (
                               <div key={g.group} className="rounded-2xl border bg-muted/30 p-3" data-testid={`card-tag-group-${g.group}`}>
                                 <div className="text-sm font-semibold">{g.group}</div>
                                 <div className="mt-2 flex flex-wrap gap-1.5">
@@ -898,7 +951,7 @@ export default function MaterialView() {
                 </TabsContent>
 
                 <TabsContent value="content" className="mt-4">
-                  {isDraft ? (
+                  {isDraft && !isViewingOldVersion ? (
                     <div className="space-y-4">
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -981,7 +1034,7 @@ export default function MaterialView() {
                     </div>
                   ) : (
                     <>
-                      {current.content.kind === "file" ? (
+                      {dv.content.kind === "file" ? (
                         <div className="space-y-3">
                           <Card className="p-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -991,7 +1044,7 @@ export default function MaterialView() {
                                 </div>
                                 <div>
                                   <div className="text-sm font-semibold" data-testid="text-file-name">
-                                    {current.content.file?.name}
+                                    {dv.content.file?.name}
                                   </div>
                                   <div className="text-xs text-muted-foreground">Полнотекстовый индекс: извлечённый текст</div>
                                 </div>
@@ -1006,7 +1059,7 @@ export default function MaterialView() {
                                   variant="outline"
                                   className="rounded-xl"
                                   onClick={() => {
-                                    navigator.clipboard.writeText(`${location.origin}/materials/${current.materialId}?page=3`);
+                                    navigator.clipboard.writeText(`${location.origin}/materials/${dv.materialId}?page=3`);
                                     toast({ title: "Ссылка скопирована", description: "Глубокая ссылка на PDF (страница 3)" });
                                   }}
                                 >
@@ -1019,12 +1072,12 @@ export default function MaterialView() {
                           <Card className="p-4">
                             <div className="text-xs font-medium text-muted-foreground">Извлечённый текст (MVP индекс)</div>
                             <div className="mt-2 whitespace-pre-wrap text-sm" data-testid="text-extracted">
-                              {current.content.file?.extractedText || "—"}
+                              {dv.content.file?.extractedText || "—"}
                             </div>
                           </Card>
                         </div>
                       ) : (
-                        <PageViewer html={current.content.page?.html || ""} materialId={current.materialId} />
+                        <PageViewer html={dv.content.page?.html || ""} materialId={dv.materialId} />
                       )}
                     </>
                   )}
@@ -1068,17 +1121,30 @@ export default function MaterialView() {
                     {allVersions.map((v, idx) => {
                       const author = users.find((u) => u.id === v.createdBy);
                       const isCurrent = v.id === current.id;
+                      const isSelected = selectedVersionId === v.id;
+                      const isViewing = isViewingOldVersion && isSelected;
                       return (
                         <div
                           key={v.id}
-                          className={`rounded-2xl border p-4 transition ${isCurrent ? "border-primary/40 bg-primary/5" : "bg-muted/20"}`}
+                          className={`rounded-2xl border p-4 transition cursor-pointer hover:border-primary/30 ${isCurrent ? "border-primary/40 bg-primary/5" : isViewing ? "border-amber-400/60 bg-amber-50/30 ring-1 ring-amber-300/40" : "bg-muted/20"}`}
                           data-testid={`row-version-${v.id}`}
+                          onClick={() => {
+                            if (isCurrent) {
+                              setSelectedVersionId(null);
+                            } else {
+                              setSelectedVersionId(v.id);
+                              setActiveTab("passport");
+                            }
+                          }}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <div className="text-sm font-bold">Версия {v.version}</div>
                               {isCurrent && (
                                 <Badge variant="default" className="kb-chip text-[10px]">Текущая</Badge>
+                              )}
+                              {isViewing && (
+                                <Badge variant="outline" className="kb-chip text-[10px] border-amber-400 text-amber-700">Просмотр</Badge>
                               )}
                               <Badge
                                 variant={v.status === "Опубликовано" ? "default" : v.status === "Архив" ? "outline" : "secondary"}
@@ -1087,8 +1153,26 @@ export default function MaterialView() {
                                 {v.status}
                               </Badge>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {fmt(v.createdAt)}
+                            <div className="flex items-center gap-2">
+                              {!isCurrent && (
+                                <Button
+                                  data-testid={`button-view-version-${v.id}`}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl text-xs h-7 px-2"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedVersionId(v.id);
+                                    setActiveTab("passport");
+                                  }}
+                                >
+                                  <Eye className="mr-1 h-3.5 w-3.5" />
+                                  Просмотр
+                                </Button>
+                              )}
+                              <div className="text-xs text-muted-foreground">
+                                {fmt(v.createdAt)}
+                              </div>
                             </div>
                           </div>
                           <div className="mt-1.5 text-xs text-muted-foreground">
@@ -1295,11 +1379,11 @@ export default function MaterialView() {
                           <FileUp className="h-4 w-4 text-muted-foreground" />
                           <div className="text-sm font-semibold">Аудит просмотров</div>
                           <Badge variant="secondary" className="kb-chip" data-testid="badge-audit-count">
-                            {current.auditViews.length}
+                            {dv.auditViews.length}
                           </Badge>
                         </div>
                         <div className="mt-3 grid gap-2" data-testid="list-audit">
-                          {current.auditViews.slice(0, 20).map((v, idx) => {
+                          {dv.auditViews.slice(0, 20).map((v, idx) => {
                             const who = users.find((u) => u.id === v.userId)?.displayName || v.userId;
                             return (
                               <div
@@ -1332,7 +1416,7 @@ export default function MaterialView() {
               <div className="rounded-2xl border bg-muted/30 p-4">
                 <div className="text-xs text-muted-foreground">Просмотры</div>
                 <div className="mt-1 font-serif text-3xl" data-testid="text-views">
-                  {current.stats.views}
+                  {dv.stats.views}
                 </div>
                 <Separator className="my-3" />
                 <div className="text-xs text-muted-foreground">Оценка</div>
@@ -1341,6 +1425,7 @@ export default function MaterialView() {
                     data-testid="button-helpful-yes"
                     variant="secondary"
                     className="rounded-xl"
+                    disabled={isViewingOldVersion}
                     onClick={() => {
                       setMaterials((prev) =>
                         prev.map((m) =>
@@ -1357,6 +1442,7 @@ export default function MaterialView() {
                     data-testid="button-helpful-no"
                     variant="outline"
                     className="rounded-xl"
+                    disabled={isViewingOldVersion}
                     onClick={() => {
                       setMaterials((prev) =>
                         prev.map((m) =>
@@ -1371,7 +1457,7 @@ export default function MaterialView() {
                   </Button>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground" data-testid="text-helpful-stats">
-                  Помогло: {current.stats.helpfulYes} · Не помогло: {current.stats.helpfulNo}
+                  Помогло: {dv.stats.helpfulYes} · Не помогло: {dv.stats.helpfulNo}
                 </div>
               </div>
 
