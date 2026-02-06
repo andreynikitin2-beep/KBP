@@ -83,6 +83,10 @@ type Store = {
   toggleSubscription: (materialId: string) => void;
   isSubscribed: (materialId: string) => boolean;
 
+  createNewVersion: (materialId: string) => { ok: boolean; version?: MaterialVersion; message?: string };
+  getAllVersions: (materialId: string) => MaterialVersion[];
+  viewOldVersion: (versionId: string) => MaterialVersion | undefined;
+
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
@@ -119,7 +123,22 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const mySubscriptions = useMemo(() => subscriptionMap[meId] || [], [subscriptionMap, meId]);
 
   const store = useMemo<Store>(() => {
-    const visibleMaterials = materials.filter((m) => canViewMaterial(me, m, groups));
+    const latestByMaterial = new Map<string, MaterialVersion>();
+    for (const m of materials) {
+      const existing = latestByMaterial.get(m.materialId);
+      if (!existing) {
+        latestByMaterial.set(m.materialId, m);
+      } else {
+        const existingIsArchived = existing.status === "Архив";
+        const mIsArchived = m.status === "Архив";
+        if (existingIsArchived && !mIsArchived) {
+          latestByMaterial.set(m.materialId, m);
+        } else if (existingIsArchived === mIsArchived && new Date(m.createdAt) > new Date(existing.createdAt)) {
+          latestByMaterial.set(m.materialId, m);
+        }
+      }
+    }
+    const visibleMaterials = Array.from(latestByMaterial.values()).filter((m) => canViewMaterial(me, m, groups));
 
     return {
       me,
@@ -528,6 +547,56 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         });
       },
       isSubscribed: (materialId: string) => mySubscriptions.includes(materialId),
+
+      createNewVersion: (materialId: string) => {
+        const allVersions = materials
+          .filter((m) => m.materialId === materialId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const current = allVersions[0];
+        if (!current) return { ok: false, message: "Материал не найден" };
+
+        const hasDraft = allVersions.some((v) => v.status === "Черновик" || v.status === "На согласовании");
+        if (hasDraft) return { ok: false, message: "Уже существует черновик или версия на согласовании. Завершите её перед созданием новой." };
+
+        const parts = current.version.split(".");
+        const major = parseInt(parts[0], 10) || 1;
+        const minor = parseInt(parts[1], 10) || 0;
+        const newVersionStr = `${major}.${minor + 1}`;
+        const newId = `v-${materialId.replace("m-", "")}-${Date.now()}`;
+
+        const newVersion: MaterialVersion = {
+          ...current,
+          id: newId,
+          version: newVersionStr,
+          createdAt: new Date().toISOString(),
+          createdBy: meId,
+          changelog: "",
+          status: "Черновик" as MaterialVersion["status"],
+          stats: { views: 0, helpfulYes: 0, helpfulNo: 0 },
+          auditViews: [],
+        };
+
+        setMaterials((prev) => {
+          const updated = prev.map((m) =>
+            m.id === current.id && m.status !== "Архив"
+              ? { ...m, status: "Архив" as MaterialVersion["status"] }
+              : m,
+          );
+          return [...updated, newVersion];
+        });
+
+        return { ok: true, version: newVersion };
+      },
+
+      getAllVersions: (materialId: string) => {
+        return materials
+          .filter((m) => m.materialId === materialId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      },
+
+      viewOldVersion: (versionId: string) => {
+        return materials.find((m) => m.id === versionId);
+      },
 
       setSectionOwners: (sectionId: string, ownerIds: string[]) => {
         const node = catalogNodes.find((n) => n.id === sectionId);

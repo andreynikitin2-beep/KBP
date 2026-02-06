@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CircleAlert,
   FileDown,
+  FilePlus2,
   FileText,
   FileUp,
   GitBranch,
@@ -40,11 +41,14 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions } = useKB();
 
   const materialId = params?.id || "";
-  const allMaterials = materials;
-  const current = useMemo(() => allMaterials.find((m) => m.materialId === materialId) || null, [allMaterials, materialId]);
+  const allVersions = useMemo(() => getAllVersions(materialId), [getAllVersions, materialId]);
+  const current = useMemo(() => {
+    const active = allVersions.find((v) => v.status !== "Архив");
+    return active || allVersions[0] || null;
+  }, [allVersions]);
 
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnComment, setReturnComment] = useState("");
@@ -671,24 +675,81 @@ export default function MaterialView() {
                       <div className="mt-0.5 rounded-xl bg-accent/60 p-2">
                         <GitBranch className="h-4 w-4" />
                       </div>
-                      <div>
+                      <div className="flex-1">
                         <div className="font-semibold" data-testid="text-version-rule">
                           Правило версий
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          Опубликованную версию нельзя редактировать напрямую. Создайте новую версию — история сохранится.
+                          Опубликованную версию нельзя редактировать напрямую. Создайте новую версию — предыдущая автоматически отправится в архив, а история сохранится.
                         </div>
                       </div>
+                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && (
+                        <Button
+                          data-testid="button-create-new-version"
+                          className="rounded-xl shrink-0"
+                          onClick={() => {
+                            const res = createNewVersion(current.materialId);
+                            if (res.ok) {
+                              toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
+                            } else {
+                              toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                            }
+                          }}
+                        >
+                          <FilePlus2 className="mr-2 h-4 w-4" />
+                          Создать новую версию
+                        </Button>
+                      )}
                     </div>
                   </div>
-                  <div className="mt-3 rounded-2xl border p-4" data-testid="list-versions">
-                    <div className="text-sm font-semibold">Текущая версия: {current.version}</div>
-                    <div className="mt-2 text-sm text-muted-foreground">(В MVP демонстрируется как список. Полная история версий — в бэкенде.)</div>
-                    <div className="mt-3">
-                      <Button data-testid="button-create-new-version" variant="secondary" className="rounded-xl" disabled>
-                        Создать новую версию
-                      </Button>
-                    </div>
+                  <div className="mt-3 space-y-2" data-testid="list-versions">
+                    {allVersions.map((v, idx) => {
+                      const author = users.find((u) => u.id === v.createdBy);
+                      const isCurrent = v.id === current.id;
+                      return (
+                        <div
+                          key={v.id}
+                          className={`rounded-2xl border p-4 transition ${isCurrent ? "border-primary/40 bg-primary/5" : "bg-muted/20"}`}
+                          data-testid={`row-version-${v.id}`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-bold">Версия {v.version}</div>
+                              {isCurrent && (
+                                <Badge variant="default" className="kb-chip text-[10px]">Текущая</Badge>
+                              )}
+                              <Badge
+                                variant={v.status === "Опубликовано" ? "default" : v.status === "Архив" ? "outline" : "secondary"}
+                                className="kb-chip text-[10px]"
+                              >
+                                {v.status}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {fmt(v.createdAt)}
+                            </div>
+                          </div>
+                          <div className="mt-1.5 text-xs text-muted-foreground">
+                            Автор: {author?.displayName || "—"}
+                          </div>
+                          {v.changelog && (
+                            <div className="mt-2 rounded-xl bg-muted/40 p-2.5 text-xs">
+                              <span className="font-medium">Изменения:</span> {v.changelog}
+                            </div>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>{v.stats.views} просмотров</span>
+                            <span>·</span>
+                            <span>{v.stats.helpfulYes} полезно</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {allVersions.length === 0 && (
+                      <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground text-center">
+                        Нет версий
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 
