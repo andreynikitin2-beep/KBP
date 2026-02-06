@@ -14,6 +14,8 @@ export type Status =
 
 export type Criticality = "Низкая" | "Средняя" | "Высокая" | "Критическая";
 
+export type UserSource = "ad" | "local";
+
 export type User = {
   id: string;
   displayName: string;
@@ -22,6 +24,10 @@ export type User = {
   legalEntity: string;
   department: string;
   isAvailable: boolean;
+  source: UserSource;
+  adAccountName?: string;
+  lastSyncAt?: string;
+  deactivatedAt?: string;
 };
 
 export type CatalogNode = {
@@ -111,6 +117,9 @@ export const demoUsers: User[] = [
     legalEntity: "ООО «Альфа»",
     department: "Операции",
     isAvailable: true,
+    source: "ad",
+    adAccountName: "smirnova_i",
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
   },
   {
     id: "u-author",
@@ -120,6 +129,9 @@ export const demoUsers: User[] = [
     legalEntity: "ООО «Альфа»",
     department: "Процессы",
     isAvailable: true,
+    source: "ad",
+    adAccountName: "petrov_a",
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
   },
   {
     id: "u-owner",
@@ -129,6 +141,9 @@ export const demoUsers: User[] = [
     legalEntity: "АО «Бета»",
     department: "Качество",
     isAvailable: true,
+    source: "ad",
+    adAccountName: "ivanova_m",
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
   },
   {
     id: "u-deputy",
@@ -138,6 +153,10 @@ export const demoUsers: User[] = [
     legalEntity: "АО «Бета»",
     department: "Качество",
     isAvailable: false,
+    source: "ad",
+    adAccountName: "kuznetsov_s",
+    lastSyncAt: new Date(Date.now() - 7200_000).toISOString(),
+    deactivatedAt: new Date(Date.now() - 86400_000 * 5).toISOString(),
   },
   {
     id: "u-kbadmin",
@@ -147,6 +166,7 @@ export const demoUsers: User[] = [
     legalEntity: "ООО «Альфа»",
     department: "База знаний",
     isAvailable: true,
+    source: "local",
   },
   {
     id: "u-author-owner",
@@ -156,6 +176,9 @@ export const demoUsers: User[] = [
     legalEntity: "ООО «Альфа»",
     department: "Безопасность",
     isAvailable: true,
+    source: "ad",
+    adAccountName: "volkov_d",
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
   },
   {
     id: "u-reader-author",
@@ -165,6 +188,9 @@ export const demoUsers: User[] = [
     legalEntity: "АО «Бета»",
     department: "Финансы",
     isAvailable: true,
+    source: "ad",
+    adAccountName: "kozlova_e",
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
   },
   {
     id: "u-sec",
@@ -174,6 +200,7 @@ export const demoUsers: User[] = [
     legalEntity: "ООО «Альфа»",
     department: "Безопасность",
     isAvailable: true,
+    source: "local",
   },
   {
     id: "u-aud",
@@ -183,6 +210,9 @@ export const demoUsers: User[] = [
     legalEntity: "АО «Бета»",
     department: "Аудит",
     isAvailable: true,
+    source: "ad",
+    adAccountName: "mironova_o",
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
   },
 ];
 
@@ -751,12 +781,25 @@ export const policySeed = {
     canViewAudit: ["Администратор"],
   },
   adIntegration: {
-    enabled: false,
-    mode: "demo" as "demo" | "SAML" | "OIDC" | "LDAP",
+    enabled: true,
+    mode: "SAML" as "demo" | "SAML" | "OIDC" | "LDAP",
+    ssoUrl: "https://sso.example.com/saml2",
+    syncFrequencyMinutes: 60,
+    lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    syncStatus: "success" as "success" | "error" | "in_progress" | "never",
+    syncedUsersCount: 7,
+    deactivatedCount: 1,
     mapping: {
       roles: null,
       department: "department",
       legalEntity: "company",
+      displayName: "displayName",
+      email: "mail",
     },
+    syncLog: [
+      { at: new Date(Date.now() - 3600_000).toISOString(), status: "success" as "success" | "error", usersTotal: 7, usersUpdated: 1, usersDeactivated: 0, message: "Синхронизация завершена успешно" },
+      { at: new Date(Date.now() - 7200_000).toISOString(), status: "success" as "success" | "error", usersTotal: 7, usersUpdated: 0, usersDeactivated: 1, message: "Деактивирован: Кузнецов С. (kuznetsov_s)" },
+      { at: new Date(Date.now() - 86400_000).toISOString(), status: "success" as "success" | "error", usersTotal: 8, usersUpdated: 2, usersDeactivated: 0, message: "Синхронизация завершена успешно" },
+    ],
   },
 };
