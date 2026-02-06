@@ -36,6 +36,7 @@ export type CatalogNode = {
   type: "section" | "subsection";
   parentId?: string;
   allowedRoles?: Role[];
+  ownerIds?: string[];
 };
 
 export type Passport = {
@@ -249,6 +250,7 @@ export const catalog: CatalogNode[] = [
     id: "sec-hr",
     title: "Кадры и организационные процедуры",
     type: "section",
+    ownerIds: ["u-owner"],
   },
   {
     id: "sub-onb",
@@ -267,6 +269,7 @@ export const catalog: CatalogNode[] = [
     title: "IT и доступы",
     type: "section",
     allowedRoles: ["Автор", "Владелец", "Заместитель владельца", "Администратор", "Читатель"],
+    ownerIds: ["u-author-owner"],
   },
   {
     id: "sub-vpn",
@@ -284,6 +287,7 @@ export const catalog: CatalogNode[] = [
     id: "sec-qa",
     title: "Качество и регламенты",
     type: "section",
+    ownerIds: ["u-owner", "u-deputy"],
   },
   {
     id: "sub-audit",
@@ -296,6 +300,7 @@ export const catalog: CatalogNode[] = [
     title: "Информационная безопасность",
     type: "section",
     allowedRoles: ["Владелец", "Администратор", "Автор"],
+    ownerIds: ["u-author-owner"],
   },
   {
     id: "sub-incidents",

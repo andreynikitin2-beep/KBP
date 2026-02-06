@@ -6,8 +6,9 @@ import {
   rfcs as seedRfcs,
   policySeed,
   visibilityGroups as seedGroups,
+  catalog as seedCatalog,
 } from "./mockData";
-import type { MaterialVersion, NotificationLog, RFC, User, UserSource, VisibilityGroup } from "./mockData";
+import type { CatalogNode, MaterialVersion, NotificationLog, RFC, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 
 type ADSyncLogEntry = {
@@ -49,6 +50,12 @@ type Store = {
   createLocalUser: (data: { displayName: string; email: string; department: string; legalEntity: string; roles: User["roles"] }) => { ok: boolean; user?: User; message?: string };
   deactivateUser: (userId: string) => { ok: boolean; message?: string };
   reactivateUser: (userId: string) => { ok: boolean; message?: string };
+
+  catalogNodes: CatalogNode[];
+  setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
+  addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
+  renameSubsection: (nodeId: string, title: string) => { ok: boolean; message?: string };
+  deleteSubsection: (nodeId: string) => { ok: boolean; message?: string };
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -71,6 +78,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [materials, setMaterials] = useState<MaterialVersion[]>(seedMaterials);
   const [rfcs, setRfcs] = useState<RFC[]>(seedRfcs);
   const [notifications, setNotifications] = useState<NotificationLog[]>(notificationLogSeed);
+  const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>(seedCatalog);
 
   const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
 
@@ -90,6 +98,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       notifications,
       setNotifications,
       policy: policySeed,
+      catalogNodes,
 
       confirmActuality: (versionId: string) => {
         const version = materials.find((m) => m.id === versionId);
@@ -291,7 +300,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           deactivated.push(du.displayName);
           const owned = materials.filter(
             (m) =>
-              (m.passport.ownerId === du.id || m.passport.deputyOwnerId === du.id) &&
+              (m.passport.ownerId === du.id || m.passport.deputyId === du.id) &&
               m.status === "Опубликовано",
           );
           for (const m of owned) {
@@ -357,7 +366,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         const owned = materials.filter(
           (m) =>
-            (m.passport.ownerId === userId || m.passport.deputyOwnerId === userId) &&
+            (m.passport.ownerId === userId || m.passport.deputyId === userId) &&
             m.status === "Опубликовано",
         );
         if (owned.length) {
@@ -395,8 +404,53 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         return { ok: true };
       },
+
+      setSectionOwners: (sectionId: string, ownerIds: string[]) => {
+        const node = catalogNodes.find((n) => n.id === sectionId);
+        if (!node) return { ok: false, message: "Раздел не найден" };
+        if (node.type !== "section") return { ok: false, message: "Владельцев можно назначать только разделам" };
+
+        setCatalogNodes((prev) =>
+          prev.map((n) => (n.id === sectionId ? { ...n, ownerIds } : n)),
+        );
+        return { ok: true };
+      },
+
+      addSubsection: (parentId: string, title: string) => {
+        const parent = catalogNodes.find((n) => n.id === parentId && n.type === "section");
+        if (!parent) return { ok: false, message: "Родительский раздел не найден" };
+        if (!title.trim()) return { ok: false, message: "Название не может быть пустым" };
+
+        const id = `sub-${Date.now()}`;
+        const node: CatalogNode = { id, title: title.trim(), type: "subsection", parentId };
+        setCatalogNodes((prev) => [...prev, node]);
+        return { ok: true, node };
+      },
+
+      renameSubsection: (nodeId: string, title: string) => {
+        const node = catalogNodes.find((n) => n.id === nodeId);
+        if (!node) return { ok: false, message: "Подраздел не найден" };
+        if (!title.trim()) return { ok: false, message: "Название не может быть пустым" };
+
+        setCatalogNodes((prev) =>
+          prev.map((n) => (n.id === nodeId ? { ...n, title: title.trim() } : n)),
+        );
+        return { ok: true };
+      },
+
+      deleteSubsection: (nodeId: string) => {
+        const node = catalogNodes.find((n) => n.id === nodeId);
+        if (!node) return { ok: false, message: "Подраздел не найден" };
+        if (node.type !== "subsection") return { ok: false, message: "Можно удалить только подраздел" };
+
+        const hasMaterials = materials.some((m) => m.passport.sectionId === nodeId);
+        if (hasMaterials) return { ok: false, message: "Нельзя удалить подраздел с материалами" };
+
+        setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId));
+        return { ok: true };
+      },
     };
-  }, [materials, me, notifications, rfcs, users]);
+  }, [catalogNodes, materials, me, notifications, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
