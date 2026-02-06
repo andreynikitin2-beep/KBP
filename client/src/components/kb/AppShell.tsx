@@ -186,7 +186,7 @@ export function AppShell({
                 Портал инструкций
               </div>
               <div className="mt-0 hidden sm:block text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-                база знаний с контролем
+                база знаний
               </div>
             </div>
           </div>
