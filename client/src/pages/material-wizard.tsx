@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
+import { RichEditor } from "@/components/kb/RichEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +41,7 @@ export default function MaterialWizard() {
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
   const [fileName, setFileName] = useState("Инструкция.pdf");
   const [extractedText, setExtractedText] = useState("Краткий извлечённый текст для полнотекстового поиска…");
-  const [pageBody, setPageBody] = useState("Заголовок\n\nАбзац с описанием процесса…\n\n1) Шаг\n2) Шаг\n3) Шаг");
+  const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
 
   const sectionOptions = useMemo(() => {
     const subs = catalog.filter((n) => n.type === "subsection");
@@ -305,22 +306,13 @@ export default function MaterialWizard() {
                       </div>
                     </Card>
                   ) : (
-                    <Card className="p-4">
-                      <div className="flex items-center gap-2">
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
                         <Globe className="h-4 w-4 text-muted-foreground" />
-                        <div className="text-sm font-semibold">Страница портала (демо)</div>
+                        <div className="text-sm font-semibold">Страница портала</div>
                       </div>
-                      <div className="mt-3">
-                        <Label htmlFor="page">Содержимое</Label>
-                        <Textarea
-                          id="page"
-                          data-testid="textarea-page"
-                          value={pageBody}
-                          onChange={(e) => setPageBody(e.target.value)}
-                          className="mt-1 min-h-[200px] rounded-xl"
-                        />
-                      </div>
-                    </Card>
+                      <RichEditor content={pageHtml} onChange={setPageHtml} />
+                    </div>
                   )}
                 </div>
 
@@ -361,12 +353,7 @@ export default function MaterialWizard() {
                               }
                             : {
                                 kind: "page",
-                                page: {
-                                  blocks: [
-                                    { id: "h1", type: "heading", text: pageBody.split("\n")[0] || title, anchor: "h1" },
-                                    { id: "p1", type: "paragraph", text: pageBody },
-                                  ],
-                                },
+                                page: { html: pageHtml },
                               },
                         subscribers: [],
                         discussionsEnabled: false,

@@ -168,7 +168,7 @@ export function searchMaterials(
       p.tags.join(" "),
       p.tagGroups.map((g) => g.group + " " + g.tags.join(" ")).join(" "),
       m.content.kind === "file" ? (m.content.file?.extractedText || "") : "",
-      m.content.kind === "page" ? (m.content.page?.blocks.map((b) => b.text).join(" ") || "") : "",
+      m.content.kind === "page" ? (m.content.page?.html?.replace(/<[^>]*>/g, " ") || "") : "",
     ]
       .join(" ")
       .toLowerCase();

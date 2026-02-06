@@ -63,7 +63,7 @@ export type MaterialVersion = {
   content: {
     kind: "file" | "page";
     file?: { name: string; type: "pdf" | "docx"; extractedText?: string };
-    page?: { blocks: { id: string; type: "heading" | "paragraph" | "list"; text: string; anchor?: string }[] };
+    page?: { html: string };
   };
   subscribers: string[];
   discussionsEnabled: boolean;
@@ -363,24 +363,7 @@ export const materials: MaterialVersion[] = [
     content: {
       kind: "page",
       page: {
-        blocks: [
-          {
-            id: "b1",
-            type: "heading",
-            text: "Оформление отпуска: общий порядок",
-            anchor: "obshchiy-poryadok",
-          },
-          {
-            id: "b2",
-            type: "paragraph",
-            text: "Подайте заявление минимум за 14 календарных дней. Если требуется перенос — согласуйте с руководителем.",
-          },
-          {
-            id: "b3",
-            type: "list",
-            text: "1) Согласование дат\n2) Заявление\n3) Подтверждение в системе\n4) Уведомление бухгалтерии",
-          },
-        ],
+        html: `<h1>Оформление отпуска: общий порядок</h1><p>Подайте заявление минимум за 14 календарных дней. Если требуется перенос — согласуйте с руководителем.</p><blockquote><p><strong>⚠ Важно:</strong> Заявление необходимо подать не позднее чем за 14 календарных дней до начала отпуска.</p></blockquote><h2>Порядок действий</h2><ol><li>Согласование дат</li><li>Заявление</li><li>Подтверждение в системе</li><li>Уведомление бухгалтерии</li></ol>`,
       },
     },
     subscribers: [],
@@ -448,11 +431,7 @@ export const materials: MaterialVersion[] = [
     content: {
       kind: "page",
       page: {
-        blocks: [
-          { id: "h1", type: "heading", text: "Настройка рабочего места: пошаговая инструкция", anchor: "setup" },
-          { id: "p1", type: "paragraph", text: "После получения ноутбука выполните следующие шаги для подключения к корпоративной сети и настройки рабочего окружения." },
-          { id: "l1", type: "list", text: "1) Подключение к Wi-Fi\n2) Установка VPN-клиента\n3) Настройка почты\n4) Установка корпоративного ПО\n5) Проверка доступов" },
-        ],
+        html: `<h1>Настройка рабочего места: пошаговая инструкция</h1><p>После получения ноутбука выполните следующие шаги для подключения к корпоративной сети и настройки рабочего окружения.</p><h2>Шаги настройки</h2><ol><li>Подключение к Wi-Fi</li><li>Установка VPN-клиента</li><li>Настройка почты</li><li>Установка корпоративного ПО</li><li>Проверка доступов</li></ol>`,
       },
     },
     subscribers: [],
@@ -525,10 +504,7 @@ export const materials: MaterialVersion[] = [
     content: {
       kind: "page",
       page: {
-        blocks: [
-          { id: "h1", type: "heading", text: "Внутренние проверки: общий регламент", anchor: "reglament" },
-          { id: "p1", type: "paragraph", text: "Внутренние проверки проводятся ежеквартально. Проверяющая группа формируется приказом генерального директора." },
-        ],
+        html: `<h1>Внутренние проверки: общий регламент</h1><p>Внутренние проверки проводятся ежеквартально. Проверяющая группа формируется приказом генерального директора.</p><h2>Периодичность</h2><p>Плановые проверки — 1 раз в квартал. Внеплановые — по решению руководства.</p>`,
       },
     },
     subscribers: ["u-aud"],
@@ -599,10 +575,7 @@ export const materials: MaterialVersion[] = [
     content: {
       kind: "page",
       page: {
-        blocks: [
-          { id: "h1", type: "heading", text: "Политика обработки персональных данных", anchor: "policy" },
-          { id: "p1", type: "paragraph", text: "Все персональные данные должны обрабатываться в соответствии с ФЗ-152 и внутренними регламентами компании." },
-        ],
+        html: `<h1>Политика обработки персональных данных</h1><p>Все персональные данные должны обрабатываться в соответствии с ФЗ-152 и внутренними регламентами компании.</p><blockquote><p><strong>⚠ Важно:</strong> Нарушение политики обработки ПДн влечёт дисциплинарную и административную ответственность.</p></blockquote>`,
       },
     },
     subscribers: [],
@@ -638,11 +611,7 @@ export const materials: MaterialVersion[] = [
     content: {
       kind: "page",
       page: {
-        blocks: [
-          { id: "h1", type: "heading", text: "Онбординг: чек-лист для HR и руководителя", anchor: "checklist" },
-          { id: "p1", type: "paragraph", text: "Подготовьте рабочее место, доступы и адаптационный план до выхода сотрудника." },
-          { id: "l1", type: "list", text: "1) Оформление документов\n2) Настройка рабочего места\n3) Знакомство с командой\n4) Назначение наставника\n5) Адаптационный трек (2 недели)" },
-        ],
+        html: `<h1>Онбординг: чек-лист для HR и руководителя</h1><p>Подготовьте рабочее место, доступы и адаптационный план до выхода сотрудника.</p><h2>Чек-лист</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked /><span>Оформление документов</span></label></li><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked /><span>Настройка рабочего места</span></label></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox" /><span>Знакомство с командой</span></label></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox" /><span>Назначение наставника</span></label></li><li data-type="taskItem" data-checked="false"><label><input type="checkbox" /><span>Адаптационный трек (2 недели)</span></label></li></ul><h2>Таблица сроков</h2><table><tr><th>Этап</th><th>Срок</th><th>Ответственный</th></tr><tr><td>Документы</td><td>День 1</td><td>HR</td></tr><tr><td>Рабочее место</td><td>День 1</td><td>IT</td></tr><tr><td>Наставник</td><td>День 2-3</td><td>Руководитель</td></tr></table>`,
       },
     },
     subscribers: ["u-reader-author"],

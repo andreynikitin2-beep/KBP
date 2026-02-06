@@ -17,6 +17,7 @@ import {
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { AppShell } from "@/components/kb/AppShell";
+import { PageViewer } from "@/components/kb/PageViewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -646,58 +647,7 @@ export default function MaterialView() {
                       </Card>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <Card className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold" data-testid="text-page-mode">
-                              Страница портала
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Поддерживаются якоря для глубоких ссылок (например, #obshchiy-poryadok).
-                            </div>
-                          </div>
-                          <Button
-                            data-testid="button-copy-anchor"
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => {
-                              const anchor = current.content.page?.blocks.find((b) => b.anchor)?.anchor || "";
-                              navigator.clipboard.writeText(`${location.origin}/materials/${current.materialId}#${anchor}`);
-                              toast({ title: "Ссылка скопирована", description: `Якорь: #${anchor}` });
-                            }}
-                          >
-                            Скопировать якорь
-                          </Button>
-                        </div>
-                      </Card>
-
-                      <Card className="p-4">
-                        <div className="space-y-3" data-testid="page-content">
-                          {current.content.page?.blocks.map((b) => {
-                            if (b.type === "heading") {
-                              return (
-                                <div key={b.id} id={b.anchor} data-testid={`block-heading-${b.id}`}>
-                                  <div className="font-serif text-xl">{b.text}</div>
-                                </div>
-                              );
-                            }
-                            if (b.type === "list") {
-                              return (
-                                <div key={b.id} data-testid={`block-list-${b.id}`}>
-                                  <div className="whitespace-pre-wrap text-sm">{b.text}</div>
-                                </div>
-                              );
-                            }
-                            return (
-                              <div key={b.id} data-testid={`block-paragraph-${b.id}`}>
-                                <div className="text-sm leading-relaxed text-muted-foreground">{b.text}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </Card>
-                    </div>
+                    <PageViewer html={current.content.page?.html || ""} materialId={current.materialId} />
                   )}
                 </TabsContent>
 
