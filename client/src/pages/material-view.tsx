@@ -119,6 +119,39 @@ export default function MaterialView() {
             <BadgeCheck className="mr-2 h-4 w-4" />
             Подтвердить актуальность
           </Button>
+          {me.roles.includes("Администратор") && (
+            <Button
+              data-testid="button-force-publish"
+              variant="destructive"
+              className="rounded-xl"
+              onClick={() => {
+                const comment = prompt("Введите обязательный комментарий для принудительной публикации:");
+                if (!comment) {
+                  toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
+                  return;
+                }
+                setMaterials((prev) =>
+                  prev.map((m) =>
+                    m.id === current.id
+                      ? {
+                          ...m,
+                          status: "Опубликовано",
+                          changelog: (m.changelog ? m.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`,
+                          passport: {
+                            ...m.passport,
+                            lastReviewedAt: new Date().toISOString(),
+                          },
+                        }
+                      : m
+                  )
+                );
+                toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+              }}
+            >
+              <ShieldAlert className="mr-2 h-4 w-4" />
+              Принудительно опубликовать
+            </Button>
+          )}
         </div>
       }
     >

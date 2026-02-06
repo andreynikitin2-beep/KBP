@@ -156,35 +156,52 @@ export default function Admin() {
               <TabsContent value="rights" className="mt-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Card className="p-4">
-                    <div className="text-sm font-semibold">Роли (RBAC)</div>
-                    <div className="mt-3 space-y-2" data-testid="list-roles">
-                      {demoUsers
-                        .reduce<string[]>((acc, u) => {
-                          u.roles.forEach((r) => acc.includes(r) || acc.push(r));
-                          return acc;
-                        }, [])
-                        .map((r) => (
-                          <div key={r} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-role-${r}`}>
-                            <div className="font-semibold">{r}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Доступ к разделам и функциям определяется политиками.
+                    <div className="text-sm font-semibold">Управление ролями пользователей</div>
+                    <div className="mt-3 space-y-3" data-testid="list-users-roles">
+                      {demoUsers.map((u) => (
+                        <div key={u.id} className="rounded-2xl border bg-muted/20 p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-bold">{u.displayName}</div>
+                            <div className="flex flex-wrap gap-1">
+                              {u.roles.map(r => (
+                                <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
+                              ))}
                             </div>
                           </div>
-                        ))}
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {["Читатель", "Автор", "Владелец", "Заместитель владельца", "Администратор"].map(role => (
+                              <Button 
+                                key={role}
+                                size="sm" 
+                                variant="outline" 
+                                className="h-6 text-[10px] rounded-md px-2"
+                                onClick={() => {
+                                  toast({ title: "Роль обновлена", description: `Пользователю ${u.displayName} назначена роль ${role} (демо)` });
+                                }}
+                              >
+                                {u.roles.includes(role as any) ? `- ${role}` : `+ ${role}`}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </Card>
 
                   <Card className="p-4">
-                    <div className="text-sm font-semibold">Ограничения доступа</div>
+                    <div className="text-sm font-semibold">Политика RBAC</div>
                     <div className="mt-2 text-sm text-muted-foreground">
-                      В MVP применяются по юр.лицу/филиалу (материалы) и по политикам разделов (каталог).
+                      Роли назначаются только вручную администратором портала. AD-интеграция используется только для атрибутов (филиал, компания).
                     </div>
                     <Separator className="my-3" />
-                    <div className="text-xs font-medium text-muted-foreground">Пример</div>
-                    <div className="mt-2 rounded-2xl border bg-muted/20 p-3">
-                      <div className="text-sm">Пользователь видит материалы только своего юр.лица/филиала.</div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        Полная модель RBAC + ACL по разделам реализуется в бэкенде.
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span>Дефолтная роль</span>
+                        <Badge variant="outline">Читатель</Badge>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span>Назначение из AD</span>
+                        <Badge variant="destructive">Запрещено</Badge>
                       </div>
                     </div>
                   </Card>

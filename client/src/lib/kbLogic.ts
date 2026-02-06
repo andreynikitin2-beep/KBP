@@ -40,16 +40,20 @@ export function daysToNextReview(version: MaterialVersion) {
 export function canConfirmActuality(user: User, version: MaterialVersion) {
   const ownerOk = version.passport.ownerId === user.id;
   const deputyOk = version.passport.deputyId === user.id;
-  const moderatorOk = user.roles.includes("Модератор");
-  return ownerOk || deputyOk || moderatorOk;
+  const adminOk = user.roles.includes("Администратор");
+  return ownerOk || deputyOk || adminOk;
 }
 
 export function canViewAudit(user: User) {
-  return user.roles.includes("Аудитор") || user.roles.includes("Модератор") || user.roles.includes("Админ безопасности");
+  return user.roles.includes("Администратор");
 }
 
 export function canEditPublished(user: User) {
-  return user.roles.includes("Модератор") || user.roles.includes("Владелец") || user.roles.includes("Заместитель");
+  return user.roles.includes("Администратор") || user.roles.includes("Владелец") || user.roles.includes("Заместитель владельца");
+}
+
+export function canForcePublish(user: User) {
+  return user.roles.includes("Администратор");
 }
 
 export function validatePassport(passport: MaterialVersion["passport"]) {

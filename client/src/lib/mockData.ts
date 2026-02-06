@@ -2,10 +2,8 @@ export type Role =
   | "Читатель"
   | "Автор"
   | "Владелец"
-  | "Заместитель"
-  | "Модератор"
-  | "Админ безопасности"
-  | "Аудитор";
+  | "Заместитель владельца"
+  | "Администратор";
 
 export type Status =
   | "Черновик"
@@ -122,7 +120,7 @@ export const demoUsers: User[] = [
     id: "u-author",
     displayName: "Алексей Петров",
     email: "author@demo.local",
-    roles: ["Автор"],
+    roles: ["Автор", "Читатель"],
     legalEntity: "ООО «Альфа»",
     branch: "Москва",
     department: "Процессы",
@@ -132,7 +130,7 @@ export const demoUsers: User[] = [
     id: "u-owner",
     displayName: "Мария Иванова",
     email: "owner@demo.local",
-    roles: ["Владелец"],
+    roles: ["Владелец", "Автор"],
     legalEntity: "АО «Бета»",
     branch: "Санкт‑Петербург",
     department: "Качество",
@@ -142,8 +140,8 @@ export const demoUsers: User[] = [
     id: "u-deputy",
     displayName: "Сергей Кузнецов",
     email: "deputy@demo.local",
-    roles: ["Заместитель"],
-    legalEntity: "АО «Бета" + "»",
+    roles: ["Заместитель владельца"],
+    legalEntity: "АО «Бета»",
     branch: "Санкт‑Петербург",
     department: "Качество",
     isAvailable: false,
@@ -152,7 +150,7 @@ export const demoUsers: User[] = [
     id: "u-kbadmin",
     displayName: "Наталья Орлова",
     email: "moderator@demo.local",
-    roles: ["Модератор"],
+    roles: ["Администратор"],
     legalEntity: "ООО «Альфа»",
     branch: "Екатеринбург",
     department: "База знаний",
@@ -203,7 +201,7 @@ export const catalog: CatalogNode[] = [
     id: "sec-it",
     title: "IT и доступы",
     type: "section",
-    allowedRoles: ["Автор", "Владелец", "Заместитель", "Модератор", "Админ безопасности", "Аудитор", "Читатель"],
+    allowedRoles: ["Автор", "Владелец", "Заместитель владельца", "Администратор", "Читатель"],
     allowedBranches: ["Москва", "Санкт‑Петербург", "Екатеринбург"],
   },
   {
@@ -429,17 +427,17 @@ export const policySeed = {
     { criticality: "Низкая" as Criticality, days: 365, remindBeforeDays: [30, 7], escalationAfterDays: [30, 60] },
   ],
   rbacDefaults: {
-    canPublish: ["Модератор", "Владелец"],
-    canApprove: ["Модератор", "Владелец", "Заместитель"],
-    canEditDraft: ["Автор", "Владелец", "Заместитель", "Модератор"],
-    canManagePolicies: ["Модератор"],
-    canViewAudit: ["Аудитор", "Модератор", "Админ безопасности"],
+    canPublish: ["Администратор", "Владелец"],
+    canApprove: ["Администратор", "Владелец", "Заместитель владельца"],
+    canEditDraft: ["Автор", "Владелец", "Заместитель владельца", "Администратор"],
+    canManagePolicies: ["Администратор"],
+    canViewAudit: ["Администратор"],
   },
   adIntegration: {
     enabled: false,
     mode: "demo" as "demo" | "SAML" | "OIDC" | "LDAP",
     mapping: {
-      roles: "memberOf",
+      roles: null, // Роли больше не назначаются через AD
       department: "department",
       legalEntity: "company",
       branch: "physicalDeliveryOfficeName",
