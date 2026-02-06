@@ -177,17 +177,6 @@ export default function Home() {
       onSearch={setQ}
       actions={
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <Button
-              data-testid="button-run-daily-check"
-              variant="outline"
-              className="rounded-lg h-9 border-[#a3e635] text-[#65a30d] hover:bg-[#a3e635]/10 font-bold text-xs"
-              onClick={() => autoDailyCheck()}
-            >
-              <RefreshCw className="mr-2 h-3.5 w-3.5" />
-              Ежедневная проверка
-            </Button>
-          )}
         </div>
       }
     >
