@@ -71,8 +71,13 @@ type Store = {
 
   syncADUsers: () => { ok: boolean; deactivated: string[]; message: string };
   createLocalUser: (data: { displayName: string; email: string; department: string; legalEntity: string; roles: User["roles"] }) => { ok: boolean; user?: User; message?: string };
+  updateUser: (userId: string, data: { displayName?: string; email?: string; department?: string; legalEntity?: string; roles?: User["roles"] }) => { ok: boolean; message?: string };
   deactivateUser: (userId: string) => { ok: boolean; message?: string };
   reactivateUser: (userId: string) => { ok: boolean; message?: string };
+
+  createGroup: (data: { title: string; memberIds: string[] }) => { ok: boolean; group?: VisibilityGroup; message?: string };
+  updateGroup: (groupId: string, data: { title?: string; memberIds?: string[] }) => { ok: boolean; message?: string };
+  deleteGroup: (groupId: string) => { ok: boolean; message?: string };
 
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
@@ -103,11 +108,12 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationLog[]>(notificationLogSeed);
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>(seedCatalog);
   const [policy, setPolicy] = useState<PolicyConfig>(() => policySeed as PolicyConfig);
+  const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
 
   const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
 
   const store = useMemo<Store>(() => {
-    const visibleMaterials = materials.filter((m) => canViewMaterial(me, m, seedGroups));
+    const visibleMaterials = materials.filter((m) => canViewMaterial(me, m, groups));
 
     return {
       me,
@@ -116,7 +122,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       materials,
       visibleMaterials,
       setMaterials,
-      visibilityGroups: seedGroups,
+      visibilityGroups: groups,
       rfcs,
       setRfcs,
       notifications,
@@ -448,6 +454,63 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
 
+      updateUser: (userId: string, data: { displayName?: string; email?: string; department?: string; legalEntity?: string; roles?: User["roles"] }) => {
+        const user = users.find((u) => u.id === userId);
+        if (!user) return { ok: false, message: "Пользователь не найден" };
+
+        setUsers((prev) =>
+          prev.map((u) => {
+            if (u.id !== userId) return u;
+            const updated = { ...u };
+            if (data.displayName !== undefined) updated.displayName = data.displayName;
+            if (data.email !== undefined) updated.email = data.email;
+            if (data.department !== undefined) updated.department = data.department;
+            if (data.legalEntity !== undefined) updated.legalEntity = data.legalEntity;
+            if (data.roles !== undefined) {
+              const roles = data.roles.length > 0 ? data.roles : ["Читатель" as const];
+              updated.roles = roles.includes("Читатель") ? roles : ["Читатель" as const, ...roles];
+            }
+            return updated;
+          }),
+        );
+        return { ok: true };
+      },
+
+      createGroup: (data: { title: string; memberIds: string[] }) => {
+        if (!data.title.trim()) return { ok: false, message: "Название не может быть пустым" };
+        const id = `g-${Date.now()}`;
+        const group: VisibilityGroup = { id, title: data.title.trim(), isSystem: false, memberIds: data.memberIds };
+        setGroups((prev) => [...prev, group]);
+        return { ok: true, group };
+      },
+
+      updateGroup: (groupId: string, data: { title?: string; memberIds?: string[] }) => {
+        const group = groups.find((g) => g.id === groupId);
+        if (!group) return { ok: false, message: "Группа не найдена" };
+        if (group.isSystem) return { ok: false, message: "Системную группу нельзя изменить" };
+
+        setGroups((prev) =>
+          prev.map((g) => {
+            if (g.id !== groupId) return g;
+            return {
+              ...g,
+              title: data.title !== undefined ? data.title.trim() : g.title,
+              memberIds: data.memberIds !== undefined ? data.memberIds : g.memberIds,
+            };
+          }),
+        );
+        return { ok: true };
+      },
+
+      deleteGroup: (groupId: string) => {
+        const group = groups.find((g) => g.id === groupId);
+        if (!group) return { ok: false, message: "Группа не найдена" };
+        if (group.isSystem) return { ok: false, message: "Системную группу нельзя удалить" };
+
+        setGroups((prev) => prev.filter((g) => g.id !== groupId));
+        return { ok: true };
+      },
+
       setSectionOwners: (sectionId: string, ownerIds: string[]) => {
         const node = catalogNodes.find((n) => n.id === sectionId);
         if (!node) return { ok: false, message: "Раздел не найден" };
@@ -493,7 +556,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
     };
-  }, [catalogNodes, materials, me, notifications, policy, rfcs, users]);
+  }, [catalogNodes, groups, materials, me, notifications, policy, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
