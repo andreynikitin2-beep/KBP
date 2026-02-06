@@ -50,11 +50,21 @@ Preferred communication style: Simple, everyday language.
 - Admin tabs: AD/SSO config + sync log, Пользователи (list + create local + deactivate/reactivate)
 - All files use `users` from kbStore instead of importing `demoUsers` directly
 
+**Material-Level Visibility & Enhanced Versioning (Batch 14):**
+- `effectiveVisGroupMap` in kbStore: `Record<materialId, visibilityGroupId>` — tracks current effective visibility group per material, updated only on publish
+- Access control (`canViewMaterial` in kbLogic.ts) uses material-level effectiveGroupId, not version-specific; drafts/approvals bypass visibility for author/owner/deputy/admin (FR-ACC-VERS-4)
+- Version numbering: major.minor format; `createNewVersion(materialId, majorBump?)` — if majorBump=true → major+1.0, else major.minor+1
+- Inline dialog in material-view.tsx for creating new version with checkbox for major bump
+- On publish: auto-archives previous published versions of same material, resets reviewDate/confirmedAt
+- Subscription cleanup: `cleanupSubscriptionsOnGroupChange()` removes subscriptions for users who lost access after visibility group change on publish; `notifySubscribers` checks access before sending
+- "Мои материалы" page (`/my-materials`): two sections — "Я - владелец" and "Я - заместитель владельца"
+
 **Key Pages:**
 - `/` — Home dashboard with KPIs, overdue materials, recent activity
 - `/catalog` — Hierarchical catalog browser with scope-based access control
 - `/materials/new` — Material creation wizard (multi-step form)
 - `/materials/:id` — Material detail view with passport, versions, RFC workflow, audit
+- `/my-materials` — Personal materials dashboard for owners and deputies
 - `/admin` — Admin panel with 7 tabs: Политики, AD/SSO, Пользователи, Права, Группы, Отчёты, Email-журнал
 
 **Domain Logic** (`kbLogic.ts`):
