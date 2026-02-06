@@ -116,121 +116,6 @@ export default function MaterialView() {
               Каталог
             </Button>
           </Link>
-          <Button
-            data-testid="button-confirm-actuality"
-            disabled={!canConfirm}
-            className="rounded-xl"
-            onClick={() => {
-              const res = confirmActuality(current.id);
-              if (!res.ok) {
-                toast({ title: "Не удалось", description: res.message || "", variant: "destructive" });
-              } else {
-                toast({ title: "Готово", description: "Актуальность подтверждена в 1 клик." });
-              }
-            }}
-          >
-            <BadgeCheck className="mr-2 h-4 w-4" />
-            Подтвердить актуальность
-          </Button>
-          {showPublishDirect && (
-            <Button
-              data-testid="button-publish-direct"
-              className="rounded-xl bg-green-600 hover:bg-green-700"
-              onClick={() => {
-                const res = publishDirect(current.id);
-                if (!res.ok) {
-                  toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
-                } else {
-                  toast({ title: "Опубликовано", description: "Материал опубликован напрямую (владелец/заместитель)." });
-                }
-              }}
-            >
-              <FileUp className="mr-2 h-4 w-4" />
-              Опубликовать
-            </Button>
-          )}
-          {showSubmitForApproval && !showPublishDirect && (
-            <Button
-              data-testid="button-submit-approval"
-              variant="secondary"
-              className="rounded-xl"
-              onClick={() => {
-                const res = submitForApproval(current.id);
-                if (!res.ok) {
-                  toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
-                } else {
-                  toast({ title: "Отправлено", description: "Материал отправлен на согласование владельцу." });
-                }
-              }}
-            >
-              <FileUp className="mr-2 h-4 w-4" />
-              Отправить на согласование
-            </Button>
-          )}
-          {showApprove && (
-            <Button
-              data-testid="button-approve-publish"
-              className="rounded-xl bg-green-600 hover:bg-green-700"
-              onClick={() => {
-                const res = approveAndPublish(current.id);
-                if (!res.ok) {
-                  toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
-                } else {
-                  toast({ title: "Согласовано", description: "Материал одобрен и опубликован." });
-                }
-              }}
-            >
-              <BadgeCheck className="mr-2 h-4 w-4" />
-              Одобрить и опубликовать
-            </Button>
-          )}
-          {showReturn && (
-            <Button
-              data-testid="button-return-revision"
-              variant="outline"
-              className="rounded-xl border-orange-300 text-orange-600 hover:bg-orange-50"
-              onClick={() => {
-                setReturnDialogOpen(true);
-                setReturnComment("");
-              }}
-            >
-              <CircleAlert className="mr-2 h-4 w-4" />
-              Вернуть на доработку
-            </Button>
-          )}
-          {me.roles.includes("Администратор") && current.status !== "Опубликовано" && current.status !== "Архив" && (
-            <Button
-              data-testid="button-force-publish"
-              variant="destructive"
-              className="rounded-xl"
-              onClick={() => {
-                const comment = prompt("Введите обязательный комментарий для принудительной публикации:");
-                if (!comment) {
-                  toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
-                  return;
-                }
-                setMaterials((prev) =>
-                  prev.map((m) =>
-                    m.id === current.id
-                      ? {
-                          ...m,
-                          status: "Опубликовано",
-                          changelog: (m.changelog ? m.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`,
-                          passport: {
-                            ...m.passport,
-                            lastReviewedAt: new Date().toISOString(),
-                          },
-                        }
-                      : m
-                  )
-                );
-                toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
-              }}
-            >
-              <ShieldAlert className="mr-2 h-4 w-4" />
-              Принудительно опубликовать
-            </Button>
-          )}
         </div>
       }
     >
@@ -304,14 +189,14 @@ export default function MaterialView() {
       ) : null}
 
       {(current.status === "Черновик" || current.status === "На согласовании") && (
-        <Card className="mb-4 border-blue-200 bg-blue-50/50" data-testid="card-approval-workflow">
+        <Card className="mb-4 border-blue-200/60 bg-blue-50/30" data-testid="card-approval-workflow">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-blue-100 p-2 text-blue-600">
+              <div className="rounded-xl bg-blue-100/60 p-2 text-blue-500">
                 <FileUp className="h-4 w-4" />
               </div>
-              <div className="min-w-0">
-                <div className="font-semibold text-blue-800" data-testid="text-approval-title">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-blue-700/80" data-testid="text-approval-title">
                   {current.status === "Черновик" ? "Черновик — ожидает публикации" : "На согласовании — ожидает решения"}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground" data-testid="text-approval-hint">
@@ -334,6 +219,216 @@ export default function MaterialView() {
                 <div className="mt-2 text-xs text-muted-foreground">
                   Автор: {demoUsers.find((u) => u.id === current.createdBy)?.displayName || "—"}
                   {current.passport.ownerId && <> · Владелец: {owner?.displayName || "—"}</>}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {showPublishDirect && (
+                    <Button
+                      data-testid="button-publish-direct"
+                      className="rounded-xl bg-green-500/20 text-green-700 hover:bg-green-500/30 border border-green-300/50"
+                      variant="ghost"
+                      onClick={() => {
+                        const res = publishDirect(current.id);
+                        if (!res.ok) {
+                          toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                        } else {
+                          toast({ title: "Опубликовано", description: "Материал опубликован напрямую (владелец/заместитель)." });
+                        }
+                      }}
+                    >
+                      <FileUp className="mr-2 h-4 w-4" />
+                      Опубликовать
+                    </Button>
+                  )}
+                  {showSubmitForApproval && !showPublishDirect && (
+                    <Button
+                      data-testid="button-submit-approval"
+                      variant="ghost"
+                      className="rounded-xl bg-blue-500/15 text-blue-700 hover:bg-blue-500/25 border border-blue-300/50"
+                      onClick={() => {
+                        const res = submitForApproval(current.id);
+                        if (!res.ok) {
+                          toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                        } else {
+                          toast({ title: "Отправлено", description: "Материал отправлен на согласование владельцу." });
+                        }
+                      }}
+                    >
+                      <FileUp className="mr-2 h-4 w-4" />
+                      Отправить на согласование
+                    </Button>
+                  )}
+                  {showApprove && (
+                    <Button
+                      data-testid="button-approve-publish"
+                      variant="ghost"
+                      className="rounded-xl bg-green-500/20 text-green-700 hover:bg-green-500/30 border border-green-300/50"
+                      onClick={() => {
+                        const res = approveAndPublish(current.id);
+                        if (!res.ok) {
+                          toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                        } else {
+                          toast({ title: "Согласовано", description: "Материал одобрен и опубликован." });
+                        }
+                      }}
+                    >
+                      <BadgeCheck className="mr-2 h-4 w-4" />
+                      Одобрить и опубликовать
+                    </Button>
+                  )}
+                  {showReturn && (
+                    <Button
+                      data-testid="button-return-revision"
+                      variant="ghost"
+                      className="rounded-xl bg-orange-500/15 text-orange-600 hover:bg-orange-500/25 border border-orange-300/50"
+                      onClick={() => {
+                        setReturnDialogOpen(true);
+                        setReturnComment("");
+                      }}
+                    >
+                      <CircleAlert className="mr-2 h-4 w-4" />
+                      Вернуть на доработку
+                    </Button>
+                  )}
+                  {me.roles.includes("Администратор") && (
+                    <Button
+                      data-testid="button-force-publish"
+                      variant="ghost"
+                      className="rounded-xl bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-300/50"
+                      onClick={() => {
+                        const comment = prompt("Введите обязательный комментарий для принудительной публикации:");
+                        if (!comment) {
+                          toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
+                          return;
+                        }
+                        setMaterials((prev) =>
+                          prev.map((m) =>
+                            m.id === current.id
+                              ? {
+                                  ...m,
+                                  status: "Опубликовано",
+                                  changelog: (m.changelog ? m.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`,
+                                  passport: {
+                                    ...m.passport,
+                                    lastReviewedAt: new Date().toISOString(),
+                                  },
+                                }
+                              : m
+                          )
+                        );
+                        toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+                      }}
+                    >
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      Принудительно опубликовать
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {current.status === "Опубликовано" && canConfirm && (
+        <Card className="mb-4 border-emerald-200/60 bg-emerald-50/30" data-testid="card-confirm-actuality">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-emerald-100/60 p-2 text-emerald-500">
+                <BadgeCheck className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-emerald-700/80">Подтверждение актуальности</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Подтвердите, что материал актуален. Дата следующего пересмотра будет пересчитана автоматически.
+                </div>
+                <div className="mt-3">
+                  <Button
+                    data-testid="button-confirm-actuality"
+                    variant="ghost"
+                    className="rounded-xl bg-emerald-500/20 text-emerald-700 hover:bg-emerald-500/30 border border-emerald-300/50"
+                    onClick={() => {
+                      const res = confirmActuality(current.id);
+                      if (!res.ok) {
+                        toast({ title: "Не удалось", description: res.message || "", variant: "destructive" });
+                      } else {
+                        toast({ title: "Готово", description: "Актуальность подтверждена в 1 клик." });
+                      }
+                    }}
+                  >
+                    <BadgeCheck className="mr-2 h-4 w-4" />
+                    Подтвердить актуальность
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {current.status === "На пересмотре" && (canConfirm || me.roles.includes("Администратор")) && (
+        <Card className="mb-4 border-amber-200/60 bg-amber-50/30" data-testid="card-review-actions">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-amber-100/60 p-2 text-amber-500">
+                <CalendarClock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-amber-700/80">На пересмотре</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Материал требует пересмотра. Подтвердите актуальность или обновите содержание.
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canConfirm && (
+                    <Button
+                      data-testid="button-confirm-actuality-review"
+                      variant="ghost"
+                      className="rounded-xl bg-emerald-500/20 text-emerald-700 hover:bg-emerald-500/30 border border-emerald-300/50"
+                      onClick={() => {
+                        const res = confirmActuality(current.id);
+                        if (!res.ok) {
+                          toast({ title: "Не удалось", description: res.message || "", variant: "destructive" });
+                        } else {
+                          toast({ title: "Готово", description: "Актуальность подтверждена." });
+                        }
+                      }}
+                    >
+                      <BadgeCheck className="mr-2 h-4 w-4" />
+                      Подтвердить актуальность
+                    </Button>
+                  )}
+                  {me.roles.includes("Администратор") && (
+                    <Button
+                      data-testid="button-force-publish-review"
+                      variant="ghost"
+                      className="rounded-xl bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-300/50"
+                      onClick={() => {
+                        const comment = prompt("Введите обязательный комментарий для принудительной публикации:");
+                        if (!comment) {
+                          toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
+                          return;
+                        }
+                        setMaterials((prev) =>
+                          prev.map((m) =>
+                            m.id === current.id
+                              ? {
+                                  ...m,
+                                  status: "Опубликовано",
+                                  changelog: (m.changelog ? m.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`,
+                                  passport: {
+                                    ...m.passport,
+                                    lastReviewedAt: new Date().toISOString(),
+                                  },
+                                }
+                              : m
+                          )
+                        );
+                        toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+                      }}
+                    >
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      Принудительно опубликовать
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
