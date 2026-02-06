@@ -8,7 +8,7 @@ import {
   visibilityGroups as seedGroups,
   catalog as seedCatalog,
 } from "./mockData";
-import type { CatalogNode, MaterialVersion, NotificationLog, RFC, User, UserSource, VisibilityGroup } from "./mockData";
+import type { CatalogNode, Criticality, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 
 type ADSyncLogEntry = {
@@ -18,6 +18,27 @@ type ADSyncLogEntry = {
   usersUpdated: number;
   usersDeactivated: number;
   message: string;
+};
+
+export type ReviewPeriod = {
+  criticality: Criticality;
+  days: number;
+  remindBeforeDays: number[];
+  escalationAfterDays: number[];
+};
+
+export type RbacDefaults = {
+  canPublish: string[];
+  canApprove: string[];
+  canEditDraft: string[];
+  canManagePolicies: string[];
+  canViewAudit: string[];
+};
+
+export type PolicyConfig = {
+  reviewPeriods: ReviewPeriod[];
+  rbacDefaults: RbacDefaults;
+  adIntegration: typeof policySeed.adIntegration;
 };
 
 type Store = {
@@ -37,7 +58,9 @@ type Store = {
   notifications: NotificationLog[];
   setNotifications: React.Dispatch<React.SetStateAction<NotificationLog[]>>;
 
-  policy: typeof policySeed;
+  policy: PolicyConfig;
+  updateReviewPeriod: (criticality: Criticality, data: Partial<Omit<ReviewPeriod, "criticality">>) => { ok: boolean; message?: string };
+  updateRbacDefaults: (key: keyof RbacDefaults, roles: string[]) => { ok: boolean; message?: string };
 
   confirmActuality: (versionId: string) => { ok: boolean; message?: string };
   submitForApproval: (versionId: string) => { ok: boolean; message?: string };
@@ -79,6 +102,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [rfcs, setRfcs] = useState<RFC[]>(seedRfcs);
   const [notifications, setNotifications] = useState<NotificationLog[]>(notificationLogSeed);
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>(seedCatalog);
+  const [policy, setPolicy] = useState<PolicyConfig>(() => policySeed as PolicyConfig);
 
   const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
 
@@ -97,8 +121,27 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       setRfcs,
       notifications,
       setNotifications,
-      policy: policySeed,
+      policy,
       catalogNodes,
+
+      updateReviewPeriod: (criticality: Criticality, data: Partial<Omit<ReviewPeriod, "criticality">>) => {
+        setPolicy((prev) => ({
+          ...prev,
+          reviewPeriods: prev.reviewPeriods.map((p) =>
+            p.criticality === criticality ? { ...p, ...data } : p,
+          ),
+        }));
+        return { ok: true };
+      },
+
+      updateRbacDefaults: (key: keyof RbacDefaults, roles: string[]) => {
+        if (roles.length === 0) return { ok: false, message: "Нужно выбрать хотя бы одну роль" };
+        setPolicy((prev) => ({
+          ...prev,
+          rbacDefaults: { ...prev.rbacDefaults, [key]: roles },
+        }));
+        return { ok: true };
+      },
 
       confirmActuality: (versionId: string) => {
         const version = materials.find((m) => m.id === versionId);
@@ -450,7 +493,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
     };
-  }, [catalogNodes, materials, me, notifications, rfcs, users]);
+  }, [catalogNodes, materials, me, notifications, policy, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
