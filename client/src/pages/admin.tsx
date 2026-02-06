@@ -8,13 +8,16 @@ import {
   Cloud,
   CloudOff,
   Download,
+  Edit2,
   Mail,
   RefreshCw,
+  Save,
   Shield,
   SlidersHorizontal,
   Table2,
   UserPlus,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
@@ -36,7 +39,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { visibilityGroups } from "@/lib/mockData";
-import type { Role } from "@/lib/mockData";
+import type { Criticality, Role } from "@/lib/mockData";
+import type { RbacDefaults, ReviewPeriod } from "@/lib/kbStore";
 import { computeKpis, isOverdue } from "@/lib/kbLogic";
 
 function csvEscape(v: string) {
@@ -68,9 +72,245 @@ function SyncStatusBadge({ status }: { status: string }) {
   return <Badge variant="secondary" className="text-[10px]">Нет данных</Badge>;
 }
 
+const RBAC_LABELS: Record<keyof RbacDefaults, string> = {
+  canPublish: "Могут публиковать",
+  canApprove: "Могут согласовывать",
+  canEditDraft: "Могут редактировать черновик",
+  canManagePolicies: "Управление политиками",
+  canViewAudit: "Просмотр аудита",
+};
+
+const CRITICALITY_COLORS: Record<string, string> = {
+  "Критическая": "border-red-300 bg-red-50",
+  "Высокая": "border-orange-300 bg-orange-50",
+  "Средняя": "border-yellow-300 bg-yellow-50",
+  "Низкая": "border-blue-300 bg-blue-50",
+};
+
+function PoliciesTab() {
+  const { toast } = useToast();
+  const { policy, updateReviewPeriod, updateRbacDefaults } = useKB();
+
+  const [editingPeriod, setEditingPeriod] = useState<Criticality | null>(null);
+  const [editDays, setEditDays] = useState(0);
+  const [editRemind, setEditRemind] = useState("");
+  const [editEscalation, setEditEscalation] = useState("");
+
+  const [editingRbac, setEditingRbac] = useState<keyof RbacDefaults | null>(null);
+  const [editRoles, setEditRoles] = useState<string[]>([]);
+
+  const startEditPeriod = (p: ReviewPeriod) => {
+    setEditingPeriod(p.criticality);
+    setEditDays(p.days);
+    setEditRemind(p.remindBeforeDays.join(", "));
+    setEditEscalation(p.escalationAfterDays.join(", "));
+  };
+
+  const savePeriod = () => {
+    if (!editingPeriod) return;
+    const parseDays = (s: string) =>
+      s.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n) && n > 0);
+    const remind = parseDays(editRemind);
+    const escalation = parseDays(editEscalation);
+    if (editDays < 1) {
+      toast({ title: "Ошибка", description: "Период должен быть больше 0 дней", variant: "destructive" });
+      return;
+    }
+    if (remind.length === 0) {
+      toast({ title: "Ошибка", description: "Укажите хотя бы один день напоминания", variant: "destructive" });
+      return;
+    }
+    const res = updateReviewPeriod(editingPeriod, {
+      days: editDays,
+      remindBeforeDays: remind.sort((a, b) => b - a),
+      escalationAfterDays: escalation.sort((a, b) => a - b),
+    });
+    if (res.ok) {
+      toast({ title: "Сохранено", description: `Период для «${editingPeriod}» обновлён` });
+      setEditingPeriod(null);
+    }
+  };
+
+  const startEditRbac = (key: keyof RbacDefaults) => {
+    setEditingRbac(key);
+    setEditRoles([...policy.rbacDefaults[key]]);
+  };
+
+  const toggleRole = (role: string) => {
+    setEditRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
+  };
+
+  const saveRbac = () => {
+    if (!editingRbac) return;
+    const res = updateRbacDefaults(editingRbac, editRoles);
+    if (res.ok) {
+      toast({ title: "Сохранено", description: `Роли для «${RBAC_LABELS[editingRbac]}» обновлены` });
+      setEditingRbac(null);
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+          <div className="text-sm font-semibold">Периоды пересмотра по критичности</div>
+        </div>
+        <div className="text-xs text-muted-foreground mb-3">
+          Определяют, через сколько дней материал нужно пересмотреть в зависимости от уровня критичности.
+        </div>
+        <div className="space-y-2" data-testid="list-review-periods">
+          {policy.reviewPeriods.map((p) => (
+            <div
+              key={p.criticality}
+              className={`rounded-2xl border p-3 ${CRITICALITY_COLORS[p.criticality] || "bg-muted/20"}`}
+              data-testid={`row-policy-${p.criticality}`}
+            >
+              {editingPeriod === p.criticality ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold">{p.criticality}</div>
+                    <div className="flex gap-1">
+                      <Button data-testid={`button-save-period-${p.criticality}`} variant="ghost" size="icon" className="h-7 w-7" onClick={savePeriod}>
+                        <Save className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingPeriod(null)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Период пересмотра (дней)</Label>
+                    <Input
+                      data-testid={`input-days-${p.criticality}`}
+                      type="number"
+                      min={1}
+                      value={editDays}
+                      onChange={(e) => setEditDays(parseInt(e.target.value, 10) || 0)}
+                      className="mt-1 h-8"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Напомнить за (дней, через запятую)</Label>
+                    <Input
+                      data-testid={`input-remind-${p.criticality}`}
+                      value={editRemind}
+                      onChange={(e) => setEditRemind(e.target.value)}
+                      placeholder="14, 7, 1"
+                      className="mt-1 h-8"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Эскалация через (дней после просрочки, через запятую)</Label>
+                    <Input
+                      data-testid={`input-escalation-${p.criticality}`}
+                      value={editEscalation}
+                      onChange={(e) => setEditEscalation(e.target.value)}
+                      placeholder="3, 7"
+                      className="mt-1 h-8"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold">{p.criticality}</div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="kb-chip">{p.days} дн.</Badge>
+                      <Button
+                        data-testid={`button-edit-period-${p.criticality}`}
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => startEditPeriod(p)}
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Напомнить за: {p.remindBeforeDays.join(", ")} дн. · Эскалация через: {p.escalationAfterDays.join(", ")} дн.
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Shield className="h-4 w-4 text-muted-foreground" />
+          <div className="text-sm font-semibold">RBAC по умолчанию</div>
+        </div>
+        <div className="text-xs text-muted-foreground mb-3">
+          Роли, которым по умолчанию разрешены определённые действия в системе.
+        </div>
+        <div className="space-y-2" data-testid="list-rbac-defaults">
+          {(Object.entries(policy.rbacDefaults) as [keyof RbacDefaults, string[]][]).map(([key, roles]) => (
+            <div key={key} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-rbac-${key}`}>
+              {editingRbac === key ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">{RBAC_LABELS[key]}</div>
+                    <div className="flex gap-1">
+                      <Button data-testid={`button-save-rbac-${key}`} variant="ghost" size="icon" className="h-7 w-7" onClick={saveRbac}>
+                        <Save className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingRbac(null)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {ALL_ROLES.map((role) => (
+                      <label key={role} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-muted/50">
+                        <Checkbox
+                          data-testid={`checkbox-rbac-${key}-${role}`}
+                          checked={editRoles.includes(role)}
+                          onCheckedChange={() => toggleRole(role)}
+                        />
+                        <span className="text-sm">{role}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-medium">{RBAC_LABELS[key]}</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {roles.map((r) => (
+                        <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    data-testid={`button-edit-rbac-${key}`}
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => startEditRbac(key)}
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function Admin() {
   const { toast } = useToast();
-  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser } = useKB();
+  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -221,57 +461,7 @@ export default function Admin() {
 
               {/* ── Политики ── */}
               <TabsContent value="policies" className="mt-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Card className="p-4">
-                    <div className="flex items-center gap-2">
-                      <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-                      <div className="text-sm font-semibold">Периоды пересмотра по критичности</div>
-                    </div>
-                    <div className="mt-3 space-y-2" data-testid="list-review-periods">
-                      {policy.reviewPeriods.map((p) => (
-                        <div key={p.criticality} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-policy-${p.criticality}`}>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold">{p.criticality}</div>
-                            <Badge variant="secondary" className="kb-chip">
-                              {p.days} дн.
-                            </Badge>
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            Напомнить за: {p.remindBeforeDays.join(", ")} · Эскалации: {p.escalationAfterDays.join(", ")}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-
-                  <Card className="p-4">
-                    <div className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-muted-foreground" />
-                      <div className="text-sm font-semibold">RBAC по умолчанию</div>
-                    </div>
-                    <div className="mt-3 space-y-2" data-testid="list-rbac-defaults">
-                      {Object.entries(policy.rbacDefaults).map(([key, roles]) => {
-                        const labels: Record<string, string> = {
-                          canPublish: "Могут публиковать",
-                          canApprove: "Могут согласовывать",
-                          canEditDraft: "Могут редактировать черновик",
-                          canManagePolicies: "Управление политиками",
-                          canViewAudit: "Просмотр аудита",
-                        };
-                        return (
-                          <div key={key} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-rbac-${key}`}>
-                            <div className="text-sm font-medium">{labels[key] || key}</div>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {(roles as string[]).map((r) => (
-                                <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Card>
-                </div>
+                <PoliciesTab />
               </TabsContent>
 
               {/* ── AD / SSO ── */}
