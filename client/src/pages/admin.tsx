@@ -50,6 +50,7 @@ export default function Admin() {
   return (
     <AppShell
       title="Администрирование"
+      breadcrumbs={[{ label: "Портал инструкций", href: "/" }, { label: "Администрирование" }]}
       search={q}
       onSearch={setQ}
       actions={

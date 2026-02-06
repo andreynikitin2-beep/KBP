@@ -83,6 +83,11 @@ export default function MaterialWizard() {
   return (
     <AppShell
       title="Мастер создания материала"
+      breadcrumbs={[
+        { label: "Портал инструкций", href: "/" },
+        { label: "Каталог", href: "/catalog" },
+        { label: "Новый материал" },
+      ]}
       actions={
         <Link href="/catalog">
           <Button data-testid="button-wizard-back" variant="outline" className="rounded-xl">

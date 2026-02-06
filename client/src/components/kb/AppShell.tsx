@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Building2,
+  ChevronRight,
   ClipboardCheck,
   FilePlus2,
   LayoutGrid,
@@ -153,18 +154,22 @@ function UserSwitch() {
   );
 }
 
+export type Breadcrumb = { label: string; href?: string };
+
 export function AppShell({
   title,
   children,
   search,
   onSearch,
   actions,
+  breadcrumbs,
 }: {
   title: string;
   children: React.ReactNode;
   search?: string;
   onSearch?: (v: string) => void;
   actions?: React.ReactNode;
+  breadcrumbs?: Breadcrumb[];
 }) {
   const [location] = useLocation();
   const active = useMemo(() => nav.find((n) => n.href === location)?.href, [location]);
@@ -295,14 +300,27 @@ export function AppShell({
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6">
+        {breadcrumbs && breadcrumbs.length > 0 && (
+          <nav className="mb-3 flex items-center gap-1 text-sm text-muted-foreground" data-testid="nav-breadcrumbs">
+            {breadcrumbs.map((crumb, i) => (
+              <span key={i} className="flex items-center gap-1">
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />}
+                {crumb.href ? (
+                  <Link href={crumb.href} className="hover:text-foreground transition-colors">
+                    {crumb.label}
+                  </Link>
+                ) : (
+                  <span className="text-foreground/70">{crumb.label}</span>
+                )}
+              </span>
+            ))}
+          </nav>
+        )}
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="font-serif text-3xl leading-tight" data-testid="text-page-title">
               {title}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Каталог «Раздел → Подраздел → Материал», статусы, версии, RFC, аудит и уведомления.
-            </p>
           </div>
           <div className="flex items-center gap-2">{actions}</div>
         </div>

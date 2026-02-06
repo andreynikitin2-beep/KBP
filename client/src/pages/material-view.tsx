@@ -28,8 +28,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { demoUsers, visibilityGroups } from "@/lib/mockData";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { catalog, demoUsers, visibilityGroups } from "@/lib/mockData";
+import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 
 function fmt(iso?: string) {
   if (!iso) return "—";
@@ -83,6 +83,25 @@ export default function MaterialView() {
 
   const rfcList = useMemo(() => rfcs.filter((r) => r.materialId === materialId), [rfcs, materialId]);
 
+  const sectionPath = useMemo(() => {
+    if (!current) return [];
+    return getSectionPath(catalog, current.passport.sectionId);
+  }, [current]);
+
+  const breadcrumbs = useMemo(() => {
+    const crumbs: { label: string; href?: string }[] = [
+      { label: "Портал инструкций", href: "/" },
+      { label: "Каталог", href: "/catalog" },
+    ];
+    sectionPath.forEach((node) => {
+      crumbs.push({ label: node.title });
+    });
+    if (current) {
+      crumbs.push({ label: current.passport.title });
+    }
+    return crumbs;
+  }, [sectionPath, current]);
+
   if (!current || !accessAllowed) {
     return (
       <AppShell title={current ? "Доступ ограничен" : "Материал не найден"}>
@@ -108,6 +127,7 @@ export default function MaterialView() {
   return (
     <AppShell
       title={current.passport.title}
+      breadcrumbs={breadcrumbs}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/catalog">

@@ -46,6 +46,7 @@ export default function Catalog() {
   return (
     <AppShell
       title="Каталог"
+      breadcrumbs={[{ label: "Портал инструкций", href: "/" }, { label: "Каталог" }]}
       search={q}
       onSearch={setQ}
       actions={
