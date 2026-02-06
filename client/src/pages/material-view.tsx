@@ -9,28 +9,34 @@ import {
   FileText,
   FileUp,
   GitBranch,
+  Globe,
   Heart,
   MessageSquareText,
+  Save,
   ShieldAlert,
   ThumbsDown,
   ThumbsUp,
+  Upload,
   Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { AppShell } from "@/components/kb/AppShell";
 import { PageViewer } from "@/components/kb/PageViewer";
+import { RichEditor } from "@/components/kb/RichEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
+import type { Criticality, MaterialVersion } from "@/lib/mockData";
 
 function fmt(iso?: string) {
   if (!iso) return "—";
@@ -41,7 +47,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy } = useKB();
 
   const materialId = params?.id || "";
   const allVersions = useMemo(() => getAllVersions(materialId), [getAllVersions, materialId]);
@@ -50,13 +56,98 @@ export default function MaterialView() {
     return active || allVersions[0] || null;
   }, [allVersions]);
 
+  const [activeTab, setActiveTab] = useState("passport");
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnComment, setReturnComment] = useState("");
-  const [newVersionDialogOpen, setNewVersionDialogOpen] = useState(false);
-  const [majorBump, setMajorBump] = useState(false);
   const [rfcTitle, setRfcTitle] = useState("");
   const [rfcText, setRfcText] = useState("");
   const [rfcType, setRfcType] = useState<"Проблема" | "Предложение">("Проблема");
+
+  const isDraft = current?.status === "Черновик";
+
+  const previousVersion = useMemo(() => {
+    if (!current) return null;
+    const idx = allVersions.findIndex(v => v.id === current.id);
+    return allVersions[idx + 1] || null;
+  }, [allVersions, current]);
+
+  const [editTitle, setEditTitle] = useState("");
+  const [editPurpose, setEditPurpose] = useState("");
+  const [editCriticality, setEditCriticality] = useState<Criticality>("Средняя");
+  const [editSectionId, setEditSectionId] = useState("");
+  const [editOwnerId, setEditOwnerId] = useState("");
+  const [editDeputyId, setEditDeputyId] = useState<string | undefined>(undefined);
+  const [editVisibilityGroupId, setEditVisibilityGroupId] = useState("g-base");
+  const [editTags, setEditTags] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
+
+  const [editContentKind, setEditContentKind] = useState<"file" | "page">("file");
+  const [editPageHtml, setEditPageHtml] = useState("");
+  const [editFileName, setEditFileName] = useState("");
+  const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
+  const [editExtractedText, setEditExtractedText] = useState("");
+
+  useEffect(() => {
+    if (current) {
+      setEditTitle(current.passport.title);
+      setEditPurpose(current.passport.purpose || "");
+      setEditCriticality(current.passport.criticality);
+      setEditSectionId(current.passport.sectionId);
+      setEditOwnerId(current.passport.ownerId || "");
+      setEditDeputyId(current.passport.deputyId);
+      setEditVisibilityGroupId(current.passport.visibilityGroupId);
+      setEditTags(current.passport.tags.join(", "));
+      setEditDepartment(current.passport.department || "");
+      setEditContentKind(current.content.kind);
+      setEditPageHtml(current.content.page?.html || "");
+      setEditFileName(current.content.file?.name || "");
+      setEditFileType(current.content.file?.type || "pdf");
+      setEditExtractedText(current.content.file?.extractedText || "");
+    }
+  }, [current?.id]);
+
+  const isFieldChanged = (currentVal: string | undefined, prevVal: string | undefined) => {
+    return (currentVal || "") !== (prevVal || "");
+  };
+
+  const sectionOptions = useMemo(() => {
+    const subs = catalogNodes.filter(n => n.type === "subsection");
+    return subs.map(s => {
+      const path = getSectionPath(catalogNodes, s.id).map(x => x.title).join(" / ");
+      return { id: s.id, label: path };
+    });
+  }, [catalogNodes]);
+
+  const saveDraft = () => {
+    if (!current || !isDraft) return;
+    const periodRow = policy.reviewPeriods.find(p => p.criticality === editCriticality);
+    const computedNextReview = new Date();
+    computedNextReview.setDate(computedNextReview.getDate() + (periodRow?.days ?? 180));
+
+    setMaterials(prev => prev.map(m =>
+      m.id === current.id ? {
+        ...m,
+        passport: {
+          ...m.passport,
+          title: editTitle,
+          purpose: editPurpose || undefined,
+          criticality: editCriticality,
+          sectionId: editSectionId,
+          ownerId: editOwnerId || undefined,
+          deputyId: editDeputyId,
+          visibilityGroupId: editVisibilityGroupId,
+          tags: editTags.split(",").map(t => t.trim()).filter(Boolean),
+          department: editDepartment || undefined,
+          reviewPeriodDays: periodRow?.days,
+          nextReviewAt: computedNextReview.toISOString(),
+        },
+        content: editContentKind === "file"
+          ? { kind: "file" as const, file: { name: editFileName, type: editFileType, extractedText: editExtractedText } }
+          : { kind: "page" as const, page: { html: editPageHtml } },
+      } : m
+    ));
+    toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
+  };
 
   useEffect(() => {
     if (!current) return;
@@ -76,7 +167,26 @@ export default function MaterialView() {
   const overdue = current ? isOverdue(current) : false;
   const canConfirm = current ? canConfirmActuality(me, current) : false;
   const dueDays = current ? daysToNextReview(current) : null;
-  const missing = current ? validatePassport(current.passport) : [];
+
+  const editPassportDraft: MaterialVersion["passport"] | null = isDraft ? {
+    title: editTitle,
+    purpose: editPurpose || undefined,
+    tags: editTags.split(",").map(t => t.trim()).filter(Boolean),
+    tagGroups: current?.passport.tagGroups || [],
+    criticality: editCriticality,
+    sectionId: editSectionId,
+    ownerId: editOwnerId || undefined,
+    deputyId: editDeputyId,
+    legalEntity: current?.passport.legalEntity || "",
+    department: editDepartment || undefined,
+    visibilityGroupId: editVisibilityGroupId,
+    reviewPeriodDays: current?.passport.reviewPeriodDays,
+    nextReviewAt: current?.passport.nextReviewAt,
+    lastReviewedAt: current?.passport.lastReviewedAt,
+  } : null;
+
+  const missing = current ? validatePassport(isDraft && editPassportDraft ? editPassportDraft : current.passport) : [];
+
   const showPublishDirect = current ? canPublishDirectly(me, current) : false;
   const showSubmitForApproval = current ? canSubmitForApproval(me, current) : false;
   const showApprove = current ? canApproveAndPublish(me, current) : false;
@@ -495,7 +605,7 @@ export default function MaterialView() {
             </CardHeader>
             <Separator />
             <CardContent className="p-4">
-              <Tabs defaultValue="passport" className="w-full">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-6">
                   <TabsTrigger data-testid="tab-passport" value="passport">
                     Паспорт
@@ -518,156 +628,405 @@ export default function MaterialView() {
                 </TabsList>
 
                 <TabsContent value="passport" className="mt-4">
-                  {missing.length ? (
-                    <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
-                      <div className="flex items-start gap-2">
-                        <div className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-800">
-                          <CircleAlert className="h-4 w-4" />
+                  {isDraft ? (
+                    <div className="space-y-4">
+                      {previousVersion && (
+                        <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-3 text-sm text-muted-foreground flex items-center gap-2">
+                          <GitBranch className="h-4 w-4 text-blue-500" />
+                          Редактирование черновика версии {current.version} на основе версии {previousVersion.version}.
+                          <span className="text-xs">Изменённые поля выделены <span className="text-foreground font-semibold">жирным чёрным</span></span>
+                        </div>
+                      )}
+
+                      {missing.length ? (
+                        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                          <div className="flex items-start gap-2">
+                            <div className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-800">
+                              <CircleAlert className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="font-semibold" data-testid="status-passport-invalid">
+                                Паспорт заполнен не полностью
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                Перед публикацией нужно заполнить: {missing.join(", ")}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="grid gap-4">
+                        <div>
+                          <Label htmlFor="edit-title">Название (обязательно)</Label>
+                          <Input
+                            id="edit-title"
+                            data-testid="input-edit-title"
+                            value={editTitle}
+                            onChange={e => setEditTitle(e.target.value)}
+                            placeholder="Название материала"
+                            className={`mt-1 rounded-xl ${isFieldChanged(editTitle, previousVersion?.passport.title) ? 'text-foreground' : 'text-muted-foreground'}`}
+                          />
                         </div>
                         <div>
-                          <div className="font-semibold" data-testid="status-passport-invalid">
-                            Паспорт заполнен не полностью
+                          <Label htmlFor="edit-purpose">Назначение</Label>
+                          <Textarea
+                            id="edit-purpose"
+                            data-testid="textarea-edit-purpose"
+                            value={editPurpose}
+                            onChange={e => setEditPurpose(e.target.value)}
+                            placeholder="Кому и для чего нужна инструкция…"
+                            className={`mt-1 min-h-[90px] rounded-xl ${isFieldChanged(editPurpose, previousVersion?.passport.purpose) ? 'text-foreground' : 'text-muted-foreground'}`}
+                          />
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <Label>Критичность</Label>
+                            <Select value={editCriticality} onValueChange={v => setEditCriticality(v as Criticality)}>
+                              <SelectTrigger data-testid="select-edit-criticality" className={`mt-1 rounded-xl ${isFieldChanged(editCriticality, previousVersion?.passport.criticality) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Низкая">Низкая</SelectItem>
+                                <SelectItem value="Средняя">Средняя</SelectItem>
+                                <SelectItem value="Высокая">Высокая</SelectItem>
+                                <SelectItem value="Критическая">Критическая</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
-                          <div className="mt-1 text-muted-foreground">
-                            Перед публикацией нужно заполнить: {missing.join(", ")}
+                          <div>
+                            <Label>Раздел / подраздел</Label>
+                            <Select value={editSectionId} onValueChange={v => setEditSectionId(v)}>
+                              <SelectTrigger data-testid="select-edit-section" className={`mt-1 rounded-xl ${isFieldChanged(editSectionId, previousVersion?.passport.sectionId) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                <SelectValue placeholder="Выберите…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {sectionOptions.map(o => (
+                                  <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div>
+                            <Label>Владелец</Label>
+                            <Select value={editOwnerId} onValueChange={v => setEditOwnerId(v)}>
+                              <SelectTrigger data-testid="select-edit-owner" className={`mt-1 rounded-xl ${isFieldChanged(editOwnerId, previousVersion?.passport.ownerId) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {users.filter(u => !u.deactivatedAt).map(u => (
+                                  <SelectItem key={u.id} value={u.id}>{u.displayName}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Заместитель</Label>
+                            <Select value={editDeputyId || "none"} onValueChange={v => setEditDeputyId(v === "none" ? undefined : v)}>
+                              <SelectTrigger data-testid="select-edit-deputy" className={`mt-1 rounded-xl ${isFieldChanged(editDeputyId, previousVersion?.passport.deputyId) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                <SelectValue placeholder="Не выбран" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Не выбран</SelectItem>
+                                {users.filter(u => !u.deactivatedAt).map(u => (
+                                  <SelectItem key={u.id} value={u.id}>{u.displayName}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>Группа видимости</Label>
+                          <Select value={editVisibilityGroupId} onValueChange={v => setEditVisibilityGroupId(v)}>
+                            <SelectTrigger data-testid="select-edit-visibility" className={`mt-1 rounded-xl ${isFieldChanged(editVisibilityGroupId, previousVersion?.passport.visibilityGroupId) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {visibilityGroups.map(g => (
+                                <SelectItem key={g.id} value={g.id}>{g.title}{g.isSystem ? " (все пользователи)" : ""}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="edit-tags">Теги</Label>
+                          <Input
+                            id="edit-tags"
+                            data-testid="input-edit-tags"
+                            value={editTags}
+                            onChange={e => setEditTags(e.target.value)}
+                            placeholder="Через запятую: vpn, доступ…"
+                            className={`mt-1 rounded-xl ${isFieldChanged(editTags, previousVersion?.passport.tags.join(", ")) ? 'text-foreground' : 'text-muted-foreground'}`}
+                          />
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {editTags.split(",").map(t => t.trim()).filter(Boolean).map(t => (
+                              <Badge key={t} variant="secondary" className="kb-chip">{t}</Badge>
+                            ))}
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm text-muted-foreground">
+                            Статус: <span className="font-semibold">Черновик</span> · Версия {current.version}
+                          </div>
+                          <Button
+                            data-testid="button-save-draft"
+                            className="rounded-xl"
+                            onClick={saveDraft}
+                          >
+                            <Save className="mr-2 h-4 w-4" />
+                            Сохранить черновик
+                          </Button>
                         </div>
                       </div>
                     </div>
-                  ) : null}
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Card className="p-4">
-                      <div className="text-xs text-muted-foreground">Владелец</div>
-                      <div className="mt-1 font-semibold" data-testid="text-owner">
-                        {owner?.displayName || "—"}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">{owner?.email || ""}</div>
-                    </Card>
-                    <Card className="p-4">
-                      <div className="text-xs text-muted-foreground">Заместитель</div>
-                      <div className="mt-1 font-semibold" data-testid="text-deputy">
-                        {deputy?.displayName || "—"}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">{deputy?.email || ""}</div>
-                    </Card>
-                    <Card className="p-4 md:col-span-2">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <div className="text-xs text-muted-foreground">Группа видимости</div>
-                      </div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="font-semibold" data-testid="text-visibility-group">
-                          {materialGroup?.title || "—"}
-                        </span>
-                        {materialGroup?.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
-                        {!materialGroup?.isSystem && (
-                          <Badge variant="outline" className="text-[10px]">{materialGroup?.memberIds.length || 0} уч.</Badge>
-                        )}
-                      </div>
-                      {!materialGroup?.isSystem && (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Материал виден только участникам этой группы
-                        </div>
-                      )}
-                    </Card>
-                    <Card className="p-4 md:col-span-2">
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <div>
-                          <div className="text-xs text-muted-foreground">Последний пересмотр</div>
-                          <div className="mt-1 font-semibold" data-testid="text-last-review">
-                            {fmt(current.passport.lastReviewedAt)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">Следующий пересмотр</div>
-                          <div className="mt-1 font-semibold" data-testid="text-next-review">
-                            {fmt(current.passport.nextReviewAt)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">Период (по критичности)</div>
-                          <div className="mt-1 font-semibold" data-testid="text-review-period">
-                            {current.passport.reviewPeriodDays ? `${current.passport.reviewPeriodDays} дн.` : "—"}
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-
-                    <Card className="p-4 md:col-span-2">
-                      <div className="text-xs text-muted-foreground">Теги</div>
-                      <div className="mt-2 flex flex-wrap gap-1.5" data-testid="list-tags">
-                        {current.passport.tags.map((t) => (
-                          <Badge key={t} variant="secondary" className="kb-chip" data-testid={`badge-tag-${t}`}>
-                            {t}
-                          </Badge>
-                        ))}
-                      </div>
-                      <Separator className="my-3" />
-                      <div className="text-xs text-muted-foreground">Группы тегов</div>
-                      <div className="mt-2 grid gap-2 md:grid-cols-2" data-testid="list-tag-groups">
-                        {current.passport.tagGroups.map((g) => (
-                          <div key={g.group} className="rounded-2xl border bg-muted/30 p-3" data-testid={`card-tag-group-${g.group}`}>
-                            <div className="text-sm font-semibold">{g.group}</div>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {g.tags.map((t) => (
-                                <Badge key={t} variant="secondary" className="kb-chip">
-                                  {t}
-                                </Badge>
-                              ))}
+                  ) : (
+                    <>
+                      {missing.length ? (
+                        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                          <div className="flex items-start gap-2">
+                            <div className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-800">
+                              <CircleAlert className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <div className="font-semibold" data-testid="status-passport-invalid">
+                                Паспорт заполнен не полностью
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                Перед публикацией нужно заполнить: {missing.join(", ")}
+                              </div>
                             </div>
                           </div>
-                        ))}
+                        </div>
+                      ) : null}
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <Card className="p-4">
+                          <div className="text-xs text-muted-foreground">Владелец</div>
+                          <div className="mt-1 font-semibold" data-testid="text-owner">
+                            {owner?.displayName || "—"}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">{owner?.email || ""}</div>
+                        </Card>
+                        <Card className="p-4">
+                          <div className="text-xs text-muted-foreground">Заместитель</div>
+                          <div className="mt-1 font-semibold" data-testid="text-deputy">
+                            {deputy?.displayName || "—"}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">{deputy?.email || ""}</div>
+                        </Card>
+                        <Card className="p-4 md:col-span-2">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-xs text-muted-foreground">Группа видимости</div>
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="font-semibold" data-testid="text-visibility-group">
+                              {materialGroup?.title || "—"}
+                            </span>
+                            {materialGroup?.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
+                            {!materialGroup?.isSystem && (
+                              <Badge variant="outline" className="text-[10px]">{materialGroup?.memberIds.length || 0} уч.</Badge>
+                            )}
+                          </div>
+                          {!materialGroup?.isSystem && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Материал виден только участникам этой группы
+                            </div>
+                          )}
+                        </Card>
+                        <Card className="p-4 md:col-span-2">
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <div>
+                              <div className="text-xs text-muted-foreground">Последний пересмотр</div>
+                              <div className="mt-1 font-semibold" data-testid="text-last-review">
+                                {fmt(current.passport.lastReviewedAt)}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Следующий пересмотр</div>
+                              <div className="mt-1 font-semibold" data-testid="text-next-review">
+                                {fmt(current.passport.nextReviewAt)}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-muted-foreground">Период (по критичности)</div>
+                              <div className="mt-1 font-semibold" data-testid="text-review-period">
+                                {current.passport.reviewPeriodDays ? `${current.passport.reviewPeriodDays} дн.` : "—"}
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+
+                        <Card className="p-4 md:col-span-2">
+                          <div className="text-xs text-muted-foreground">Теги</div>
+                          <div className="mt-2 flex flex-wrap gap-1.5" data-testid="list-tags">
+                            {current.passport.tags.map((t) => (
+                              <Badge key={t} variant="secondary" className="kb-chip" data-testid={`badge-tag-${t}`}>
+                                {t}
+                              </Badge>
+                            ))}
+                          </div>
+                          <Separator className="my-3" />
+                          <div className="text-xs text-muted-foreground">Группы тегов</div>
+                          <div className="mt-2 grid gap-2 md:grid-cols-2" data-testid="list-tag-groups">
+                            {current.passport.tagGroups.map((g) => (
+                              <div key={g.group} className="rounded-2xl border bg-muted/30 p-3" data-testid={`card-tag-group-${g.group}`}>
+                                <div className="text-sm font-semibold">{g.group}</div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {g.tags.map((t) => (
+                                    <Badge key={t} variant="secondary" className="kb-chip">
+                                      {t}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
                       </div>
-                    </Card>
-                  </div>
+                    </>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="content" className="mt-4">
-                  {current.content.kind === "file" ? (
-                    <div className="space-y-3">
-                      <Card className="p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="rounded-xl bg-accent/50 p-2">
-                              <FileText className="h-4 w-4" />
+                  {isDraft ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          data-testid="button-edit-kind-file"
+                          type="button"
+                          variant={editContentKind === "file" ? "default" : "outline"}
+                          className="rounded-xl"
+                          onClick={() => setEditContentKind("file")}
+                        >
+                          <Upload className="mr-2 h-4 w-4" />
+                          Файл (PDF/DOCX)
+                        </Button>
+                        <Button
+                          data-testid="button-edit-kind-page"
+                          type="button"
+                          variant={editContentKind === "page" ? "default" : "outline"}
+                          className="rounded-xl"
+                          onClick={() => setEditContentKind("page")}
+                        >
+                          <Globe className="mr-2 h-4 w-4" />
+                          Страница портала
+                        </Button>
+                      </div>
+
+                      {editContentKind === "file" ? (
+                        <Card className="p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-sm font-semibold">Загрузка файла</div>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div>
+                              <Label>Тип</Label>
+                              <Select value={editFileType} onValueChange={v => setEditFileType(v as "pdf" | "docx")}>
+                                <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pdf">PDF</SelectItem>
+                                  <SelectItem value="docx">DOCX</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div>
-                              <div className="text-sm font-semibold" data-testid="text-file-name">
-                                {current.content.file?.name}
-                              </div>
-                              <div className="text-xs text-muted-foreground">Полнотекстовый индекс: извлечённый текст</div>
+                              <Label htmlFor="edit-file-name">Имя файла</Label>
+                              <Input
+                                id="edit-file-name"
+                                data-testid="input-edit-file-name"
+                                value={editFileName}
+                                onChange={e => setEditFileName(e.target.value)}
+                                className="mt-1 rounded-xl"
+                              />
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button data-testid="button-download" variant="secondary" className="rounded-xl">
-                              <FileDown className="mr-2 h-4 w-4" />
-                              Скачать
-                            </Button>
-                            <Button
-                              data-testid="button-deeplink-pdf"
-                              variant="outline"
-                              className="rounded-xl"
-                              onClick={() => {
-                                navigator.clipboard.writeText(`${location.origin}/materials/${current.materialId}?page=3`);
-                                toast({ title: "Ссылка скопирована", description: "Глубокая ссылка на PDF (страница 3)" });
-                              }}
-                            >
-                              Глубокая ссылка
-                            </Button>
+                          <div className="mt-3">
+                            <Label htmlFor="edit-extracted">Извлечённый текст</Label>
+                            <Textarea
+                              id="edit-extracted"
+                              data-testid="textarea-edit-extracted"
+                              value={editExtractedText}
+                              onChange={e => setEditExtractedText(e.target.value)}
+                              className="mt-1 min-h-[110px] rounded-xl"
+                            />
                           </div>
+                        </Card>
+                      ) : (
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <Globe className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-sm font-semibold">Редактор страницы</div>
+                          </div>
+                          <RichEditor content={editPageHtml} onChange={setEditPageHtml} />
                         </div>
-                      </Card>
+                      )}
 
-                      <Card className="p-4">
-                        <div className="text-xs font-medium text-muted-foreground">Извлечённый текст (MVP индекс)</div>
-                        <div className="mt-2 whitespace-pre-wrap text-sm" data-testid="text-extracted">
-                          {current.content.file?.extractedText || "—"}
-                        </div>
-                      </Card>
+                      <div className="flex justify-end">
+                        <Button data-testid="button-save-content" className="rounded-xl" onClick={saveDraft}>
+                          <Save className="mr-2 h-4 w-4" />
+                          Сохранить контент
+                        </Button>
+                      </div>
                     </div>
                   ) : (
-                    <PageViewer html={current.content.page?.html || ""} materialId={current.materialId} />
+                    <>
+                      {current.content.kind === "file" ? (
+                        <div className="space-y-3">
+                          <Card className="p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div className="rounded-xl bg-accent/50 p-2">
+                                  <FileText className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-semibold" data-testid="text-file-name">
+                                    {current.content.file?.name}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">Полнотекстовый индекс: извлечённый текст</div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button data-testid="button-download" variant="secondary" className="rounded-xl">
+                                  <FileDown className="mr-2 h-4 w-4" />
+                                  Скачать
+                                </Button>
+                                <Button
+                                  data-testid="button-deeplink-pdf"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`${location.origin}/materials/${current.materialId}?page=3`);
+                                    toast({ title: "Ссылка скопирована", description: "Глубокая ссылка на PDF (страница 3)" });
+                                  }}
+                                >
+                                  Глубокая ссылка
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+
+                          <Card className="p-4">
+                            <div className="text-xs font-medium text-muted-foreground">Извлечённый текст (MVP индекс)</div>
+                            <div className="mt-2 whitespace-pre-wrap text-sm" data-testid="text-extracted">
+                              {current.content.file?.extractedText || "—"}
+                            </div>
+                          </Card>
+                        </div>
+                      ) : (
+                        <PageViewer html={current.content.page?.html || ""} materialId={current.materialId} />
+                      )}
+                    </>
                   )}
                 </TabsContent>
 
@@ -685,11 +1044,19 @@ export default function MaterialView() {
                           Опубликованную версию нельзя редактировать напрямую. Создайте новую версию — предыдущая автоматически отправится в архив, а история сохранится.
                         </div>
                       </div>
-                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && !newVersionDialogOpen && (
+                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && (
                         <Button
                           data-testid="button-create-new-version"
                           className="rounded-xl shrink-0"
-                          onClick={() => { setMajorBump(false); setNewVersionDialogOpen(true); }}
+                          onClick={() => {
+                            const res = createNewVersion(current.materialId);
+                            if (res.ok) {
+                              toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
+                              setActiveTab("passport");
+                            } else {
+                              toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                            }
+                          }}
                         >
                           <FilePlus2 className="mr-2 h-4 w-4" />
                           Создать новую версию
@@ -697,58 +1064,6 @@ export default function MaterialView() {
                       )}
                     </div>
                   </div>
-                  {newVersionDialogOpen && (
-                    <Card className="mt-3 border-primary/30 bg-primary/5">
-                      <CardContent className="p-4">
-                        <div className="font-semibold mb-2">Создать новую версию</div>
-                        <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground mb-3">
-                          Текущая версия: <span className="font-bold text-foreground">{current.version}</span>
-                          {" → "}
-                          Новая версия: <span className="font-bold text-foreground">
-                            {(() => {
-                              const parts = current.version.split(".");
-                              const maj = parseInt(parts[0], 10) || 1;
-                              const min = parseInt(parts[1], 10) || 0;
-                              return majorBump ? `${maj + 1}.0` : `${maj}.${min + 1}`;
-                            })()}
-                          </span>
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer mb-3" data-testid="checkbox-major-bump">
-                          <input
-                            type="checkbox"
-                            checked={majorBump}
-                            onChange={(e) => setMajorBump(e.target.checked)}
-                            className="rounded border-gray-300"
-                          />
-                          <span className="text-sm">Существенное изменение (увеличить major-версию)</span>
-                        </label>
-                        <div className="flex gap-2">
-                          <Button
-                            data-testid="button-confirm-new-version"
-                            className="rounded-xl"
-                            onClick={() => {
-                              const res = createNewVersion(current.materialId, majorBump);
-                              if (res.ok) {
-                                toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
-                              } else {
-                                toast({ title: "Ошибка", description: res.message, variant: "destructive" });
-                              }
-                              setNewVersionDialogOpen(false);
-                            }}
-                          >
-                            Создать
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="rounded-xl"
-                            onClick={() => setNewVersionDialogOpen(false)}
-                          >
-                            Отмена
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
                   <div className="mt-3 space-y-2" data-testid="list-versions">
                     {allVersions.map((v, idx) => {
                       const author = users.find((u) => u.id === v.createdBy);
