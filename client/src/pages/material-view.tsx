@@ -28,7 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { catalog, demoUsers, visibilityGroups } from "@/lib/mockData";
+import { catalog, visibilityGroups } from "@/lib/mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 
 function fmt(iso?: string) {
@@ -40,7 +40,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision } = useKB();
 
   const materialId = params?.id || "";
   const allMaterials = materials;
@@ -78,8 +78,8 @@ export default function MaterialView() {
 
   const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
   const materialGroup = current ? visibilityGroups.find((g) => g.id === current.passport.visibilityGroupId) : null;
-  const owner = current ? demoUsers.find((u) => u.id === current.passport.ownerId) : null;
-  const deputy = current ? demoUsers.find((u) => u.id === current.passport.deputyId) : null;
+  const owner = current ? users.find((u) => u.id === current.passport.ownerId) : null;
+  const deputy = current ? users.find((u) => u.id === current.passport.deputyId) : null;
 
   const rfcList = useMemo(() => rfcs.filter((r) => r.materialId === materialId), [rfcs, materialId]);
 
@@ -226,7 +226,7 @@ export default function MaterialView() {
                   )}
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Автор: {demoUsers.find((u) => u.id === current.createdBy)?.displayName || "—"}
+                  Автор: {users.find((u) => u.id === current.createdBy)?.displayName || "—"}
                   {current.passport.ownerId && <> · Владелец: {owner?.displayName || "—"}</>}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -754,7 +754,7 @@ export default function MaterialView() {
                             setRfcText("");
                             toast({ title: "RFC создан", description: "Назначено владельцу материала." });
 
-                            const to = demoUsers.find((u) => u.id === assignedTo)?.email || "unknown@demo.local";
+                            const to = users.find((u) => u.id === assignedTo)?.email || "unknown@demo.local";
                             setNotifications((p) => [
                               {
                                 id: `n-${Math.random().toString(16).slice(2)}`,
@@ -786,8 +786,8 @@ export default function MaterialView() {
                       <div className="space-y-3" data-testid="list-rfcs">
                         {rfcList.length ? (
                           rfcList.map((r) => {
-                            const who = demoUsers.find((u) => u.id === r.createdBy)?.displayName || r.createdBy;
-                            const ass = demoUsers.find((u) => u.id === r.assignedTo)?.displayName || r.assignedTo;
+                            const who = users.find((u) => u.id === r.createdBy)?.displayName || r.createdBy;
+                            const ass = users.find((u) => u.id === r.assignedTo)?.displayName || r.assignedTo;
                             return (
                               <div key={r.id} className="rounded-2xl border p-3" data-testid={`card-rfc-${r.id}`}>
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -863,7 +863,7 @@ export default function MaterialView() {
                         </div>
                         <div className="mt-3 grid gap-2" data-testid="list-audit">
                           {current.auditViews.slice(0, 20).map((v, idx) => {
-                            const who = demoUsers.find((u) => u.id === v.userId)?.displayName || v.userId;
+                            const who = users.find((u) => u.id === v.userId)?.displayName || v.userId;
                             return (
                               <div
                                 key={idx}

@@ -22,7 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useKB } from "@/lib/kbStore";
-import { demoUsers } from "@/lib/mockData";
 
 const nav = [
   { href: "/", label: "Главная", icon: LayoutGrid },
@@ -45,7 +44,7 @@ function RolePills() {
 }
 
 function UserSwitch() {
-  const { me, setMeId } = useKB();
+  const { me, users, setMeId } = useKB();
   const [open, setOpen] = useState(false);
 
   return (
@@ -78,7 +77,7 @@ function UserSwitch() {
           </div>
           <Separator className="my-4" />
           <div className="space-y-3">
-            {demoUsers.map((u) => {
+            {users.map((u) => {
               const active = u.id === me.id;
               return (
                 <Card

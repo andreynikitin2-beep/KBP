@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { catalog, demoUsers, visibilityGroups } from "@/lib/mockData";
+import { catalog, visibilityGroups } from "@/lib/mockData";
 import type { Criticality, MaterialVersion } from "@/lib/mockData";
 import { getSectionPath, validatePassport } from "@/lib/kbLogic";
 
@@ -27,7 +27,7 @@ function nextVersionLike(prev?: string) {
 export default function MaterialWizard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, materials, setMaterials, policy } = useKB();
+  const { me, users, materials, setMaterials, policy } = useKB();
 
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -171,7 +171,7 @@ export default function MaterialWizard() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {demoUsers.map((u) => (
+                        {users.filter(u => !u.deactivatedAt).map((u) => (
                           <SelectItem key={u.id} value={u.id}>
                             {u.displayName}
                           </SelectItem>
@@ -187,7 +187,7 @@ export default function MaterialWizard() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Не выбран</SelectItem>
-                          {demoUsers.map((u) => (
+                          {users.filter(u => !u.deactivatedAt).map((u) => (
                             <SelectItem key={u.id} value={u.id}>
                               {u.displayName}
                             </SelectItem>

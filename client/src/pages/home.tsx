@@ -26,7 +26,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useKB } from "@/lib/kbStore";
-import { demoUsers } from "@/lib/mockData";
 import { computeKpis, daysToNextReview, isOverdue, searchMaterials } from "@/lib/kbLogic";
 
 function MaterialCard({ id }: { id: string }) {
@@ -99,7 +98,7 @@ function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
 }
 
 export default function Home() {
-  const { me, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck } = useKB();
+  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck } = useKB();
   const [q, setQ] = useState("");
 
   const isAuthor = me.roles.includes("Автор");
@@ -108,7 +107,7 @@ export default function Home() {
   const isAdmin = me.roles.includes("Администратор");
   const isOwnerOrDeputy = isOwner || isDeputy;
 
-  const kpis = useMemo(() => computeKpis(visibleMaterials, demoUsers), [visibleMaterials]);
+  const kpis = useMemo(() => computeKpis(visibleMaterials, users), [visibleMaterials, users]);
 
   const myDrafts = useMemo(() =>
     allMaterials.filter((m) => m.createdBy === me.id && m.status === "Черновик"),
