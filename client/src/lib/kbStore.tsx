@@ -7,13 +7,23 @@ import {
   policySeed,
   visibilityGroups as seedGroups,
 } from "./mockData";
-import type { MaterialVersion, NotificationLog, RFC, User, VisibilityGroup } from "./mockData";
+import type { MaterialVersion, NotificationLog, RFC, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+
+type ADSyncLogEntry = {
+  at: string;
+  status: "success" | "error";
+  usersTotal: number;
+  usersUpdated: number;
+  usersDeactivated: number;
+  message: string;
+};
 
 type Store = {
   me: User;
   setMeId: (id: string) => void;
 
+  users: User[];
   materials: MaterialVersion[];
   visibleMaterials: MaterialVersion[];
   setMaterials: React.Dispatch<React.SetStateAction<MaterialVersion[]>>;
@@ -34,6 +44,11 @@ type Store = {
   approveAndPublish: (versionId: string) => { ok: boolean; message?: string };
   returnForRevision: (versionId: string, comment: string) => { ok: boolean; message?: string };
   autoDailyCheck: () => { transitioned: string[]; emails: NotificationLog[] };
+
+  syncADUsers: () => { ok: boolean; deactivated: string[]; message: string };
+  createLocalUser: (data: { displayName: string; email: string; department: string; legalEntity: string; roles: User["roles"] }) => { ok: boolean; user?: User; message?: string };
+  deactivateUser: (userId: string) => { ok: boolean; message?: string };
+  reactivateUser: (userId: string) => { ok: boolean; message?: string };
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -52,11 +67,12 @@ function computeNextReview(
 
 export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [meId, setMeId] = useState(demoUsers[0].id);
+  const [users, setUsers] = useState<User[]>(demoUsers);
   const [materials, setMaterials] = useState<MaterialVersion[]>(seedMaterials);
   const [rfcs, setRfcs] = useState<RFC[]>(seedRfcs);
   const [notifications, setNotifications] = useState<NotificationLog[]>(notificationLogSeed);
 
-  const me = useMemo(() => demoUsers.find((u) => u.id === meId)!, [meId]);
+  const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
 
   const store = useMemo<Store>(() => {
     const visibleMaterials = materials.filter((m) => canViewMaterial(me, m, seedGroups));
@@ -64,6 +80,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
     return {
       me,
       setMeId,
+      users,
       materials,
       visibleMaterials,
       setMaterials,
@@ -122,7 +139,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ),
         );
 
-        const ownerEmail = demoUsers.find((u) => u.id === version.passport.ownerId)?.email || "unknown@demo.local";
+        const ownerEmail = users.find((u) => u.id === version.passport.ownerId)?.email || "unknown@demo.local";
         const email = seedEmail(notifications, {
           to: ownerEmail,
           subject: `Запрос на согласование: ${version.passport.title}`,
@@ -186,7 +203,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ),
         );
 
-        const authorEmail = demoUsers.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
+        const authorEmail = users.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
         const email = seedEmail(notifications, {
           to: authorEmail,
           subject: `Согласовано и опубликовано: ${version.passport.title}`,
@@ -216,7 +233,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ),
         );
 
-        const authorEmail = demoUsers.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
+        const authorEmail = users.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
         const email = seedEmail(notifications, {
           to: authorEmail,
           subject: `Возвращено на доработку: ${version.passport.title}`,
@@ -240,7 +257,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             emails.push(
               seedEmail(notifications, {
                 to:
-                  demoUsers.find((u) => u.id === (m.passport.ownerId || ""))?.email ||
+                  users.find((u) => u.id === (m.passport.ownerId || ""))?.email ||
                   "unknown@demo.local",
                 subject: `Просрочка пересмотра: ${m.passport.title}`,
                 template: "overdue",
@@ -257,8 +274,129 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         return { transitioned, emails };
       },
+
+      syncADUsers: () => {
+        const now = new Date().toISOString();
+        const deactivated: string[] = [];
+        const affectedMaterials: string[] = [];
+
+        setUsers((prev) => prev.map((u) => {
+          if (u.source !== "ad") return u;
+          if (u.deactivatedAt) return u;
+          return { ...u, lastSyncAt: now };
+        }));
+
+        const deactivatedUsers = users.filter((u) => u.source === "ad" && u.deactivatedAt);
+        for (const du of deactivatedUsers) {
+          deactivated.push(du.displayName);
+          const owned = materials.filter(
+            (m) =>
+              (m.passport.ownerId === du.id || m.passport.deputyOwnerId === du.id) &&
+              m.status === "Опубликовано",
+          );
+          for (const m of owned) {
+            affectedMaterials.push(m.id);
+          }
+        }
+
+        if (affectedMaterials.length) {
+          setMaterials((prev) =>
+            prev.map((m) =>
+              affectedMaterials.includes(m.id)
+                ? { ...m, status: "На пересмотре" as MaterialVersion["status"] }
+                : m,
+            ),
+          );
+
+          const adminEmail = users.find((u) => u.roles.includes("Администратор"))?.email || "admin@demo.local";
+          const email = seedEmail(notifications, {
+            to: adminEmail,
+            subject: `AD-синхронизация: ${deactivated.length} пользователь(ей) деактивировано, ${affectedMaterials.length} материал(ов) на пересмотре`,
+            template: "auto_transition",
+            related: {},
+          });
+          setNotifications((p) => [email, ...p]);
+        }
+
+        return {
+          ok: true,
+          deactivated,
+          message: deactivated.length
+            ? `Синхронизация завершена. Деактивировано: ${deactivated.join(", ")}. Материалов на пересмотре: ${affectedMaterials.length}`
+            : "Синхронизация завершена успешно. Изменений нет.",
+        };
+      },
+
+      createLocalUser: (data) => {
+        const id = `u-local-${Date.now()}`;
+        const newUser: User = {
+          id,
+          displayName: data.displayName,
+          email: data.email,
+          roles: data.roles,
+          legalEntity: data.legalEntity,
+          department: data.department,
+          isAvailable: true,
+          source: "local",
+        };
+        setUsers((prev) => [...prev, newUser]);
+        return { ok: true, user: newUser };
+      },
+
+      deactivateUser: (userId: string) => {
+        const user = users.find((u) => u.id === userId);
+        if (!user) return { ok: false, message: "Пользователь не найден" };
+        if (user.deactivatedAt) return { ok: false, message: "Уже деактивирован" };
+
+        const now = new Date().toISOString();
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId ? { ...u, deactivatedAt: now, isAvailable: false } : u,
+          ),
+        );
+
+        const owned = materials.filter(
+          (m) =>
+            (m.passport.ownerId === userId || m.passport.deputyOwnerId === userId) &&
+            m.status === "Опубликовано",
+        );
+        if (owned.length) {
+          setMaterials((prev) =>
+            prev.map((m) =>
+              owned.some((o) => o.id === m.id)
+                ? { ...m, status: "На пересмотре" as MaterialVersion["status"] }
+                : m,
+            ),
+          );
+
+          const adminEmail = users.find((u) => u.roles.includes("Администратор"))?.email || "admin@demo.local";
+          const email = seedEmail(notifications, {
+            to: adminEmail,
+            subject: `Деактивация ${user.displayName}: ${owned.length} материал(ов) переведено на пересмотр`,
+            template: "auto_transition",
+            related: {},
+          });
+          setNotifications((p) => [email, ...p]);
+        }
+
+        return { ok: true };
+      },
+
+      reactivateUser: (userId: string) => {
+        const user = users.find((u) => u.id === userId);
+        if (!user) return { ok: false, message: "Пользователь не найден" };
+        if (!user.deactivatedAt) return { ok: false, message: "Не деактивирован" };
+
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === userId ? { ...u, deactivatedAt: undefined, isAvailable: true } : u,
+          ),
+        );
+
+        return { ok: true };
+      },
     };
-  }, [materials, me, notifications, rfcs]);
+  }, [materials, me, notifications, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
