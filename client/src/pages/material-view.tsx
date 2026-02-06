@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useRoute } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import {
-  ArrowLeft,
   BadgeCheck,
   CalendarClock,
   CircleAlert,
@@ -104,19 +103,19 @@ export default function MaterialView() {
 
   if (!current || !accessAllowed) {
     return (
-      <AppShell title={current ? "Доступ ограничен" : "Материал не найден"}>
+      <AppShell
+        title={current ? "Доступ ограничен" : "Материал не найден"}
+        breadcrumbs={[
+          { label: "Портал инструкций", href: "/" },
+          { label: "Каталог", href: "/catalog" },
+        ]}
+      >
         <Card>
           <CardContent className="p-6">
             <div className="text-sm text-muted-foreground">
               {current
                 ? "Этот материал доступен только участникам группы видимости «" + (materialGroup?.title || "—") + "». У вас нет доступа."
                 : "Материал недоступен или отсутствует."}
-            </div>
-            <div className="mt-4">
-              <Button data-testid="button-back-catalog" variant="secondary" onClick={() => setLocation("/catalog")}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                В каталог
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -128,16 +127,7 @@ export default function MaterialView() {
     <AppShell
       title={current.passport.title}
       breadcrumbs={breadcrumbs}
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/catalog">
-            <Button data-testid="button-back" variant="outline" className="rounded-xl">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Каталог
-            </Button>
-          </Link>
-        </div>
-      }
+      actions={<></>}
     >
       {returnDialogOpen && (
         <Card className="mb-4 border-orange-300 bg-orange-50/50">

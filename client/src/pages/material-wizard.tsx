@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -88,13 +88,7 @@ export default function MaterialWizard() {
         { label: "Каталог", href: "/catalog" },
         { label: "Новый материал" },
       ]}
-      actions={
-        <Link href="/catalog">
-          <Button data-testid="button-wizard-back" variant="outline" className="rounded-xl">
-            Назад в каталог
-          </Button>
-        </Link>
-      }
+      actions={<></>}
     >
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8">
