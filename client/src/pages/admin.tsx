@@ -15,6 +15,7 @@ import {
   Shield,
   SlidersHorizontal,
   Table2,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -38,7 +39,6 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { visibilityGroups } from "@/lib/mockData";
 import type { Criticality, Role } from "@/lib/mockData";
 import type { RbacDefaults, ReviewPeriod } from "@/lib/kbStore";
 import { computeKpis, isOverdue } from "@/lib/kbLogic";
@@ -310,7 +310,7 @@ function PoliciesTab() {
 
 export default function Admin() {
   const { toast } = useToast();
-  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults } = useKB();
+  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -321,6 +321,21 @@ export default function Admin() {
   const [newDept, setNewDept] = useState("");
   const [newEntity, setNewEntity] = useState("");
   const [newRoles, setNewRoles] = useState<Role[]>(["Читатель"]);
+
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserDept, setEditUserDept] = useState("");
+  const [editUserEntity, setEditUserEntity] = useState("");
+  const [editUserRoles, setEditUserRoles] = useState<Role[]>([]);
+
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupTitle, setEditGroupTitle] = useState("");
+  const [editGroupMembers, setEditGroupMembers] = useState<string[]>([]);
+
+  const [grpDlgOpen, setGrpDlgOpen] = useState(false);
+  const [grpTitle, setGrpTitle] = useState("");
+  const [grpMembers, setGrpMembers] = useState<string[]>([]);
 
   const scoped = useMemo(
     () => materials.filter((m) => m.passport.legalEntity === me.legalEntity),
@@ -344,6 +359,8 @@ export default function Admin() {
         .includes(query),
     );
   }, [users, userSearch]);
+
+  const activeUsers = useMemo(() => users.filter((u) => !u.deactivatedAt), [users]);
 
   const ad = policy.adIntegration;
 
@@ -388,6 +405,85 @@ export default function Admin() {
     setNewRoles((prev) =>
       prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
     );
+  }
+
+  function startEditUser(u: typeof users[0]) {
+    setEditingUserId(u.id);
+    setEditUserName(u.displayName);
+    setEditUserEmail(u.email);
+    setEditUserDept(u.department);
+    setEditUserEntity(u.legalEntity);
+    setEditUserRoles([...u.roles]);
+  }
+
+  function toggleEditUserRole(role: Role) {
+    setEditUserRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
+  }
+
+  function saveEditUser() {
+    if (!editingUserId) return;
+    const roles = editUserRoles.length > 0 ? editUserRoles : (["Читатель"] as Role[]);
+    const res = updateUser(editingUserId, {
+      displayName: editUserName.trim(),
+      email: editUserEmail.trim(),
+      department: editUserDept.trim(),
+      legalEntity: editUserEntity.trim(),
+      roles,
+    });
+    if (res.ok) {
+      toast({ title: "Сохранено", description: "Данные пользователя обновлены" });
+      setEditingUserId(null);
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
+  }
+
+  function startEditGroup(g: typeof visibilityGroups[0]) {
+    setEditingGroupId(g.id);
+    setEditGroupTitle(g.title);
+    setEditGroupMembers([...g.memberIds]);
+  }
+
+  function saveEditGroup() {
+    if (!editingGroupId) return;
+    const res = updateGroup(editingGroupId, {
+      title: editGroupTitle.trim(),
+      memberIds: editGroupMembers,
+    });
+    if (res.ok) {
+      toast({ title: "Сохранено", description: "Группа обновлена" });
+      setEditingGroupId(null);
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
+  }
+
+  function handleDeleteGroup(groupId: string, title: string) {
+    if (!window.confirm(`Вы уверены, что хотите удалить группу «${title}»?`)) return;
+    const res = deleteGroup(groupId);
+    if (res.ok) {
+      toast({ title: "Удалено", description: `Группа «${title}» удалена` });
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
+  }
+
+  function handleCreateGroup() {
+    if (!grpTitle.trim()) {
+      toast({ title: "Ошибка", description: "Название группы обязательно" });
+      return;
+    }
+    const res = createGroup({ title: grpTitle.trim(), memberIds: grpMembers });
+    if (res.ok) {
+      toast({ title: "Группа создана", description: `«${res.group?.title}» добавлена` });
+      setGrpDlgOpen(false);
+      setGrpTitle("");
+      setGrpMembers([]);
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
   }
 
   return (
@@ -435,7 +531,7 @@ export default function Admin() {
           <Separator />
           <CardContent className="p-4">
             <Tabs defaultValue="policies" className="w-full">
-              <TabsList className="grid w-full grid-cols-7">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger data-testid="tab-admin-policies" value="policies">
                   Политики
                 </TabsTrigger>
@@ -444,9 +540,6 @@ export default function Admin() {
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-users" value="users">
                   Пользователи
-                </TabsTrigger>
-                <TabsTrigger data-testid="tab-admin-rights" value="rights">
-                  Права
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-groups" value="groups">
                   Группы
@@ -564,177 +657,202 @@ export default function Admin() {
                 </div>
               </TabsContent>
 
-              {/* ── Пользователи ── */}
+              {/* ── Пользователи (merged with Права) ── */}
               <TabsContent value="users" className="mt-4">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <Input
-                    data-testid="input-user-search"
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="Поиск по имени, email, отделу…"
-                    className="rounded-2xl max-w-sm"
-                  />
-                  <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
-                    <DialogTrigger asChild>
-                      <Button data-testid="button-create-user" className="rounded-xl">
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Создать локального пользователя
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Новый локальный пользователь</DialogTitle>
-                      </DialogHeader>
-                      <div className="grid gap-3 mt-2">
-                        <div>
-                          <Label htmlFor="new-user-name">Имя</Label>
-                          <Input data-testid="input-new-user-name" id="new-user-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ФИО" className="mt-1" />
-                        </div>
-                        <div>
-                          <Label htmlFor="new-user-email">Email</Label>
-                          <Input data-testid="input-new-user-email" id="new-user-email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="user@company.local" className="mt-1" />
-                        </div>
-                        <div>
-                          <Label htmlFor="new-user-dept">Отдел</Label>
-                          <Input data-testid="input-new-user-dept" id="new-user-dept" value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="Отдел" className="mt-1" />
-                        </div>
-                        <div>
-                          <Label htmlFor="new-user-entity">Юридическое лицо</Label>
-                          <Input data-testid="input-new-user-entity" id="new-user-entity" value={newEntity} onChange={(e) => setNewEntity(e.target.value)} placeholder="ООО «…»" className="mt-1" />
-                        </div>
-                        <div>
-                          <Label>Роли</Label>
-                          <div className="mt-1 space-y-2">
-                            {ALL_ROLES.map((role) => (
-                              <div key={role} className="flex items-center gap-2">
-                                <Checkbox
-                                  data-testid={`checkbox-role-${role}`}
-                                  id={`role-${role}`}
-                                  checked={newRoles.includes(role)}
-                                  onCheckedChange={() => toggleRole(role)}
-                                />
-                                <Label htmlFor={`role-${role}`} className="text-sm font-normal">{role}</Label>
+                <div className="grid gap-4 md:grid-cols-[1fr_300px]">
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <Input
+                        data-testid="input-user-search"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                        placeholder="Поиск по имени, email, отделу…"
+                        className="rounded-2xl max-w-sm"
+                      />
+                      <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
+                        <DialogTrigger asChild>
+                          <Button data-testid="button-create-user" className="rounded-xl">
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Создать локального пользователя
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Новый локальный пользователь</DialogTitle>
+                          </DialogHeader>
+                          <div className="grid gap-3 mt-2">
+                            <div>
+                              <Label htmlFor="new-user-name">Имя</Label>
+                              <Input data-testid="input-new-user-name" id="new-user-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ФИО" className="mt-1" />
+                            </div>
+                            <div>
+                              <Label htmlFor="new-user-email">Email</Label>
+                              <Input data-testid="input-new-user-email" id="new-user-email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="user@company.local" className="mt-1" />
+                            </div>
+                            <div>
+                              <Label htmlFor="new-user-dept">Отдел</Label>
+                              <Input data-testid="input-new-user-dept" id="new-user-dept" value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="Отдел" className="mt-1" />
+                            </div>
+                            <div>
+                              <Label htmlFor="new-user-entity">Юридическое лицо</Label>
+                              <Input data-testid="input-new-user-entity" id="new-user-entity" value={newEntity} onChange={(e) => setNewEntity(e.target.value)} placeholder="ООО «…»" className="mt-1" />
+                            </div>
+                            <div>
+                              <Label>Роли</Label>
+                              <div className="mt-1 space-y-2">
+                                {ALL_ROLES.map((role) => (
+                                  <div key={role} className="flex items-center gap-2">
+                                    <Checkbox
+                                      data-testid={`checkbox-role-${role}`}
+                                      id={`role-${role}`}
+                                      checked={newRoles.includes(role)}
+                                      onCheckedChange={() => toggleRole(role)}
+                                    />
+                                    <Label htmlFor={`role-${role}`} className="text-sm font-normal">{role}</Label>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                        <Button data-testid="button-submit-create-user" className="w-full rounded-xl mt-2" onClick={handleCreateUser}>
-                          Создать
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-
-                <div className="grid gap-2" data-testid="list-users">
-                  {filteredUsers.map((u) => (
-                    <Card key={u.id} className="p-3" data-testid={`card-user-${u.id}`}>
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold">{u.displayName}</span>
-                            {u.source === "ad"
-                              ? <Badge className="bg-blue-600 text-white text-[10px]">AD</Badge>
-                              : <Badge className="bg-green-600 text-white text-[10px]">Локальный</Badge>}
-                            {u.deactivatedAt
-                              ? <Badge variant="destructive" className="text-[10px]">Деактивирован {new Date(u.deactivatedAt).toLocaleDateString("ru-RU")}</Badge>
-                              : <Badge className="bg-green-600 text-white text-[10px]">Активен</Badge>}
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">{u.email}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {u.department} · {u.legalEntity}
-                          </div>
-                          {u.source === "ad" && u.adAccountName && (
-                            <div className="mt-1 text-xs text-muted-foreground">AD аккаунт: <span className="font-mono">{u.adAccountName}</span></div>
-                          )}
-                          {u.source === "ad" && u.lastSyncAt && (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              Последняя синхронизация: {formatDistanceToNow(new Date(u.lastSyncAt), { addSuffix: true, locale: ru })}
                             </div>
-                          )}
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {u.roles.map((r) => (
-                              <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          {u.deactivatedAt ? (
-                            <Button
-                              data-testid={`button-reactivate-${u.id}`}
-                              size="sm"
-                              variant="outline"
-                              className="rounded-lg text-xs"
-                              onClick={() => {
-                                const res = reactivateUser(u.id);
-                                toast({ title: res.ok ? "Пользователь активирован" : "Ошибка", description: res.message });
-                              }}
-                            >
-                              Активировать
+                            <Button data-testid="button-submit-create-user" className="w-full rounded-xl mt-2" onClick={handleCreateUser}>
+                              Создать
                             </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+
+                    <div className="grid gap-2" data-testid="list-users">
+                      {filteredUsers.map((u) => (
+                        <Card key={u.id} className="p-3" data-testid={`card-user-${u.id}`}>
+                          {editingUserId === u.id ? (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm font-bold">Редактирование: {u.displayName}</div>
+                                <div className="flex gap-1">
+                                  <Button data-testid={`button-save-user-${u.id}`} variant="ghost" size="icon" className="h-7 w-7" onClick={saveEditUser}>
+                                    <Save className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingUserId(null)}>
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div>
+                                  <Label className="text-xs">Имя</Label>
+                                  <Input data-testid={`input-edit-name-${u.id}`} value={editUserName} onChange={(e) => setEditUserName(e.target.value)} className="mt-1 h-8" />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Email</Label>
+                                  <Input data-testid={`input-edit-email-${u.id}`} value={editUserEmail} onChange={(e) => setEditUserEmail(e.target.value)} className="mt-1 h-8" />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Отдел</Label>
+                                  <Input data-testid={`input-edit-dept-${u.id}`} value={editUserDept} onChange={(e) => setEditUserDept(e.target.value)} className="mt-1 h-8" />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Юридическое лицо</Label>
+                                  <Input data-testid={`input-edit-entity-${u.id}`} value={editUserEntity} onChange={(e) => setEditUserEntity(e.target.value)} className="mt-1 h-8" />
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Роли</Label>
+                                <div className="mt-1 flex flex-wrap gap-2">
+                                  {ALL_ROLES.map((role) => (
+                                    <label key={role} className="flex items-center gap-1.5 cursor-pointer text-xs p-1 rounded hover:bg-muted/50">
+                                      <Checkbox
+                                        data-testid={`checkbox-edit-role-${u.id}-${role}`}
+                                        checked={editUserRoles.includes(role)}
+                                        onCheckedChange={() => toggleEditUserRole(role)}
+                                      />
+                                      {role}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           ) : (
-                            <Button
-                              data-testid={`button-deactivate-${u.id}`}
-                              size="sm"
-                              variant="outline"
-                              className="rounded-lg text-xs text-destructive"
-                              onClick={() => {
-                                const res = deactivateUser(u.id);
-                                toast({ title: res.ok ? "Пользователь деактивирован" : "Ошибка", description: res.message });
-                              }}
-                            >
-                              Деактивировать
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                  {filteredUsers.length === 0 && (
-                    <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground text-center" data-testid="empty-users">
-                      Пользователи не найдены
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* ── Права ── */}
-              <TabsContent value="rights" className="mt-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Card className="p-4">
-                    <div className="text-sm font-semibold">Управление ролями пользователей</div>
-                    <div className="mt-3 space-y-3" data-testid="list-users-roles">
-                      {users.map((u) => (
-                        <div key={u.id} className="rounded-2xl border bg-muted/20 p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-bold">{u.displayName}</div>
-                            <div className="flex flex-wrap gap-1">
-                              {u.roles.map(r => (
-                                <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
-                              ))}
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold">{u.displayName}</span>
+                                  {u.source === "ad"
+                                    ? <Badge className="bg-blue-600 text-white text-[10px]">AD</Badge>
+                                    : <Badge className="bg-green-600 text-white text-[10px]">Локальный</Badge>}
+                                  {u.deactivatedAt
+                                    ? <Badge variant="destructive" className="text-[10px]">Деактивирован {new Date(u.deactivatedAt).toLocaleDateString("ru-RU")}</Badge>
+                                    : <Badge className="bg-green-600 text-white text-[10px]">Активен</Badge>}
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">{u.email}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {u.department} · {u.legalEntity}
+                                </div>
+                                {u.source === "ad" && u.adAccountName && (
+                                  <div className="mt-1 text-xs text-muted-foreground">AD аккаунт: <span className="font-mono">{u.adAccountName}</span></div>
+                                )}
+                                {u.source === "ad" && u.lastSyncAt && (
+                                  <div className="mt-1 text-xs text-muted-foreground">
+                                    Последняя синхронизация: {formatDistanceToNow(new Date(u.lastSyncAt), { addSuffix: true, locale: ru })}
+                                  </div>
+                                )}
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {u.roles.map((r) => (
+                                    <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="flex gap-1">
+                                <Button
+                                  data-testid={`button-edit-user-${u.id}`}
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg text-xs"
+                                  onClick={() => startEditUser(u)}
+                                >
+                                  <Edit2 className="mr-1 h-3 w-3" />
+                                  Изменить
+                                </Button>
+                                {u.deactivatedAt ? (
+                                  <Button
+                                    data-testid={`button-reactivate-${u.id}`}
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-lg text-xs"
+                                    onClick={() => {
+                                      const res = reactivateUser(u.id);
+                                      toast({ title: res.ok ? "Пользователь активирован" : "Ошибка", description: res.message });
+                                    }}
+                                  >
+                                    Активировать
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    data-testid={`button-deactivate-${u.id}`}
+                                    size="sm"
+                                    variant="outline"
+                                    className="rounded-lg text-xs text-destructive"
+                                    onClick={() => {
+                                      const res = deactivateUser(u.id);
+                                      toast({ title: res.ok ? "Пользователь деактивирован" : "Ошибка", description: res.message });
+                                    }}
+                                  >
+                                    Деактивировать
+                                  </Button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {ALL_ROLES.map(role => (
-                              <Button
-                                key={role}
-                                size="sm"
-                                variant="outline"
-                                className="h-6 text-[10px] rounded-md px-2"
-                                onClick={() => {
-                                  toast({ title: "Роль обновлена", description: `Пользователю ${u.displayName} назначена роль ${role} (демо)` });
-                                }}
-                              >
-                                {u.roles.includes(role) ? `- ${role}` : `+ ${role}`}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
+                          )}
+                        </Card>
                       ))}
+                      {filteredUsers.length === 0 && (
+                        <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground text-center" data-testid="empty-users">
+                          Пользователи не найдены
+                        </div>
+                      )}
                     </div>
-                  </Card>
+                  </div>
 
-                  <Card className="p-4">
+                  <Card className="p-4 h-fit">
                     <div className="text-sm font-semibold">Политика RBAC</div>
                     <div className="mt-2 text-sm text-muted-foreground">
                       Роли назначаются только вручную администратором портала. AD-интеграция используется только для атрибутов (компания).
@@ -756,38 +874,143 @@ export default function Admin() {
 
               {/* ── Группы ── */}
               <TabsContent value="groups" className="mt-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Card className="p-4">
-                    <div className="text-sm font-semibold">Группы видимости</div>
-                    <div className="mt-3 space-y-3">
-                      {visibilityGroups.map(g => (
-                        <div key={g.id} className="rounded-2xl border bg-muted/20 p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-bold text-sm">{g.title}</span>
-                              {g.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
+                <div className="grid gap-4 md:grid-cols-[1fr_300px]">
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <div className="text-sm font-semibold">Группы видимости</div>
+                      <Dialog open={grpDlgOpen} onOpenChange={setGrpDlgOpen}>
+                        <DialogTrigger asChild>
+                          <Button data-testid="button-create-group" className="rounded-xl" variant="outline">
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Создать группу
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Новая группа видимости</DialogTitle>
+                          </DialogHeader>
+                          <div className="grid gap-3 mt-2">
+                            <div>
+                              <Label htmlFor="grp-title">Название</Label>
+                              <Input data-testid="input-grp-title" id="grp-title" value={grpTitle} onChange={(e) => setGrpTitle(e.target.value)} placeholder="Название группы" className="mt-1" />
                             </div>
-                            <Badge variant="outline" className="text-[10px]">{g.memberIds.length} уч.</Badge>
+                            <div>
+                              <Label>Участники ({grpMembers.length} выбрано)</Label>
+                              <div className="mt-1 max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2">
+                                {activeUsers.map((u) => (
+                                  <label key={u.id} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-muted/50">
+                                    <Checkbox
+                                      data-testid={`checkbox-grp-member-${u.id}`}
+                                      checked={grpMembers.includes(u.id)}
+                                      onCheckedChange={() =>
+                                        setGrpMembers((prev) =>
+                                          prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id],
+                                        )
+                                      }
+                                    />
+                                    <span className="text-sm">{u.displayName}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            <Button data-testid="button-submit-create-group" className="w-full rounded-xl mt-2" onClick={handleCreateGroup}>
+                              Создать
+                            </Button>
                           </div>
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {g.isSystem ? "Нельзя удалить или изменить состав" : "Ручное управление составом"}
-                          </div>
-                          {!g.isSystem && (
-                            <div className="mt-3 flex gap-2">
-                              <Button size="sm" variant="outline" className="h-7 text-[10px] rounded-lg">Изменить состав</Button>
-                              <Button size="sm" variant="ghost" className="h-7 text-[10px] rounded-lg text-destructive">Удалить</Button>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+
+                    <div className="space-y-3" data-testid="list-groups">
+                      {visibilityGroups.map((g) => (
+                        <Card key={g.id} className="p-3" data-testid={`card-group-${g.id}`}>
+                          {editingGroupId === g.id ? (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm font-bold">Редактирование: {g.title}</div>
+                                <div className="flex gap-1">
+                                  <Button data-testid={`button-save-group-${g.id}`} variant="ghost" size="icon" className="h-7 w-7" onClick={saveEditGroup}>
+                                    <Save className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingGroupId(null)}>
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Название</Label>
+                                <Input data-testid={`input-edit-group-title-${g.id}`} value={editGroupTitle} onChange={(e) => setEditGroupTitle(e.target.value)} className="mt-1 h-8" />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Участники ({editGroupMembers.length} выбрано)</Label>
+                                <div className="mt-1 max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2">
+                                  {activeUsers.map((u) => (
+                                    <label key={u.id} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-muted/50">
+                                      <Checkbox
+                                        data-testid={`checkbox-edit-grp-member-${g.id}-${u.id}`}
+                                        checked={editGroupMembers.includes(u.id)}
+                                        onCheckedChange={() =>
+                                          setEditGroupMembers((prev) =>
+                                            prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id],
+                                          )
+                                        }
+                                      />
+                                      <span className="text-sm">{u.displayName}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Users className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-bold text-sm">{g.title}</span>
+                                  {g.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
+                                </div>
+                                <Badge variant="outline" className="text-[10px]">{g.memberIds.length} уч.</Badge>
+                              </div>
+                              <div className="mt-2 text-xs text-muted-foreground">
+                                {g.memberIds
+                                  .map((id) => users.find((u) => u.id === id)?.displayName)
+                                  .filter(Boolean)
+                                  .join(", ") || "Нет участников"}
+                              </div>
+                              {g.isSystem ? (
+                                <div className="mt-2 text-xs text-muted-foreground italic">Системная — нельзя изменить</div>
+                              ) : (
+                                <div className="mt-3 flex gap-2">
+                                  <Button
+                                    data-testid={`button-edit-group-${g.id}`}
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[10px] rounded-lg"
+                                    onClick={() => startEditGroup(g)}
+                                  >
+                                    <Edit2 className="mr-1 h-3 w-3" />
+                                    Изменить
+                                  </Button>
+                                  <Button
+                                    data-testid={`button-delete-group-${g.id}`}
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-[10px] rounded-lg text-destructive"
+                                    onClick={() => handleDeleteGroup(g.id, g.title)}
+                                  >
+                                    <Trash2 className="mr-1 h-3 w-3" />
+                                    Удалить
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
-                        </div>
+                        </Card>
                       ))}
-                      <Button className="w-full rounded-xl" variant="outline">
-                        + Создать группу
-                      </Button>
                     </div>
-                  </Card>
+                  </div>
 
-                  <Card className="p-4">
+                  <Card className="p-4 h-fit">
                     <div className="text-sm font-semibold">Политика групп</div>
                     <div className="mt-2 text-sm text-muted-foreground">
                       Группы используются для ограничения видимости разделов каталога и материалов.
