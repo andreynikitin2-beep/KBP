@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { demoUsers, visibilityGroups } from "@/lib/mockData";
-import { canConfirmActuality, canViewAudit, canViewMaterial, daysToNextReview, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, isOverdue, validatePassport } from "@/lib/kbLogic";
 
 function fmt(iso?: string) {
   if (!iso) return "—";
@@ -40,12 +40,14 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality } = useKB();
+  const { me, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision } = useKB();
 
   const materialId = params?.id || "";
   const allMaterials = materials;
   const current = useMemo(() => allMaterials.find((m) => m.materialId === materialId) || null, [allMaterials, materialId]);
 
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnComment, setReturnComment] = useState("");
   const [rfcTitle, setRfcTitle] = useState("");
   const [rfcText, setRfcText] = useState("");
   const [rfcType, setRfcType] = useState<"Проблема" | "Предложение">("Проблема");
@@ -69,6 +71,10 @@ export default function MaterialView() {
   const canConfirm = current ? canConfirmActuality(me, current) : false;
   const dueDays = current ? daysToNextReview(current) : null;
   const missing = current ? validatePassport(current.passport) : [];
+  const showPublishDirect = current ? canPublishDirectly(me, current) : false;
+  const showSubmitForApproval = current ? canSubmitForApproval(me, current) : false;
+  const showApprove = current ? canApproveAndPublish(me, current) : false;
+  const showReturn = current ? canReturnForRevision(me, current) : false;
 
   const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
   const materialGroup = current ? visibilityGroups.find((g) => g.id === current.passport.visibilityGroupId) : null;
@@ -126,7 +132,73 @@ export default function MaterialView() {
             <BadgeCheck className="mr-2 h-4 w-4" />
             Подтвердить актуальность
           </Button>
-          {me.roles.includes("Администратор") && (
+          {showPublishDirect && (
+            <Button
+              data-testid="button-publish-direct"
+              className="rounded-xl bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                const res = publishDirect(current.id);
+                if (!res.ok) {
+                  toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                } else {
+                  toast({ title: "Опубликовано", description: "Материал опубликован напрямую (владелец/заместитель)." });
+                }
+              }}
+            >
+              <FileUp className="mr-2 h-4 w-4" />
+              Опубликовать
+            </Button>
+          )}
+          {showSubmitForApproval && !showPublishDirect && (
+            <Button
+              data-testid="button-submit-approval"
+              variant="secondary"
+              className="rounded-xl"
+              onClick={() => {
+                const res = submitForApproval(current.id);
+                if (!res.ok) {
+                  toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                } else {
+                  toast({ title: "Отправлено", description: "Материал отправлен на согласование владельцу." });
+                }
+              }}
+            >
+              <FileUp className="mr-2 h-4 w-4" />
+              Отправить на согласование
+            </Button>
+          )}
+          {showApprove && (
+            <Button
+              data-testid="button-approve-publish"
+              className="rounded-xl bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                const res = approveAndPublish(current.id);
+                if (!res.ok) {
+                  toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                } else {
+                  toast({ title: "Согласовано", description: "Материал одобрен и опубликован." });
+                }
+              }}
+            >
+              <BadgeCheck className="mr-2 h-4 w-4" />
+              Одобрить и опубликовать
+            </Button>
+          )}
+          {showReturn && (
+            <Button
+              data-testid="button-return-revision"
+              variant="outline"
+              className="rounded-xl border-orange-300 text-orange-600 hover:bg-orange-50"
+              onClick={() => {
+                setReturnDialogOpen(true);
+                setReturnComment("");
+              }}
+            >
+              <CircleAlert className="mr-2 h-4 w-4" />
+              Вернуть на доработку
+            </Button>
+          )}
+          {me.roles.includes("Администратор") && current.status !== "Опубликовано" && current.status !== "Архив" && (
             <Button
               data-testid="button-force-publish"
               variant="destructive"
@@ -162,6 +234,55 @@ export default function MaterialView() {
         </div>
       }
     >
+      {returnDialogOpen && (
+        <Card className="mb-4 border-orange-300 bg-orange-50/50">
+          <CardContent className="p-4">
+            <div className="font-semibold text-orange-700 mb-2">Возврат на доработку</div>
+            <div className="text-sm text-muted-foreground mb-3">
+              Укажите причину возврата. Комментарий обязателен и будет отправлен автору.
+            </div>
+            <Textarea
+              data-testid="textarea-return-comment"
+              value={returnComment}
+              onChange={(e) => setReturnComment(e.target.value)}
+              placeholder="Укажите причину возврата…"
+              className="min-h-[80px] rounded-xl mb-3"
+            />
+            <div className="flex gap-2">
+              <Button
+                data-testid="button-confirm-return"
+                variant="default"
+                className="rounded-xl bg-orange-600 hover:bg-orange-700"
+                disabled={!returnComment.trim()}
+                onClick={() => {
+                  const res = returnForRevision(current.id, returnComment);
+                  if (!res.ok) {
+                    toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                  } else {
+                    toast({ title: "Возвращено", description: "Материал возвращён автору на доработку." });
+                    setReturnDialogOpen(false);
+                    setReturnComment("");
+                  }
+                }}
+              >
+                Подтвердить возврат
+              </Button>
+              <Button
+                data-testid="button-cancel-return"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => {
+                  setReturnDialogOpen(false);
+                  setReturnComment("");
+                }}
+              >
+                Отмена
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {overdue ? (
         <Card className="mb-4 border-destructive/30 bg-destructive/5">
           <CardContent className="p-4">
@@ -181,6 +302,44 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       ) : null}
+
+      {(current.status === "Черновик" || current.status === "На согласовании") && (
+        <Card className="mb-4 border-blue-200 bg-blue-50/50" data-testid="card-approval-workflow">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-blue-100 p-2 text-blue-600">
+                <FileUp className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-blue-800" data-testid="text-approval-title">
+                  {current.status === "Черновик" ? "Черновик — ожидает публикации" : "На согласовании — ожидает решения"}
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground" data-testid="text-approval-hint">
+                  {current.status === "Черновик" && showPublishDirect && (
+                    <>Вы — владелец/заместитель. Можете опубликовать напрямую без согласования.</>
+                  )}
+                  {current.status === "Черновик" && !showPublishDirect && showSubmitForApproval && (
+                    <>Для публикации необходимо согласование владельцем или заместителем. Нажмите «Отправить на согласование».</>
+                  )}
+                  {current.status === "Черновик" && !showPublishDirect && !showSubmitForApproval && (
+                    <>Ожидает отправки на согласование автором.</>
+                  )}
+                  {current.status === "На согласовании" && showApprove && (
+                    <>Материал ожидает вашего решения. Одобрите или верните на доработку с комментарием.</>
+                  )}
+                  {current.status === "На согласовании" && !showApprove && (
+                    <>Материал отправлен на согласование владельцу. Ожидайте решения.</>
+                  )}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Автор: {demoUsers.find((u) => u.id === current.createdBy)?.displayName || "—"}
+                  {current.passport.ownerId && <> · Владелец: {owner?.displayName || "—"}</>}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8">

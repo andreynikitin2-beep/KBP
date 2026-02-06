@@ -89,10 +89,8 @@ export function canPublishDirectly(user: User, version: MaterialVersion) {
 export function canSubmitForApproval(user: User, version: MaterialVersion) {
   if (version.status !== "Черновик") return false;
   const isCreator = version.createdBy === user.id;
-  const isOwner = version.passport.ownerId === user.id;
-  const isDeputy = version.passport.deputyId === user.id;
   const isAdmin = user.roles.includes("Администратор");
-  return isCreator || isOwner || isDeputy || isAdmin;
+  return isCreator || isAdmin;
 }
 
 export function canApproveAndPublish(user: User, version: MaterialVersion) {
