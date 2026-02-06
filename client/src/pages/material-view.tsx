@@ -52,6 +52,8 @@ export default function MaterialView() {
 
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [returnComment, setReturnComment] = useState("");
+  const [newVersionDialogOpen, setNewVersionDialogOpen] = useState(false);
+  const [majorBump, setMajorBump] = useState(false);
   const [rfcTitle, setRfcTitle] = useState("");
   const [rfcText, setRfcText] = useState("");
   const [rfcType, setRfcType] = useState<"Проблема" | "Предложение">("Проблема");
@@ -683,18 +685,11 @@ export default function MaterialView() {
                           Опубликованную версию нельзя редактировать напрямую. Создайте новую версию — предыдущая автоматически отправится в архив, а история сохранится.
                         </div>
                       </div>
-                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && (
+                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && !newVersionDialogOpen && (
                         <Button
                           data-testid="button-create-new-version"
                           className="rounded-xl shrink-0"
-                          onClick={() => {
-                            const res = createNewVersion(current.materialId);
-                            if (res.ok) {
-                              toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
-                            } else {
-                              toast({ title: "Ошибка", description: res.message, variant: "destructive" });
-                            }
-                          }}
+                          onClick={() => { setMajorBump(false); setNewVersionDialogOpen(true); }}
                         >
                           <FilePlus2 className="mr-2 h-4 w-4" />
                           Создать новую версию
@@ -702,6 +697,58 @@ export default function MaterialView() {
                       )}
                     </div>
                   </div>
+                  {newVersionDialogOpen && (
+                    <Card className="mt-3 border-primary/30 bg-primary/5">
+                      <CardContent className="p-4">
+                        <div className="font-semibold mb-2">Создать новую версию</div>
+                        <div className="rounded-xl border bg-muted/30 p-3 text-sm text-muted-foreground mb-3">
+                          Текущая версия: <span className="font-bold text-foreground">{current.version}</span>
+                          {" → "}
+                          Новая версия: <span className="font-bold text-foreground">
+                            {(() => {
+                              const parts = current.version.split(".");
+                              const maj = parseInt(parts[0], 10) || 1;
+                              const min = parseInt(parts[1], 10) || 0;
+                              return majorBump ? `${maj + 1}.0` : `${maj}.${min + 1}`;
+                            })()}
+                          </span>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer mb-3" data-testid="checkbox-major-bump">
+                          <input
+                            type="checkbox"
+                            checked={majorBump}
+                            onChange={(e) => setMajorBump(e.target.checked)}
+                            className="rounded border-gray-300"
+                          />
+                          <span className="text-sm">Существенное изменение (увеличить major-версию)</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <Button
+                            data-testid="button-confirm-new-version"
+                            className="rounded-xl"
+                            onClick={() => {
+                              const res = createNewVersion(current.materialId, majorBump);
+                              if (res.ok) {
+                                toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
+                              } else {
+                                toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                              }
+                              setNewVersionDialogOpen(false);
+                            }}
+                          >
+                            Создать
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => setNewVersionDialogOpen(false)}
+                          >
+                            Отмена
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                   <div className="mt-3 space-y-2" data-testid="list-versions">
                     {allVersions.map((v, idx) => {
                       const author = users.find((u) => u.id === v.createdBy);

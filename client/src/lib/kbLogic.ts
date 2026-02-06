@@ -41,7 +41,12 @@ export function canConfirmActuality(user: User, version: MaterialVersion) {
   return ownerOk || deputyOk || adminOk;
 }
 
-export function canViewMaterial(user: User, material: MaterialVersion, groups: VisibilityGroup[]) {
+export function canViewMaterial(
+  user: User,
+  material: MaterialVersion,
+  groups: VisibilityGroup[],
+  effectiveGroupId?: string,
+) {
   if (user.roles.includes("Администратор")) return true;
 
   const isDraftOrReview = material.status === "Черновик" || material.status === "На согласовании";
@@ -52,7 +57,7 @@ export function canViewMaterial(user: User, material: MaterialVersion, groups: V
     if (isAuthor || isOwner || isDeputy) return true;
   }
 
-  const groupId = material.passport.visibilityGroupId;
+  const groupId = effectiveGroupId ?? material.passport.visibilityGroupId;
   const group = groups.find((g) => g.id === groupId);
   if (!group) return true;
   if (group.isSystem) return true;

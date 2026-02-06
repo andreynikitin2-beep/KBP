@@ -83,7 +83,7 @@ type Store = {
   toggleSubscription: (materialId: string) => void;
   isSubscribed: (materialId: string) => boolean;
 
-  createNewVersion: (materialId: string) => { ok: boolean; version?: MaterialVersion; message?: string };
+  createNewVersion: (materialId: string, majorBump?: boolean) => { ok: boolean; version?: MaterialVersion; message?: string };
   getAllVersions: (materialId: string) => MaterialVersion[];
   viewOldVersion: (versionId: string) => MaterialVersion | undefined;
 
@@ -119,8 +119,57 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
   const [subscriptionMap, setSubscriptionMap] = useState<Record<string, string[]>>({});
 
+  const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const m of seedMaterials) {
+      if (m.status === "Опубликовано" || m.status === "На пересмотре") {
+        map[m.materialId] = m.passport.visibilityGroupId;
+      }
+    }
+    return map;
+  });
+
   const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
   const mySubscriptions = useMemo(() => subscriptionMap[meId] || [], [subscriptionMap, meId]);
+
+  const cleanupSubscriptionsOnGroupChange = (materialId: string, newGroupId: string) => {
+    const group = groups.find((g) => g.id === newGroupId);
+    if (!group || group.isSystem) return;
+
+    setSubscriptionMap((prev) => {
+      const next = { ...prev };
+      for (const [userId, subs] of Object.entries(next)) {
+        if (!subs.includes(materialId)) continue;
+        const user = users.find((u) => u.id === userId);
+        if (!user) continue;
+        if (user.roles.includes("Администратор")) continue;
+        if (!group.memberIds.includes(userId)) {
+          next[userId] = subs.filter((id) => id !== materialId);
+        }
+      }
+      return next;
+    });
+  };
+
+  const notifySubscribers = (version: MaterialVersion, newGroupId: string) => {
+    const group = groups.find((g) => g.id === newGroupId);
+    const allSubs = Object.entries(subscriptionMap);
+    for (const [userId, subs] of allSubs) {
+      if (!subs.includes(version.materialId)) continue;
+      const user = users.find((u) => u.id === userId);
+      if (!user) continue;
+      const hasAccess = !group || group.isSystem || group.memberIds.includes(userId) || user.roles.includes("Администратор");
+      if (hasAccess) {
+        const email = seedEmail(notifications, {
+          to: user.email,
+          subject: `Новая версия: ${version.passport.title} (${version.version})`,
+          template: "new_version",
+          related: { materialId: version.materialId, versionId: version.id },
+        });
+        setNotifications((p) => [email, ...p]);
+      }
+    }
+  };
 
   const store = useMemo<Store>(() => {
     const latestByMaterial = new Map<string, MaterialVersion>();
@@ -138,7 +187,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    const visibleMaterials = Array.from(latestByMaterial.values()).filter((m) => canViewMaterial(me, m, groups));
+    const visibleMaterials = Array.from(latestByMaterial.values()).filter((m) =>
+      canViewMaterial(me, m, groups, effectiveVisGroupMap[m.materialId]),
+    );
 
     return {
       me,
@@ -243,16 +294,23 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policySeed);
 
         setMaterials((prev) =>
-          prev.map((m) =>
-            m.id === versionId
-              ? {
-                  ...m,
-                  status: "Опубликовано" as MaterialVersion["status"],
-                  passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
-                }
-              : m,
-          ),
+          prev.map((m) => {
+            if (m.id === versionId) {
+              return {
+                ...m,
+                status: "Опубликовано" as MaterialVersion["status"],
+                passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
+              };
+            }
+            if (m.materialId === version.materialId && m.id !== versionId && (m.status === "Опубликовано" || m.status === "На пересмотре")) {
+              return { ...m, status: "Архив" as MaterialVersion["status"] };
+            }
+            return m;
+          }),
         );
+
+        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupId }));
+        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupId);
 
         const email = seedEmail(notifications, {
           to: me.email,
@@ -261,6 +319,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+
+        notifySubscribers(version, version.passport.visibilityGroupId);
 
         return { ok: true };
       },
@@ -274,17 +334,24 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policySeed);
 
         setMaterials((prev) =>
-          prev.map((m) =>
-            m.id === versionId
-              ? {
-                  ...m,
-                  status: "Опубликовано" as MaterialVersion["status"],
-                  changelog: (m.changelog ? m.changelog + "\n" : "") + `[APPROVED BY ${me.displayName}]`,
-                  passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
-                }
-              : m,
-          ),
+          prev.map((m) => {
+            if (m.id === versionId) {
+              return {
+                ...m,
+                status: "Опубликовано" as MaterialVersion["status"],
+                changelog: (m.changelog ? m.changelog + "\n" : "") + `[APPROVED BY ${me.displayName}]`,
+                passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
+              };
+            }
+            if (m.materialId === version.materialId && m.id !== versionId && (m.status === "Опубликовано" || m.status === "На пересмотре")) {
+              return { ...m, status: "Архив" as MaterialVersion["status"] };
+            }
+            return m;
+          }),
         );
+
+        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupId }));
+        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupId);
 
         const authorEmail = users.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
         const email = seedEmail(notifications, {
@@ -294,6 +361,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+
+        notifySubscribers(version, version.passport.visibilityGroupId);
 
         return { ok: true };
       },
@@ -548,7 +617,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       },
       isSubscribed: (materialId: string) => mySubscriptions.includes(materialId),
 
-      createNewVersion: (materialId: string) => {
+      createNewVersion: (materialId: string, majorBump?: boolean) => {
         const allVersions = materials
           .filter((m) => m.materialId === materialId)
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -561,7 +630,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const parts = current.version.split(".");
         const major = parseInt(parts[0], 10) || 1;
         const minor = parseInt(parts[1], 10) || 0;
-        const newVersionStr = `${major}.${minor + 1}`;
+        const newVersionStr = majorBump ? `${major + 1}.0` : `${major}.${minor + 1}`;
         const newId = `v-${materialId.replace("m-", "")}-${Date.now()}`;
 
         const newVersion: MaterialVersion = {
@@ -643,7 +712,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
     };
-  }, [catalogNodes, groups, materials, me, meId, mySubscriptions, notifications, policy, rfcs, users]);
+  }, [catalogNodes, effectiveVisGroupMap, groups, materials, me, meId, mySubscriptions, notifications, policy, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
