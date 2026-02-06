@@ -9,6 +9,7 @@ import MaterialView from "@/pages/material-view";
 import MaterialWizard from "@/pages/material-wizard";
 import Admin from "@/pages/admin";
 import Subscriptions from "@/pages/subscriptions";
+import MyMaterials from "@/pages/my-materials";
 
 import { queryClient } from "./lib/queryClient";
 
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/catalog" component={Catalog} />
       <Route path="/subscriptions" component={Subscriptions} />
+      <Route path="/my-materials" component={MyMaterials} />
       <Route path="/materials/new" component={MaterialWizard} />
       <Route path="/materials/:id" component={MaterialView} />
       <Route path="/admin" component={Admin} />

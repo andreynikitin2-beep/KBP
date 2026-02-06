@@ -28,6 +28,7 @@ const allNav = [
   { href: "/", label: "Главная", icon: LayoutGrid, roles: null },
   { href: "/catalog", label: "Каталог", icon: BookOpen, roles: null },
   { href: "/subscriptions", label: "Мои подписки", icon: Heart, roles: null },
+  { href: "/my-materials", label: "Мои материалы", icon: ClipboardCheck, roles: ["Владелец", "Заместитель владельца"] as string[] },
   { href: "/materials/new", label: "Создать", icon: FilePlus2, roles: ["Автор", "Владелец", "Заместитель владельца", "Администратор"] as string[] },
   { href: "/admin", label: "Администрирование", icon: Settings2, roles: ["Администратор"] as string[] },
 ];
