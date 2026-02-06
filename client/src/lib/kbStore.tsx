@@ -5,16 +5,20 @@ import {
   materials as seedMaterials,
   rfcs as seedRfcs,
   policySeed,
+  visibilityGroups as seedGroups,
 } from "./mockData";
-import type { MaterialVersion, NotificationLog, RFC, User } from "./mockData";
-import { canConfirmActuality, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+import type { MaterialVersion, NotificationLog, RFC, User, VisibilityGroup } from "./mockData";
+import { canConfirmActuality, canViewMaterial, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 
 type Store = {
   me: User;
   setMeId: (id: string) => void;
 
   materials: MaterialVersion[];
+  visibleMaterials: MaterialVersion[];
   setMaterials: React.Dispatch<React.SetStateAction<MaterialVersion[]>>;
+
+  visibilityGroups: VisibilityGroup[];
 
   rfcs: RFC[];
   setRfcs: React.Dispatch<React.SetStateAction<RFC[]>>;
@@ -51,11 +55,15 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const me = useMemo(() => demoUsers.find((u) => u.id === meId)!, [meId]);
 
   const store = useMemo<Store>(() => {
+    const visibleMaterials = materials.filter((m) => canViewMaterial(me, m, seedGroups));
+
     return {
       me,
       setMeId,
       materials,
+      visibleMaterials,
       setMaterials,
+      visibilityGroups: seedGroups,
       rfcs,
       setRfcs,
       notifications,

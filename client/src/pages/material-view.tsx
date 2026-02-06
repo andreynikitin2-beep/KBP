@@ -28,8 +28,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { demoUsers } from "@/lib/mockData";
-import { canConfirmActuality, canViewAudit, daysToNextReview, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { demoUsers, visibilityGroups } from "@/lib/mockData";
+import { canConfirmActuality, canViewAudit, canViewMaterial, daysToNextReview, isOverdue, validatePassport } from "@/lib/kbLogic";
 
 function fmt(iso?: string) {
   if (!iso) return "—";
@@ -43,7 +43,8 @@ export default function MaterialView() {
   const { me, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality } = useKB();
 
   const materialId = params?.id || "";
-  const current = useMemo(() => materials.find((m) => m.materialId === materialId) || null, [materials, materialId]);
+  const allMaterials = materials;
+  const current = useMemo(() => allMaterials.find((m) => m.materialId === materialId) || null, [allMaterials, materialId]);
 
   const [rfcTitle, setRfcTitle] = useState("");
   const [rfcText, setRfcText] = useState("");
@@ -69,17 +70,23 @@ export default function MaterialView() {
   const dueDays = current ? daysToNextReview(current) : null;
   const missing = current ? validatePassport(current.passport) : [];
 
+  const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
+  const materialGroup = current ? visibilityGroups.find((g) => g.id === current.passport.visibilityGroupId) : null;
   const owner = current ? demoUsers.find((u) => u.id === current.passport.ownerId) : null;
   const deputy = current ? demoUsers.find((u) => u.id === current.passport.deputyId) : null;
 
   const rfcList = useMemo(() => rfcs.filter((r) => r.materialId === materialId), [rfcs, materialId]);
 
-  if (!current) {
+  if (!current || !accessAllowed) {
     return (
-      <AppShell title="Материал не найден">
+      <AppShell title={current ? "Доступ ограничен" : "Материал не найден"}>
         <Card>
           <CardContent className="p-6">
-            <div className="text-sm text-muted-foreground">Материал недоступен или отсутствует.</div>
+            <div className="text-sm text-muted-foreground">
+              {current
+                ? "Этот материал доступен только участникам группы видимости «" + (materialGroup?.title || "—") + "». У вас нет доступа."
+                : "Материал недоступен или отсутствует."}
+            </div>
             <div className="mt-4">
               <Button data-testid="button-back-catalog" variant="secondary" onClick={() => setLocation("/catalog")}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -192,6 +199,12 @@ export default function MaterialView() {
                 <Badge className="kb-chip" variant="outline" data-testid="badge-scope">
                   {current.passport.legalEntity} · {current.passport.branch}
                 </Badge>
+                {materialGroup && !materialGroup.isSystem && (
+                  <Badge className="kb-chip" variant="secondary" data-testid="badge-visibility-group">
+                    <Users className="mr-1 h-3.5 w-3.5" />
+                    {materialGroup.title}
+                  </Badge>
+                )}
                 {dueDays !== null ? (
                   <Badge className="kb-chip" variant={dueDays < 0 ? "destructive" : "secondary"} data-testid="badge-review-due">
                     <CalendarClock className="mr-1 h-3.5 w-3.5" />
@@ -257,6 +270,26 @@ export default function MaterialView() {
                         {deputy?.displayName || "—"}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">{deputy?.email || ""}</div>
+                    </Card>
+                    <Card className="p-4 md:col-span-2">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <div className="text-xs text-muted-foreground">Группа видимости</div>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="font-semibold" data-testid="text-visibility-group">
+                          {materialGroup?.title || "—"}
+                        </span>
+                        {materialGroup?.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
+                        {!materialGroup?.isSystem && (
+                          <Badge variant="outline" className="text-[10px]">{materialGroup?.memberIds.length || 0} уч.</Badge>
+                        )}
+                      </div>
+                      {!materialGroup?.isSystem && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Материал виден только участникам этой группы
+                        </div>
+                      )}
                     </Card>
                     <Card className="p-4 md:col-span-2">
                       <div className="grid gap-3 md:grid-cols-3">

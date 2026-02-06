@@ -1,4 +1,4 @@
-import type { CatalogNode, MaterialVersion, NotificationLog, RFC, Role, User } from "./mockData";
+import type { CatalogNode, MaterialVersion, NotificationLog, RFC, Role, User, VisibilityGroup } from "./mockData";
 
 export function hasAnyRole(user: User, required?: Role[]) {
   if (!required || required.length === 0) return true;
@@ -42,6 +42,24 @@ export function canConfirmActuality(user: User, version: MaterialVersion) {
   const deputyOk = version.passport.deputyId === user.id;
   const adminOk = user.roles.includes("Администратор");
   return ownerOk || deputyOk || adminOk;
+}
+
+export function canViewMaterial(user: User, material: MaterialVersion, groups: VisibilityGroup[]) {
+  if (user.roles.includes("Администратор")) return true;
+
+  const isDraftOrReview = material.status === "Черновик" || material.status === "На согласовании";
+  if (isDraftOrReview) {
+    const isAuthor = material.createdBy === user.id;
+    const isOwner = material.passport.ownerId === user.id;
+    const isDeputy = material.passport.deputyId === user.id;
+    if (isAuthor || isOwner || isDeputy) return true;
+  }
+
+  const groupId = material.passport.visibilityGroupId;
+  const group = groups.find((g) => g.id === groupId);
+  if (!group) return true;
+  if (group.isSystem) return true;
+  return group.memberIds.includes(user.id);
 }
 
 export function canViewAudit(user: User) {

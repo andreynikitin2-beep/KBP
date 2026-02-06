@@ -52,6 +52,7 @@ export type Passport = {
   lastReviewedAt?: string;
   nextReviewAt?: string;
   reviewPeriodDays?: number;
+  visibilityGroupId: string;
 };
 
 export type MaterialVersion = {
@@ -288,6 +289,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-75)),
       nextReviewAt: iso(days(-5)),
       reviewPeriodDays: 90,
+      visibilityGroupId: "g-base",
       relatedLinks: [
         { label: "Заявка в ServiceDesk", url: "https://example.local/servicedesk" },
       ],
@@ -331,6 +333,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-6)),
       nextReviewAt: iso(days(24)),
       reviewPeriodDays: 30,
+      visibilityGroupId: "g-hr-confidential",
     },
     content: {
       kind: "page",
@@ -378,6 +381,7 @@ export const materials: MaterialVersion[] = [
       sectionId: "sub-accounts",
       legalEntity: "ООО «Альфа" + "»",
       branch: "Москва",
+      visibilityGroupId: "g-base",
     },
     content: {
       kind: "file",

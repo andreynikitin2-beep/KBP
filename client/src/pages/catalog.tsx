@@ -12,7 +12,7 @@ import { catalog } from "@/lib/mockData";
 import { withinScope } from "@/lib/kbLogic";
 
 export default function Catalog() {
-  const { me, materials } = useKB();
+  const { me, visibleMaterials: materials } = useKB();
   const [q, setQ] = useState("");
 
   const sections = useMemo(() => catalog.filter((n) => n.type === "section"), []);
@@ -172,6 +172,7 @@ export default function Catalog() {
                   <li>• По роли (RBAC)</li>
                   <li>• По юр.лицу и филиалу</li>
                   <li>• По разделам</li>
+                  <li>• По группам видимости</li>
                 </ul>
               </div>
               <div className="rounded-2xl border bg-muted/30 p-4">

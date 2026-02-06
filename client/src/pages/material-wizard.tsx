@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { catalog, demoUsers } from "@/lib/mockData";
+import { catalog, demoUsers, visibilityGroups } from "@/lib/mockData";
 import type { Criticality, MaterialVersion } from "@/lib/mockData";
 import { getSectionPath, validatePassport } from "@/lib/kbLogic";
 
@@ -34,6 +34,7 @@ export default function MaterialWizard() {
   const [sectionId, setSectionId] = useState("");
   const [ownerId, setOwnerId] = useState(me.id);
   const [deputyId, setDeputyId] = useState<string | undefined>(undefined);
+  const [visibilityGroupId, setVisibilityGroupId] = useState("g-base");
   const [tags, setTags] = useState("hr, отпуск");
   const [contentKind, setContentKind] = useState<"file" | "page">("file");
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
@@ -75,6 +76,7 @@ export default function MaterialWizard() {
     lastReviewedAt: new Date().toISOString(),
     nextReviewAt: computedNextReview,
     reviewPeriodDays: periodRow?.days,
+    visibilityGroupId,
   };
 
   const missing = useMemo(() => validatePassport(passportDraft), [passportDraft]);
@@ -193,6 +195,27 @@ export default function MaterialWizard() {
                           ))}
                         </SelectContent>
                       </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label>Группа видимости</Label>
+                    <Select value={visibilityGroupId} onValueChange={(v) => setVisibilityGroupId(v)}>
+                      <SelectTrigger data-testid="select-visibility-group" className="mt-1 rounded-xl">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {visibilityGroups.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.title}{g.isSystem ? " (все пользователи)" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Если группа ≠ «Базовая», материал видят только участники группы
+                    </div>
                   </div>
                 </div>
 

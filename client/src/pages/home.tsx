@@ -64,7 +64,7 @@ function StatCard({
 }
 
 function MaterialCard({ id }: { id: string }) {
-  const { materials } = useKB();
+  const { visibleMaterials: materials } = useKB();
   const m = materials.find((x) => x.materialId === id) || materials.find((x) => x.id === id);
   if (!m) return null;
   const overdue = isOverdue(m);
@@ -111,12 +111,12 @@ function MaterialCard({ id }: { id: string }) {
 }
 
 export default function Home() {
-  const { me, materials, autoDailyCheck } = useKB();
+  const { me, visibleMaterials, autoDailyCheck } = useKB();
   const [q, setQ] = useState("");
 
   const visible = useMemo(() => {
-    return materials.filter((m) => m.passport.legalEntity === me.legalEntity && m.passport.branch === me.branch);
-  }, [materials, me]);
+    return visibleMaterials.filter((m) => m.passport.legalEntity === me.legalEntity && m.passport.branch === me.branch);
+  }, [visibleMaterials, me]);
 
   const kpis = useMemo(() => computeKpis(visible, demoUsers), [visible]);
 
