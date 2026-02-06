@@ -1,6 +1,23 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ArrowRight, Clock, FileText, Flame, Sparkles, TriangleAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  Bell,
+  BookOpen,
+  CheckCircle2,
+  Clock,
+  Edit3,
+  FileText,
+  GitPullRequest,
+  PlusCircle,
+  RefreshCw,
+  Search,
+  Settings,
+  Sparkles,
+  TriangleAlert,
+} from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,65 +26,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useKB } from "@/lib/kbStore";
-import { demoUsers, materials as seedMaterials } from "@/lib/mockData";
+import { demoUsers } from "@/lib/mockData";
 import { computeKpis, daysToNextReview, isOverdue, searchMaterials } from "@/lib/kbLogic";
-
-function StatCard({
-  title,
-  value,
-  hint,
-  icon,
-  testid,
-  progress,
-  color = "primary",
-}: {
-  title: string;
-  value: string;
-  hint: string;
-  icon: React.ReactNode;
-  testid: string;
-  progress: number;
-  color?: "primary" | "destructive" | "warning" | "info";
-}) {
-  const colorMap = {
-    primary: "bg-primary",
-    destructive: "bg-destructive",
-    warning: "bg-orange-500",
-    info: "bg-blue-400",
-  };
-
-  return (
-    <Card className="kb-noise border-none shadow-sm">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</div>
-            <div className="mt-2 text-3xl font-bold tracking-tight" data-testid={`${testid}-value`}>
-              {value}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
-          </div>
-          <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">{icon}</div>
-        </div>
-        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div 
-            className={`h-full transition-all ${colorMap[color]}`} 
-            style={{ width: `${progress}%` }} 
-          />
-        </div>
-        <div className="mt-1 flex justify-end text-[10px] font-medium text-muted-foreground">
-          {progress.toFixed(1)}%
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
 
 function MaterialCard({ id }: { id: string }) {
   const { visibleMaterials: materials } = useKB();
   const m = materials.find((x) => x.materialId === id) || materials.find((x) => x.id === id);
   if (!m) return null;
-  const overdue = isOverdue(m);
   const due = daysToNextReview(m);
 
   return (
@@ -100,7 +65,7 @@ function MaterialCard({ id }: { id: string }) {
             </div>
           </div>
           <Link href={`/materials/${m.materialId}`}>
-            <Button size="icon" variant="ghost" className="rounded-full h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5">
+            <Button size="icon" variant="ghost" className="rounded-full h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5" data-testid={`button-open-${m.materialId}`}>
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
@@ -110,27 +75,99 @@ function MaterialCard({ id }: { id: string }) {
   );
 }
 
+function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
+  const { materials } = useKB();
+  const m = materials.find((x) => x.materialId === id) || materials.find((x) => x.id === id);
+  if (!m) return null;
+
+  return (
+    <Link href={`/materials/${m.materialId}`}>
+      <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group" data-testid={`row-material-${m.materialId}`}>
+        <div className="h-8 w-8 rounded flex items-center justify-center bg-muted/80 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold leading-tight line-clamp-1">{m.passport.title}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            {label || m.status} · {m.passport.criticality}
+          </div>
+        </div>
+        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+      </div>
+    </Link>
+  );
+}
+
 export default function Home() {
-  const { me, visibleMaterials, autoDailyCheck } = useKB();
+  const { me, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck } = useKB();
   const [q, setQ] = useState("");
 
-  const visible = useMemo(() => {
-    return visibleMaterials.filter((m) => m.passport.legalEntity === me.legalEntity && m.passport.branch === me.branch);
-  }, [visibleMaterials, me]);
+  const isAuthor = me.roles.includes("Автор");
+  const isOwner = me.roles.includes("Владелец");
+  const isDeputy = me.roles.includes("Заместитель владельца");
+  const isAdmin = me.roles.includes("Администратор");
+  const isOwnerOrDeputy = isOwner || isDeputy;
 
-  const kpis = useMemo(() => computeKpis(visible, demoUsers), [visible]);
+  const kpis = useMemo(() => computeKpis(visibleMaterials, demoUsers), [visibleMaterials]);
 
-  const results = useMemo(() => searchMaterials(visible, q), [visible, q]);
+  const myDrafts = useMemo(() =>
+    allMaterials.filter((m) => m.createdBy === me.id && m.status === "Черновик"),
+    [allMaterials, me.id],
+  );
 
-  const popular = useMemo(() => [...visible].sort((a, b) => b.stats.views - a.stats.views).slice(0, 3), [visible]);
-  const newest = useMemo(() => [...visible].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, 3), [visible]);
-  const overdue = useMemo(() => visible.filter(isOverdue).slice(0, 6), [visible]);
-  const soon = useMemo(
-    () => visible.filter((m) => {
-      const d = daysToNextReview(m);
-      return d !== null && d >= 0 && d <= 14 && !isOverdue(m);
-    }),
-    [visible],
+  const awaitingApproval = useMemo(() =>
+    allMaterials.filter((m) =>
+      m.status === "На согласовании" && (m.passport.ownerId === me.id || m.passport.deputyId === me.id),
+    ),
+    [allMaterials, me.id],
+  );
+
+  const myOnReview = useMemo(() =>
+    allMaterials.filter((m) =>
+      m.status === "На пересмотре" && (m.passport.ownerId === me.id || m.passport.deputyId === me.id),
+    ),
+    [allMaterials, me.id],
+  );
+
+  const roleModuleIds = useMemo(() => {
+    const ids = new Set<string>();
+    myDrafts.forEach((m) => ids.add(m.id));
+    awaitingApproval.forEach((m) => ids.add(m.id));
+    myOnReview.forEach((m) => ids.add(m.id));
+    return ids;
+  }, [myDrafts, awaitingApproval, myOnReview]);
+
+  const showcaseMaterials = useMemo(() =>
+    visibleMaterials.filter((m) => !roleModuleIds.has(m.id)),
+    [visibleMaterials, roleModuleIds],
+  );
+
+  const results = useMemo(() => searchMaterials(showcaseMaterials, q), [showcaseMaterials, q]);
+
+  const popular = useMemo(() =>
+    [...showcaseMaterials].filter((m) => m.status === "Опубликовано").sort((a, b) => b.stats.views - a.stats.views).slice(0, 4),
+    [showcaseMaterials],
+  );
+  const newest = useMemo(() =>
+    [...showcaseMaterials].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, 4),
+    [showcaseMaterials],
+  );
+
+  const myRfcs = useMemo(() =>
+    rfcs.filter((r) => r.assignedTo === me.id && (r.status === "Новый" || r.status === "В работе")),
+    [rfcs, me.id],
+  );
+
+  const overdueAll = useMemo(() => allMaterials.filter(isOverdue), [allMaterials]);
+
+  const failedNotifications = useMemo(() =>
+    notifications.filter((n) => n.status === "FAILED"),
+    [notifications],
+  );
+
+  const withoutOwner = useMemo(() =>
+    allMaterials.filter((m) => m.status !== "Архив" && !m.passport.ownerId),
+    [allMaterials],
   );
 
   return (
@@ -140,135 +177,293 @@ export default function Home() {
       onSearch={setQ}
       actions={
         <div className="flex items-center gap-2">
-           <Button
-            data-testid="button-run-daily-check-outline"
-            variant="outline"
-            className="rounded-lg h-9 border-[#a3e635] text-[#65a30d] hover:bg-[#a3e635]/10 font-bold text-xs"
-            onClick={() => autoDailyCheck()}
-          >
-            Запустить ежедневную проверку
-          </Button>
+          {isAdmin && (
+            <Button
+              data-testid="button-run-daily-check"
+              variant="outline"
+              className="rounded-lg h-9 border-[#a3e635] text-[#65a30d] hover:bg-[#a3e635]/10 font-bold text-xs"
+              onClick={() => autoDailyCheck()}
+            >
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              Ежедневная проверка
+            </Button>
+          )}
         </div>
       }
     >
-      <div className="grid gap-4 md:grid-cols-12">
-        <div className="md:col-span-8">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <StatCard
-              title="Активных материалов"
-              value={`${kpis.totalActive}`}
-              hint="В базе 640 тыс. файлов"
-              icon={<FileText className="h-4 w-4" />}
-              testid="kpi-active"
-              progress={100}
-              color="primary"
-            />
-            <StatCard
-              title="Просрочено"
-              value={`${kpis.overdueCount}`}
-              hint={`Доля ${(kpis.overdueShare * 100).toFixed(0)}%`}
-              icon={<TriangleAlert className="h-4 w-4" />}
-              testid="kpi-overdue"
-              progress={kpis.overdueShare * 100}
-              color="destructive"
-            />
-            <StatCard
-              title="Без владельца"
-              value={`${kpis.withoutOwnerCount}`}
-              hint="Нулей кома‑первая паспорта"
-              icon={<Flame className="h-4 w-4" />}
-              testid="kpi-no-owner"
-              progress={1.3}
-              color="warning"
-            />
-            <StatCard
-              title="Без заместителя"
-              value={`${kpis.withoutDeputyCount}`}
-              hint="Рост эскалации и автопроводов"
-              icon={<Clock className="h-4 w-4" />}
-              testid="kpi-no-deputy"
-              progress={7.0}
-              color="info"
-            />
-          </div>
+      <div className="grid gap-4 lg:grid-cols-12">
+        <div className="lg:col-span-8 space-y-4">
 
-          <Card className="mt-4 overflow-hidden">
+          <Card className="overflow-hidden" data-testid="card-showcase">
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <CardTitle className="text-base">Витрины</CardTitle>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Витрина материалов
+                  </CardTitle>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    Новое, популярное, просроченное и скоро на пересмотр.
+                    Новое и популярное из доступных вам материалов.
                   </div>
                 </div>
-                <div className="relative w-full md:w-[360px]">
+                <div className="relative w-full md:w-[320px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     data-testid="input-showcase-search"
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder="Быстрый поиск по витринам…"
-                    className="rounded-2xl"
+                    placeholder="Поиск по материалам…"
+                    className="pl-9 rounded-xl"
                   />
                 </div>
               </div>
             </CardHeader>
             <Separator />
             <CardContent className="p-4">
-              <Tabs defaultValue="new" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger data-testid="tab-new" value="new">
-                    Новое
-                  </TabsTrigger>
-                  <TabsTrigger data-testid="tab-popular" value="popular">
-                    Популярное
-                  </TabsTrigger>
-                  <TabsTrigger data-testid="tab-overdue" value="overdue">
-                    Просрочено
-                  </TabsTrigger>
-                  <TabsTrigger data-testid="tab-soon" value="soon">
-                    Скоро пересмотр
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="new" className="mt-4 space-y-3">
-                  {(q ? results : newest).map((m) => (
+              {q ? (
+                <div className="space-y-3">
+                  <div className="text-sm text-muted-foreground mb-2">
+                    Найдено: {results.length}
+                  </div>
+                  {results.length ? results.slice(0, 6).map((m) => (
                     <MaterialCard key={m.id} id={m.id} />
-                  ))}
-                </TabsContent>
-                <TabsContent value="popular" className="mt-4 space-y-3">
-                  {(q ? results : popular).map((m) => (
-                    <MaterialCard key={m.id} id={m.id} />
-                  ))}
-                </TabsContent>
-                <TabsContent value="overdue" className="mt-4 space-y-3">
-                  {(q ? results.filter(isOverdue) : overdue).length ? (
-                    (q ? results.filter(isOverdue) : overdue).map((m) => <MaterialCard key={m.id} id={m.id} />)
-                  ) : (
-                    <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-overdue">
-                      Просроченных материалов нет.
+                  )) : (
+                    <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-search">
+                      Ничего не найдено.
                     </div>
                   )}
-                </TabsContent>
-                <TabsContent value="soon" className="mt-4 space-y-3">
-                  {(q ? results : soon).length ? (
-                    (q ? results : soon).map((m) => <MaterialCard key={m.id} id={m.id} />)
-                  ) : (
-                    <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-soon">
-                      Нет материалов со скорым пересмотром.
-                    </div>
-                  )}
-                </TabsContent>
-              </Tabs>
+                </div>
+              ) : (
+                <Tabs defaultValue="new" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger data-testid="tab-new" value="new">Новое</TabsTrigger>
+                    <TabsTrigger data-testid="tab-popular" value="popular">Популярное</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="new" className="mt-4 space-y-3">
+                    {newest.map((m) => (
+                      <MaterialCard key={m.id} id={m.id} />
+                    ))}
+                  </TabsContent>
+                  <TabsContent value="popular" className="mt-4 space-y-3">
+                    {popular.map((m) => (
+                      <MaterialCard key={m.id} id={m.id} />
+                    ))}
+                  </TabsContent>
+                </Tabs>
+              )}
             </CardContent>
           </Card>
+
+          {isAuthor && (
+            <Card data-testid="card-author-module">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Edit3 className="h-4 w-4 text-blue-500" />
+                    Мои черновики
+                  </CardTitle>
+                  <Link href="/materials/new">
+                    <Button data-testid="button-create-material" size="sm" className="rounded-xl h-8 bg-blue-600 hover:bg-blue-700">
+                      <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
+                      Создать
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {myDrafts.length ? (
+                  <div className="space-y-1">
+                    {myDrafts.map((m) => (
+                      <CompactMaterialRow key={m.id} id={m.id} label="Черновик" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border bg-muted/30 p-4 text-sm text-muted-foreground" data-testid="empty-drafts">
+                    У вас нет черновиков. Создайте новый материал.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {isOwnerOrDeputy && (
+            <Card data-testid="card-owner-module">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Мои задачи (владелец / заместитель)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-[10px]">{awaitingApproval.length}</Badge>
+                    <span className="text-sm font-semibold">Ждут согласования</span>
+                  </div>
+                  {awaitingApproval.length ? (
+                    <div className="space-y-1">
+                      {awaitingApproval.map((m) => (
+                        <CompactMaterialRow key={m.id} id={m.id} label="На согласовании" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-awaiting">Нет материалов на согласовании.</div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
+                    <span className="text-sm font-semibold">На пересмотре</span>
+                  </div>
+                  {myOnReview.length ? (
+                    <div className="space-y-1">
+                      {myOnReview.map((m) => (
+                        <CompactMaterialRow key={m.id} id={m.id} label="Требует пересмотра" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-review">Нет материалов на пересмотре.</div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
+                    <span className="text-sm font-semibold">Мои RFC (запросы на изменение)</span>
+                  </div>
+                  {myRfcs.length ? (
+                    <div className="space-y-1">
+                      {myRfcs.map((r) => {
+                        const mat = allMaterials.find((m) => m.materialId === r.materialId);
+                        return (
+                          <Link key={r.id} href={`/materials/${r.materialId}`}>
+                            <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group" data-testid={`row-rfc-${r.id}`}>
+                              <div className="h-8 w-8 rounded flex items-center justify-center bg-orange-100 text-orange-600 group-hover:bg-orange-200 transition-colors shrink-0">
+                                <GitPullRequest className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-semibold leading-tight line-clamp-1">{r.title}</div>
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  {r.type} · {r.status} · {mat?.passport.title || r.materialId}
+                                </div>
+                              </div>
+                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-rfcs">Нет активных RFC.</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card data-testid="card-admin-module">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-purple-600" />
+                    Здоровье базы знаний
+                  </CardTitle>
+                  <Link href="/admin">
+                    <Button data-testid="button-admin-panel" size="sm" variant="outline" className="rounded-xl h-8">
+                      <Settings className="mr-1.5 h-3.5 w-3.5" />
+                      Админка
+                    </Button>
+                  </Link>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Активных</div>
+                    <div className="text-2xl font-bold mt-1" data-testid="kpi-active-value">{kpis.totalActive}</div>
+                  </div>
+                  <div className="rounded-xl border p-3 border-destructive/30">
+                    <div className="text-xs text-destructive uppercase tracking-wider">Просрочено</div>
+                    <div className="text-2xl font-bold mt-1 text-destructive" data-testid="kpi-overdue-value">{overdueAll.length}</div>
+                  </div>
+                  <div className="rounded-xl border p-3 border-orange-300">
+                    <div className="text-xs text-orange-600 uppercase tracking-wider">Без владельца</div>
+                    <div className="text-2xl font-bold mt-1 text-orange-600" data-testid="kpi-no-owner-value">{withoutOwner.length}</div>
+                  </div>
+                  <div className="rounded-xl border p-3">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">Без заместителя</div>
+                    <div className="text-2xl font-bold mt-1" data-testid="kpi-no-deputy-value">{kpis.withoutDeputyCount}</div>
+                  </div>
+                </div>
+
+                {(overdueAll.length > 0 || failedNotifications.length > 0) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3">
+                      {overdueAll.length > 0 && (
+                        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <TriangleAlert className="h-4 w-4 text-destructive" />
+                            <span className="text-sm font-semibold text-destructive">Просроченные материалы ({overdueAll.length})</span>
+                          </div>
+                          <div className="space-y-1">
+                            {overdueAll.slice(0, 3).map((m) => (
+                              <CompactMaterialRow key={m.id} id={m.id} label={`Просрочен на ${Math.abs(daysToNextReview(m) || 0)} дн.`} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {failedNotifications.length > 0 && (
+                        <div className="rounded-xl border border-orange-300 bg-orange-50/50 p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <AlertTriangle className="h-4 w-4 text-orange-600" />
+                            <span className="text-sm font-semibold text-orange-700">Ошибки уведомлений ({failedNotifications.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {failedNotifications.slice(0, 3).map((n) => (
+                              <div key={n.id} className="text-xs text-muted-foreground flex items-start gap-2">
+                                <Bell className="h-3 w-3 mt-0.5 text-orange-500 shrink-0" />
+                                <span className="line-clamp-1">{n.subject}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <Separator />
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Последние уведомления</div>
+                  <div className="space-y-1.5">
+                    {notifications.slice(0, 4).map((n) => (
+                      <div key={n.id} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <Badge variant={n.status === "FAILED" ? "destructive" : "secondary"} className="text-[9px] px-1.5 py-0 shrink-0 mt-0.5">
+                          {n.status}
+                        </Badge>
+                        <span className="line-clamp-1 flex-1">{n.subject}</span>
+                        <span className="text-[10px] shrink-0">{new Date(n.at).toLocaleDateString("ru-RU")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
-        <div className="md:col-span-4">
+        <div className="lg:col-span-4">
           <Card className="sticky top-[92px]">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Мой доступ</CardTitle>
-              <div className="mt-1 text-sm text-muted-foreground">
-                Ограничения по юр.лицу/филиалу и роли.
-              </div>
+              <CardTitle className="text-base">Мой профиль</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-2xl border bg-muted/30 p-4">
@@ -293,50 +488,59 @@ export default function Home() {
                 <div className="mt-3 grid gap-2">
                   <Link href="/catalog">
                     <Button data-testid="button-quick-catalog" variant="secondary" className="w-full justify-between rounded-xl">
-                      Каталог
+                      <span className="flex items-center gap-2"><BookOpen className="h-4 w-4" /> Каталог</span>
                       <ArrowRight className="h-4 w-4" />
                     </Button>
                   </Link>
-                  <Link href="/materials/new">
-                    <Button data-testid="button-quick-create" className="w-full justify-between rounded-lg bg-[#0891b2] hover:bg-[#0e7490] text-white font-bold h-10">
-                      Создать материал
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
-                  <Link href="/admin">
-                    <Button data-testid="button-quick-admin" variant="outline" className="w-full justify-between rounded-xl">
-                      Админ‑раздел
-                      <ArrowRight className="h-4 w-4" />
-                    </Button>
-                  </Link>
+                  {(isAuthor || isOwner || isAdmin) && (
+                    <Link href="/materials/new">
+                      <Button data-testid="button-quick-create" className="w-full justify-between rounded-lg bg-[#0891b2] hover:bg-[#0e7490] text-white font-bold h-10">
+                        <span className="flex items-center gap-2"><PlusCircle className="h-4 w-4" /> Создать материал</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
+                  {isAdmin && (
+                    <Link href="/admin">
+                      <Button data-testid="button-quick-admin" variant="outline" className="w-full justify-between rounded-xl">
+                        <span className="flex items-center gap-2"><Settings className="h-4 w-4" /> Админ‑раздел</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               </div>
 
-              <div className="rounded-2xl border bg-muted/10 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Недавно просмотренные</div>
-                <div className="mt-3 space-y-2">
-                   {[
-                     { t: "Инструкция по работе с CRM", a: "2 часа назад" },
-                     { t: "Политика безопасности данных", a: "5 часов назад" },
-                     { t: "Регламент согласования документов", a: "Вчера" }
-                   ].map((doc, i) => (
-                     <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                        <div className="h-8 w-8 rounded flex items-center justify-center bg-muted/80 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                           <FileText className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold leading-tight line-clamp-1">{doc.t}</div>
-                          <div className="text-[10px] text-muted-foreground">{doc.a}</div>
-                        </div>
-                     </div>
-                   ))}
+              {isOwnerOrDeputy && (
+                <div className="rounded-2xl border bg-muted/30 p-4">
+                  <div className="text-xs font-medium text-muted-foreground mb-3">Сводка задач</div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">На согласовании</span>
+                      <Badge variant={awaitingApproval.length ? "default" : "secondary"} className="text-[10px]">{awaitingApproval.length}</Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">На пересмотре</span>
+                      <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Активные RFC</span>
+                      <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="rounded-2xl border bg-muted/10 p-4">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Подсказка для МУР</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Подсказка</div>
                 <div className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                  Поиск индексирует название/паспорт/теги и извлечённый текст файла при загрузке
+                  {isAdmin
+                    ? "Вы видите все модули. Используйте «Ежедневную проверку» для обнаружения просроченных материалов."
+                    : isOwnerOrDeputy
+                    ? "Следите за задачами: согласуйте черновики и пересмотрите просроченные материалы."
+                    : isAuthor
+                    ? "Создавайте материалы и отправляйте на согласование владельцу раздела."
+                    : "Используйте поиск и каталог для навигации по базе знаний."}
                 </div>
               </div>
             </CardContent>
