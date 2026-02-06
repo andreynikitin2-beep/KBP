@@ -74,6 +74,43 @@ export function canForcePublish(user: User) {
   return user.roles.includes("Администратор");
 }
 
+export function isCreatorOwnerOrDeputy(user: User, version: MaterialVersion) {
+  return version.passport.ownerId === user.id || version.passport.deputyId === user.id;
+}
+
+export function canPublishDirectly(user: User, version: MaterialVersion) {
+  if (version.status !== "Черновик") return false;
+  if (user.roles.includes("Администратор")) return true;
+  const isOwnerOrDeputy = isCreatorOwnerOrDeputy(user, version);
+  const isCreator = version.createdBy === user.id;
+  return isCreator && isOwnerOrDeputy;
+}
+
+export function canSubmitForApproval(user: User, version: MaterialVersion) {
+  if (version.status !== "Черновик") return false;
+  const isCreator = version.createdBy === user.id;
+  const isOwner = version.passport.ownerId === user.id;
+  const isDeputy = version.passport.deputyId === user.id;
+  const isAdmin = user.roles.includes("Администратор");
+  return isCreator || isOwner || isDeputy || isAdmin;
+}
+
+export function canApproveAndPublish(user: User, version: MaterialVersion) {
+  if (version.status !== "На согласовании") return false;
+  const isOwner = version.passport.ownerId === user.id;
+  const isDeputy = version.passport.deputyId === user.id;
+  const isAdmin = user.roles.includes("Администратор");
+  return isOwner || isDeputy || isAdmin;
+}
+
+export function canReturnForRevision(user: User, version: MaterialVersion) {
+  if (version.status !== "На согласовании") return false;
+  const isOwner = version.passport.ownerId === user.id;
+  const isDeputy = version.passport.deputyId === user.id;
+  const isAdmin = user.roles.includes("Администратор");
+  return isOwner || isDeputy || isAdmin;
+}
+
 export function validatePassport(passport: MaterialVersion["passport"]) {
   const missing: string[] = [];
   if (!passport.title?.trim()) missing.push("Название");
