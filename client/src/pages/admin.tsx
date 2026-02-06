@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, Mail, Shield, SlidersHorizontal, Table2 } from "lucide-react";
+import { Download, Mail, Shield, SlidersHorizontal, Table2, Users } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { demoUsers } from "@/lib/mockData";
+import { demoUsers, visibilityGroups } from "@/lib/mockData";
 import { computeKpis, isOverdue } from "@/lib/kbLogic";
 
 function csvEscape(v: string) {
@@ -91,12 +91,15 @@ export default function Admin() {
           <Separator />
           <CardContent className="p-4">
             <Tabs defaultValue="policies" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger data-testid="tab-admin-policies" value="policies">
                   Политики
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-rights" value="rights">
                   Права
+                </TabsTrigger>
+                <TabsTrigger data-testid="tab-admin-groups" value="groups">
+                  Группы
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-reports" value="reports">
                   Отчёты
@@ -105,6 +108,62 @@ export default function Admin() {
                   Email‑журнал
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="groups" className="mt-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card className="p-4">
+                    <div className="text-sm font-semibold">Группы видимости</div>
+                    <div className="mt-3 space-y-3">
+                      {visibilityGroups.map(g => (
+                        <div key={g.id} className="rounded-2xl border bg-muted/20 p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-bold text-sm">{g.title}</span>
+                              {g.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
+                            </div>
+                            <Badge variant="outline" className="text-[10px]">{g.memberIds.length} уч.</Badge>
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {g.isSystem ? "Нельзя удалить или изменить состав" : "Ручное управление составом"}
+                          </div>
+                          {!g.isSystem && (
+                            <div className="mt-3 flex gap-2">
+                              <Button size="sm" variant="outline" className="h-7 text-[10px] rounded-lg">Изменить состав</Button>
+                              <Button size="sm" variant="ghost" className="h-7 text-[10px] rounded-lg text-destructive">Удалить</Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <Button className="w-full rounded-xl" variant="outline">
+                        + Создать группу
+                      </Button>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4">
+                    <div className="text-sm font-semibold">Политика групп</div>
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Группы используются для ограничения видимости разделов каталога и материалов.
+                    </div>
+                    <Separator className="my-3" />
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-1 h-2 w-2 rounded-full bg-primary" />
+                        <div className="text-xs">
+                          <span className="font-bold">Базовая:</span> всегда включает всех пользователей. Используется для общедоступного контента.
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="mt-1 h-2 w-2 rounded-full bg-orange-500" />
+                        <div className="text-xs">
+                          <span className="font-bold">Изоляция:</span> группы полностью независимы от AD-групп и управляются только вручную.
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </TabsContent>
 
               <TabsContent value="policies" className="mt-4">
                 <div className="grid gap-4 md:grid-cols-2">

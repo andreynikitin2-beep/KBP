@@ -178,6 +178,28 @@ export const demoUsers: User[] = [
   },
 ];
 
+export type VisibilityGroup = {
+  id: string;
+  title: string;
+  isSystem: boolean;
+  memberIds: string[];
+};
+
+export const visibilityGroups: VisibilityGroup[] = [
+  {
+    id: "g-base",
+    title: "Базовая",
+    isSystem: true,
+    memberIds: demoUsers.map((u) => u.id),
+  },
+  {
+    id: "g-hr-confidential",
+    title: "HR Конфиденциально",
+    isSystem: false,
+    memberIds: ["u-owner", "u-kbadmin"],
+  },
+];
+
 export const catalog: CatalogNode[] = [
   {
     id: "sec-hr",
