@@ -39,7 +39,8 @@ Preferred communication style: Simple, everyday language.
 
 **Domain Logic** (`kbLogic.ts`):
 - Role-based access control (Читатель, Автор, Владелец, Заместитель владельца, Администратор)
-- Visibility scoping by legal entity, branch, and roles
+- Visibility scoping by roles and visibility groups (legal entity is metadata only, no access restrictions)
+- Branches/locations removed entirely (Batch 13)
 - Actuality confirmation workflow
 - Material status lifecycle: Черновик → На согласовании → Опубликовано → На пересмотре → Архив
 - Overdue detection based on review periods and criticality levels
