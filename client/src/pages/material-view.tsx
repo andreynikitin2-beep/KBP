@@ -214,7 +214,7 @@ export default function MaterialView() {
                 <FileUp className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-blue-700/80" data-testid="text-approval-title">
+                <div className="font-semibold text-[#07268fcc]" data-testid="text-approval-title">
                   {current.status === "Черновик" ? "Черновик — ожидает публикации" : "На согласовании — ожидает решения"}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground" data-testid="text-approval-hint">
