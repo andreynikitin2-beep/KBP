@@ -1046,11 +1046,41 @@ export default function MaterialView() {
                                   <div className="text-sm font-semibold" data-testid="text-file-name">
                                     {dv.content.file?.name}
                                   </div>
+                                  {isViewingOldVersion && (
+                                    <div className="text-xs text-amber-600 font-medium">
+                                      Скачается как: {(() => {
+                                        const n = dv.content.file?.name || "file";
+                                        const ext = n.includes(".") ? "." + n.split(".").pop() : "";
+                                        const base = n.includes(".") ? n.slice(0, n.lastIndexOf(".")) : n;
+                                        return `${base} версия №${dv.version} НЕАКТУАЛЬНАЯ${ext}`;
+                                      })()}
+                                    </div>
+                                  )}
                                   <div className="text-xs text-muted-foreground">Полнотекстовый индекс: извлечённый текст</div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <Button data-testid="button-download" variant="secondary" className="rounded-xl">
+                                <Button
+                                  data-testid="button-download"
+                                  variant="secondary"
+                                  className="rounded-xl"
+                                  onClick={() => {
+                                    const originalName = dv.content.file?.name || "file";
+                                    const ext = originalName.includes(".") ? "." + originalName.split(".").pop() : "";
+                                    const baseName = originalName.includes(".") ? originalName.slice(0, originalName.lastIndexOf(".")) : originalName;
+                                    const downloadName = isViewingOldVersion
+                                      ? `${baseName} версия №${dv.version} НЕАКТУАЛЬНАЯ${ext}`
+                                      : originalName;
+                                    const blob = new Blob([dv.content.file?.extractedText || ""], { type: "application/octet-stream" });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement("a");
+                                    a.href = url;
+                                    a.download = downloadName;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                    toast({ title: "Скачивание", description: `Файл: ${downloadName}` });
+                                  }}
+                                >
                                   <FileDown className="mr-2 h-4 w-4" />
                                   Скачать
                                 </Button>
