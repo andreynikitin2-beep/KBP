@@ -30,6 +30,15 @@ Preferred communication style: Simple, everyday language.
 - Logic functions: `canPublishDirectly`, `canSubmitForApproval`, `canApproveAndPublish`, `canReturnForRevision` in `kbLogic.ts`
 - Store actions: `submitForApproval`, `publishDirect`, `approveAndPublish`, `returnForRevision` in `kbStore.tsx`
 
+**WYSIWYG Page Editor (Batch 12):**
+- Rich text editor based on Tiptap (free, open-source): `client/src/components/kb/RichEditor.tsx`
+- Supported features: headings (H1-H3), bold/italic/underline/strike, highlight, blockquote ("Важно" callout), code blocks, bullet/ordered lists, task lists (checklists), tables (with dynamic row/column management), images (base64), links, text alignment, horizontal rules
+- Word import: .docx files imported via mammoth.js with embedded image extraction (base64); paste-cleaning strips Word-specific markup (MSO styles, spans, fonts)
+- Page content viewer: `client/src/components/kb/PageViewer.tsx` — renders HTML with auto-generated heading anchors, collapsible TOC (table of contents), per-heading "copy link" buttons
+- Deep links: headings auto-get `id` attributes via slugify; URL hash scrolls to heading on page load; heading :target highlighted with accent background
+- Content model: `MaterialVersion.content.page` stores `{ html: string }` (was blocks array, migrated to HTML in Batch 12)
+- CSS styles for both editor (.tiptap) and viewer (.tiptap-content) in `client/src/index.css`
+
 **Key Pages:**
 - `/` — Home dashboard with KPIs, overdue materials, recent activity
 - `/catalog` — Hierarchical catalog browser with scope-based access control
