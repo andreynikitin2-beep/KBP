@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   FilePlus2,
+  Heart,
   LayoutGrid,
   LockKeyhole,
   Search,
@@ -23,11 +24,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useKB } from "@/lib/kbStore";
 
-const nav = [
-  { href: "/", label: "Главная", icon: LayoutGrid },
-  { href: "/catalog", label: "Каталог", icon: BookOpen },
-  { href: "/materials/new", label: "Создать", icon: FilePlus2 },
-  { href: "/admin", label: "Администрирование", icon: Settings2 },
+const allNav = [
+  { href: "/", label: "Главная", icon: LayoutGrid, roles: null },
+  { href: "/catalog", label: "Каталог", icon: BookOpen, roles: null },
+  { href: "/subscriptions", label: "Мои подписки", icon: Heart, roles: null },
+  { href: "/materials/new", label: "Создать", icon: FilePlus2, roles: ["Автор", "Владелец", "Заместитель владельца", "Администратор"] as string[] },
+  { href: "/admin", label: "Администрирование", icon: Settings2, roles: ["Администратор"] as string[] },
 ];
 
 function RolePills() {
@@ -171,7 +173,12 @@ export function AppShell({
   breadcrumbs?: Breadcrumb[];
 }) {
   const [location] = useLocation();
-  const active = useMemo(() => nav.find((n) => n.href === location)?.href, [location]);
+  const { me } = useKB();
+  const nav = useMemo(
+    () => allNav.filter((n) => n.roles === null || n.roles.some((r) => me.roles.includes(r as any))),
+    [me.roles],
+  );
+  const active = useMemo(() => nav.find((n) => n.href === location)?.href, [nav, location]);
 
   return (
     <div className="min-h-screen kb-hero-grid kb-noise">

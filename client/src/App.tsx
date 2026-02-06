@@ -8,6 +8,7 @@ import Catalog from "@/pages/catalog";
 import MaterialView from "@/pages/material-view";
 import MaterialWizard from "@/pages/material-wizard";
 import Admin from "@/pages/admin";
+import Subscriptions from "@/pages/subscriptions";
 
 import { queryClient } from "./lib/queryClient";
 
@@ -16,6 +17,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/catalog" component={Catalog} />
+      <Route path="/subscriptions" component={Subscriptions} />
       <Route path="/materials/new" component={MaterialWizard} />
       <Route path="/materials/:id" component={MaterialView} />
       <Route path="/admin" component={Admin} />

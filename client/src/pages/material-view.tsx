@@ -8,6 +8,7 @@ import {
   FileText,
   FileUp,
   GitBranch,
+  Heart,
   MessageSquareText,
   ShieldAlert,
   ThumbsDown,
@@ -28,7 +29,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { visibilityGroups } from "@/lib/mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 
 function fmt(iso?: string) {
@@ -40,7 +40,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription } = useKB();
 
   const materialId = params?.id || "";
   const allMaterials = materials;
@@ -471,6 +471,20 @@ export default function MaterialView() {
                     {dueDays < 0 ? `Просрочено на ${Math.abs(dueDays)} дн.` : `Пересмотр через ${dueDays} дн.`}
                   </Badge>
                 ) : null}
+                <button
+                  data-testid="button-toggle-subscription"
+                  className="ml-auto p-1 rounded-full hover:bg-muted/50 transition-colors"
+                  onClick={() => toggleSubscription(current.materialId)}
+                  title={isSubscribed(current.materialId) ? "Отписаться" : "Подписаться"}
+                >
+                  <Heart
+                    className={`h-5 w-5 transition-colors ${
+                      isSubscribed(current.materialId)
+                        ? "fill-red-500 text-red-500"
+                        : "text-muted-foreground/40"
+                    }`}
+                  />
+                </button>
               </div>
             </CardHeader>
             <Separator />

@@ -79,6 +79,10 @@ type Store = {
   updateGroup: (groupId: string, data: { title?: string; memberIds?: string[] }) => { ok: boolean; message?: string };
   deleteGroup: (groupId: string) => { ok: boolean; message?: string };
 
+  subscriptions: string[];
+  toggleSubscription: (materialId: string) => void;
+  isSubscribed: (materialId: string) => boolean;
+
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
@@ -109,8 +113,10 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>(seedCatalog);
   const [policy, setPolicy] = useState<PolicyConfig>(() => policySeed as PolicyConfig);
   const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
+  const [subscriptionMap, setSubscriptionMap] = useState<Record<string, string[]>>({});
 
   const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
+  const mySubscriptions = useMemo(() => subscriptionMap[meId] || [], [subscriptionMap, meId]);
 
   const store = useMemo<Store>(() => {
     const visibleMaterials = materials.filter((m) => canViewMaterial(me, m, groups));
@@ -511,6 +517,18 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
 
+      subscriptions: mySubscriptions,
+      toggleSubscription: (materialId: string) => {
+        setSubscriptionMap((prev) => {
+          const current = prev[meId] || [];
+          const next = current.includes(materialId)
+            ? current.filter((id) => id !== materialId)
+            : [...current, materialId];
+          return { ...prev, [meId]: next };
+        });
+      },
+      isSubscribed: (materialId: string) => mySubscriptions.includes(materialId),
+
       setSectionOwners: (sectionId: string, ownerIds: string[]) => {
         const node = catalogNodes.find((n) => n.id === sectionId);
         if (!node) return { ok: false, message: "Раздел не найден" };
@@ -556,7 +574,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
     };
-  }, [catalogNodes, groups, materials, me, notifications, policy, rfcs, users]);
+  }, [catalogNodes, groups, materials, me, meId, mySubscriptions, notifications, policy, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
