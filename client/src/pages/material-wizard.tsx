@@ -71,7 +71,6 @@ export default function MaterialWizard() {
     ownerId: ownerId || undefined,
     deputyId,
     legalEntity: me.legalEntity,
-    branch: me.branch,
     department: me.department,
     lastReviewedAt: new Date().toISOString(),
     nextReviewAt: computedNextReview,
@@ -415,7 +414,7 @@ export default function MaterialWizard() {
 
               <div className="rounded-2xl border bg-muted/30 p-4">
                 <div className="text-xs font-medium text-muted-foreground">Будет установлено автоматически</div>
-                <div className="mt-2 text-sm">Юр.лицо/филиал: {me.legalEntity} · {me.branch}</div>
+                <div className="mt-2 text-sm">Юридическое лицо: {me.legalEntity}</div>
                 <div className="mt-1 text-sm">Следующий пересмотр: {new Date(computedNextReview).toLocaleDateString("ru-RU")}</div>
               </div>
 

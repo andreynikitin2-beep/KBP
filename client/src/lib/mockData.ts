@@ -20,7 +20,6 @@ export type User = {
   email: string;
   roles: Role[];
   legalEntity: string;
-  branch: string;
   department: string;
   isAvailable: boolean;
 };
@@ -31,8 +30,6 @@ export type CatalogNode = {
   type: "section" | "subsection";
   parentId?: string;
   allowedRoles?: Role[];
-  allowedLegalEntities?: string[];
-  allowedBranches?: string[];
 };
 
 export type Passport = {
@@ -45,7 +42,6 @@ export type Passport = {
   ownerId?: string;
   deputyId?: string;
   legalEntity: string;
-  branch: string;
   department?: string;
   requiredTraining?: boolean;
   relatedLinks?: { label: string; url: string }[];
@@ -113,7 +109,6 @@ export const demoUsers: User[] = [
     email: "reader@demo.local",
     roles: ["Читатель"],
     legalEntity: "ООО «Альфа»",
-    branch: "Москва",
     department: "Операции",
     isAvailable: true,
   },
@@ -123,7 +118,6 @@ export const demoUsers: User[] = [
     email: "author@demo.local",
     roles: ["Автор", "Читатель"],
     legalEntity: "ООО «Альфа»",
-    branch: "Москва",
     department: "Процессы",
     isAvailable: true,
   },
@@ -133,7 +127,6 @@ export const demoUsers: User[] = [
     email: "owner@demo.local",
     roles: ["Владелец", "Автор"],
     legalEntity: "АО «Бета»",
-    branch: "Санкт‑Петербург",
     department: "Качество",
     isAvailable: true,
   },
@@ -143,7 +136,6 @@ export const demoUsers: User[] = [
     email: "deputy@demo.local",
     roles: ["Заместитель владельца"],
     legalEntity: "АО «Бета»",
-    branch: "Санкт‑Петербург",
     department: "Качество",
     isAvailable: false,
   },
@@ -153,7 +145,6 @@ export const demoUsers: User[] = [
     email: "moderator@demo.local",
     roles: ["Администратор"],
     legalEntity: "ООО «Альфа»",
-    branch: "Екатеринбург",
     department: "База знаний",
     isAvailable: true,
   },
@@ -163,7 +154,6 @@ export const demoUsers: User[] = [
     email: "volkov@demo.local",
     roles: ["Автор", "Владелец"],
     legalEntity: "ООО «Альфа»",
-    branch: "Москва",
     department: "Безопасность",
     isAvailable: true,
   },
@@ -173,7 +163,6 @@ export const demoUsers: User[] = [
     email: "kozlova@demo.local",
     roles: ["Читатель", "Автор"],
     legalEntity: "АО «Бета»",
-    branch: "Санкт‑Петербург",
     department: "Финансы",
     isAvailable: true,
   },
@@ -183,7 +172,6 @@ export const demoUsers: User[] = [
     email: "secadmin@demo.local",
     roles: ["Читатель"],
     legalEntity: "ООО «Альфа»",
-    branch: "Москва",
     department: "Безопасность",
     isAvailable: true,
   },
@@ -193,7 +181,6 @@ export const demoUsers: User[] = [
     email: "auditor@demo.local",
     roles: ["Читатель"],
     legalEntity: "АО «Бета»",
-    branch: "Санкт‑Петербург",
     department: "Аудит",
     isAvailable: true,
   },
@@ -232,7 +219,6 @@ export const catalog: CatalogNode[] = [
     id: "sec-hr",
     title: "Кадры и организационные процедуры",
     type: "section",
-    allowedLegalEntities: ["ООО «Альфа»", "АО «Бета»"],
   },
   {
     id: "sub-onb",
@@ -251,7 +237,6 @@ export const catalog: CatalogNode[] = [
     title: "IT и доступы",
     type: "section",
     allowedRoles: ["Автор", "Владелец", "Заместитель владельца", "Администратор", "Читатель"],
-    allowedBranches: ["Москва", "Санкт‑Петербург", "Екатеринбург"],
   },
   {
     id: "sub-vpn",
@@ -269,8 +254,6 @@ export const catalog: CatalogNode[] = [
     id: "sec-qa",
     title: "Качество и регламенты",
     type: "section",
-    allowedLegalEntities: ["АО «Бета»"],
-    allowedBranches: ["Санкт‑Петербург"],
   },
   {
     id: "sub-audit",
@@ -328,7 +311,6 @@ export const materials: MaterialVersion[] = [
       ownerId: "u-owner",
       deputyId: "u-deputy",
       legalEntity: "АО «Бета»",
-      branch: "Санкт‑Петербург",
       department: "Качество",
       lastReviewedAt: iso(days(-75)),
       nextReviewAt: iso(days(-5)),
@@ -372,7 +354,6 @@ export const materials: MaterialVersion[] = [
       sectionId: "sub-leave",
       ownerId: "u-owner",
       legalEntity: "ООО «Альфа»",
-      branch: "Москва",
       department: "Операции",
       lastReviewedAt: iso(days(-6)),
       nextReviewAt: iso(days(24)),
@@ -424,7 +405,6 @@ export const materials: MaterialVersion[] = [
       criticality: "Низкая",
       sectionId: "sub-accounts",
       legalEntity: "ООО «Альфа»",
-      branch: "Москва",
       visibilityGroupId: "g-base",
     },
     content: {
@@ -459,7 +439,6 @@ export const materials: MaterialVersion[] = [
       ownerId: "u-author-owner",
       deputyId: "u-author",
       legalEntity: "ООО «Альфа»",
-      branch: "Москва",
       department: "Процессы",
       lastReviewedAt: iso(days(-3)),
       nextReviewAt: iso(days(177)),
@@ -500,7 +479,6 @@ export const materials: MaterialVersion[] = [
       ownerId: "u-author-owner",
       deputyId: "u-sec",
       legalEntity: "ООО «Альфа»",
-      branch: "Москва",
       department: "Безопасность",
       lastReviewedAt: iso(days(-15)),
       nextReviewAt: iso(days(15)),
@@ -538,7 +516,6 @@ export const materials: MaterialVersion[] = [
       ownerId: "u-owner",
       deputyId: "u-deputy",
       legalEntity: "АО «Бета»",
-      branch: "Санкт‑Петербург",
       department: "Аудит",
       lastReviewedAt: iso(days(-1)),
       nextReviewAt: iso(days(89)),
@@ -577,7 +554,6 @@ export const materials: MaterialVersion[] = [
       ownerId: "u-author-owner",
       deputyId: "u-kbadmin",
       legalEntity: "ООО «Альфа»",
-      branch: "Москва",
       department: "Безопасность",
       lastReviewedAt: iso(days(-45)),
       nextReviewAt: iso(days(-15)),
@@ -614,7 +590,6 @@ export const materials: MaterialVersion[] = [
       sectionId: "sub-compliance",
       ownerId: "u-author-owner",
       legalEntity: "ООО «Альфа»",
-      branch: "Москва",
       department: "Безопасность",
       lastReviewedAt: iso(days(-2)),
       nextReviewAt: iso(days(28)),
@@ -654,7 +629,6 @@ export const materials: MaterialVersion[] = [
       ownerId: "u-owner",
       deputyId: "u-deputy",
       legalEntity: "АО «Бета»",
-      branch: "Санкт‑Петербург",
       department: "Качество",
       lastReviewedAt: iso(days(-10)),
       nextReviewAt: iso(days(170)),
@@ -814,7 +788,6 @@ export const policySeed = {
       roles: null,
       department: "department",
       legalEntity: "company",
-      branch: "physicalDeliveryOfficeName",
     },
   },
 };

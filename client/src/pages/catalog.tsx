@@ -90,7 +90,7 @@ export default function Catalog() {
                             </Badge>
                           ) : (
                             <Badge className="kb-chip" variant="secondary">
-                              Юр.лицо/филиал
+                              Доступно
                             </Badge>
                           )}
                         </div>
@@ -170,7 +170,7 @@ export default function Catalog() {
                 <div className="text-xs font-medium text-muted-foreground">Правила доступа</div>
                 <ul className="mt-2 space-y-1 text-sm">
                   <li>• По роли (RBAC)</li>
-                  <li>• По юр.лицу и филиалу</li>
+
                   <li>• По разделам</li>
                   <li>• По группам видимости</li>
                 </ul>

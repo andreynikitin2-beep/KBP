@@ -6,10 +6,7 @@ export function hasAnyRole(user: User, required?: Role[]) {
 }
 
 export function withinScope(user: User, node: CatalogNode) {
-  const leOk = !node.allowedLegalEntities || node.allowedLegalEntities.includes(user.legalEntity);
-  const brOk = !node.allowedBranches || node.allowedBranches.includes(user.branch);
-  const rlOk = hasAnyRole(user, node.allowedRoles);
-  return leOk && brOk && rlOk;
+  return hasAnyRole(user, node.allowedRoles);
 }
 
 export function findNode(nodes: CatalogNode[], id: string) {
@@ -114,8 +111,7 @@ export function validatePassport(passport: MaterialVersion["passport"]) {
   if (!passport.title?.trim()) missing.push("Название");
   if (!passport.sectionId) missing.push("Раздел/подраздел");
   if (!passport.criticality) missing.push("Критичность");
-  if (!passport.legalEntity) missing.push("Юр.лицо");
-  if (!passport.branch) missing.push("Филиал");
+  if (!passport.legalEntity) missing.push("Юридическое лицо");
   if (!passport.ownerId) missing.push("Владелец");
   if (!passport.nextReviewAt) missing.push("Следующий пересмотр");
   if (!passport.tags || passport.tags.length === 0) missing.push("Теги");

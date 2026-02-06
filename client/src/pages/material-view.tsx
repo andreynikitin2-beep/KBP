@@ -356,7 +356,7 @@ export default function MaterialView() {
                   {current.passport.criticality}
                 </Badge>
                 <Badge className="kb-chip" variant="outline" data-testid="badge-scope">
-                  {current.passport.legalEntity} · {current.passport.branch}
+                  {current.passport.legalEntity}
                 </Badge>
                 {materialGroup && !materialGroup.isSystem && (
                   <Badge className="kb-chip" variant="secondary" data-testid="badge-visibility-group">
@@ -896,7 +896,7 @@ export default function MaterialView() {
                   <div>
                     <div className="text-sm font-semibold">RBAC и доступ</div>
                     <div className="mt-1 text-sm text-muted-foreground">
-                      Просмотр зависит от юр.лица/филиала. Кнопка «Подтвердить актуальность» — только для владельца/заместителя/модератора.
+                      Кнопка «Подтвердить актуальность» — только для владельца/заместителя/модератора.
                     </div>
                   </div>
                 </div>

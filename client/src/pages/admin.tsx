@@ -35,7 +35,7 @@ export default function Admin() {
   const [q, setQ] = useState("");
 
   const scoped = useMemo(
-    () => materials.filter((m) => m.passport.legalEntity === me.legalEntity && m.passport.branch === me.branch),
+    () => materials.filter((m) => m.passport.legalEntity === me.legalEntity),
     [materials, me],
   );
 
@@ -250,7 +250,7 @@ export default function Admin() {
                   <Card className="p-4">
                     <div className="text-sm font-semibold">Политика RBAC</div>
                     <div className="mt-2 text-sm text-muted-foreground">
-                      Роли назначаются только вручную администратором портала. AD-интеграция используется только для атрибутов (филиал, компания).
+                      Роли назначаются только вручную администратором портала. AD-интеграция используется только для атрибутов (компания).
                     </div>
                     <Separator className="my-3" />
                     <div className="space-y-2">

@@ -472,7 +472,7 @@ export default function Home() {
                   {me.displayName}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground" data-testid="text-me-scope">
-                  {me.legalEntity} · {me.branch}
+                  {me.legalEntity}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {me.roles.map((r) => (

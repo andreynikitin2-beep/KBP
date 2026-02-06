@@ -54,7 +54,7 @@ function UserSwitch() {
           {me.displayName}
         </div>
         <div className="text-[10px] text-muted-foreground font-medium" data-testid="text-user-scope">
-          {me.legalEntity} · {me.branch}
+          {me.legalEntity}
         </div>
       </div>
       <Button
@@ -71,7 +71,7 @@ function UserSwitch() {
             <div>
               <div className="font-serif text-xl">Демо-пользователи</div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Переключайте роли, юр.лицо и филиал, чтобы увидеть ограничения доступа.
+                Переключайте роли, чтобы увидеть ограничения доступа.
               </p>
             </div>
           </div>
@@ -107,7 +107,7 @@ function UserSwitch() {
                         ))}
                       </div>
                       <div className="mt-2 text-xs text-muted-foreground">
-                        {u.legalEntity} · {u.branch} · {u.department}
+                        {u.legalEntity} · {u.department}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
@@ -339,7 +339,7 @@ export function AppShell({
                   RBAC
                 </Badge>
                 <Badge className="kb-chip" variant="secondary">
-                  Юр.лицо/филиал
+                  Юридическое лицо
                 </Badge>
                 <Badge className="kb-chip" variant="secondary">
                   Аудит
