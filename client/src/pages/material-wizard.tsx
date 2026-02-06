@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { catalog, visibilityGroups } from "@/lib/mockData";
+import { visibilityGroups } from "@/lib/mockData";
 import type { Criticality, MaterialVersion } from "@/lib/mockData";
 import { getSectionPath, validatePassport } from "@/lib/kbLogic";
 
@@ -27,7 +27,7 @@ function nextVersionLike(prev?: string) {
 export default function MaterialWizard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, policy } = useKB();
+  const { me, users, materials, setMaterials, policy, catalogNodes } = useKB();
 
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -44,12 +44,12 @@ export default function MaterialWizard() {
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
 
   const sectionOptions = useMemo(() => {
-    const subs = catalog.filter((n) => n.type === "subsection");
+    const subs = catalogNodes.filter((n) => n.type === "subsection");
     return subs.map((s) => {
-      const path = getSectionPath(catalog, s.id).map((x) => x.title).join(" / ");
+      const path = getSectionPath(catalogNodes, s.id).map((x) => x.title).join(" / ");
       return { id: s.id, label: path };
     });
-  }, []);
+  }, [catalogNodes]);
 
   const periodRow = useMemo(() => policy.reviewPeriods.find((p) => p.criticality === criticality), [policy, criticality]);
 

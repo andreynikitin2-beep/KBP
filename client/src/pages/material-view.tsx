@@ -28,7 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { catalog, visibilityGroups } from "@/lib/mockData";
+import { visibilityGroups } from "@/lib/mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 
 function fmt(iso?: string) {
@@ -40,7 +40,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes } = useKB();
 
   const materialId = params?.id || "";
   const allMaterials = materials;
@@ -85,8 +85,8 @@ export default function MaterialView() {
 
   const sectionPath = useMemo(() => {
     if (!current) return [];
-    return getSectionPath(catalog, current.passport.sectionId);
-  }, [current]);
+    return getSectionPath(catalogNodes, current.passport.sectionId);
+  }, [current, catalogNodes]);
 
   const breadcrumbs = useMemo(() => {
     const crumbs: { label: string; href?: string }[] = [
