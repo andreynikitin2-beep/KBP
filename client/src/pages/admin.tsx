@@ -359,6 +359,7 @@ export default function Admin() {
   const [emSmtpHost, setEmSmtpHost] = useState("");
   const [emSmtpPort, setEmSmtpPort] = useState(587);
   const [emSmtpUser, setEmSmtpUser] = useState("");
+  const [emSmtpPassword, setEmSmtpPassword] = useState("");
   const [emSmtpUseTls, setEmSmtpUseTls] = useState(true);
   const [emEnabled, setEmEnabled] = useState(true);
 
@@ -434,6 +435,7 @@ export default function Admin() {
     setEmSmtpHost(emailConfig.smtpHost);
     setEmSmtpPort(emailConfig.smtpPort);
     setEmSmtpUser(emailConfig.smtpUser);
+    setEmSmtpPassword(emailConfig.smtpPassword);
     setEmSmtpUseTls(emailConfig.smtpUseTls);
     setEmEnabled(emailConfig.enabled);
   }
@@ -449,6 +451,7 @@ export default function Admin() {
       smtpHost: emSmtpHost.trim(),
       smtpPort: emSmtpPort,
       smtpUser: emSmtpUser.trim(),
+      smtpPassword: emSmtpPassword,
       smtpUseTls: emSmtpUseTls,
       enabled: emEnabled,
     });
@@ -1437,6 +1440,10 @@ export default function Admin() {
                             <Label htmlFor="em-smtp-user">Имя пользователя SMTP</Label>
                             <Input id="em-smtp-user" data-testid="input-email-smtp-user" value={emSmtpUser} onChange={(e) => setEmSmtpUser(e.target.value)} placeholder="smtp-user" className="rounded-xl font-mono text-sm" />
                           </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="em-smtp-password">Пароль SMTP</Label>
+                            <Input id="em-smtp-password" data-testid="input-email-smtp-password" type="password" value={emSmtpPassword} onChange={(e) => setEmSmtpPassword(e.target.value)} placeholder="••••••••" className="rounded-xl font-mono text-sm" />
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -1452,6 +1459,10 @@ export default function Admin() {
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">Пользователь SMTP</span>
                           <span className="font-mono text-xs">{emailConfig.smtpUser || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Пароль</span>
+                          <span className="text-xs">{emailConfig.smtpPassword ? "••••••••" : "Не задан"}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span className="text-muted-foreground">TLS</span>

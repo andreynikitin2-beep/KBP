@@ -904,6 +904,7 @@ export type EmailConfig = {
   smtpHost: string;
   smtpPort: number;
   smtpUser: string;
+  smtpPassword: string;
   smtpUseTls: boolean;
   enabled: boolean;
 };
@@ -914,6 +915,7 @@ export const emailConfigSeed: EmailConfig = {
   smtpHost: "smtp.progorod.veb.ru",
   smtpPort: 587,
   smtpUser: "kb-portal",
+  smtpPassword: "",
   smtpUseTls: true,
   enabled: true,
 };
