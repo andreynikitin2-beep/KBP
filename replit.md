@@ -50,14 +50,23 @@ Preferred communication style: Simple, everyday language.
 - Admin tabs: AD/SSO config + sync log, Пользователи (list + create local + deactivate/reactivate)
 - All files use `users` from kbStore instead of importing `demoUsers` directly
 
-**Material-Level Visibility & Enhanced Versioning (Batch 14):**
-- `effectiveVisGroupMap` in kbStore: `Record<materialId, visibilityGroupId>` — tracks current effective visibility group per material, updated only on publish
-- Access control (`canViewMaterial` in kbLogic.ts) uses material-level effectiveGroupId, not version-specific; drafts/approvals bypass visibility for author/owner/deputy/admin (FR-ACC-VERS-4)
+**Material-Level Visibility & Enhanced Versioning (Batch 14 + Multi-Group Refactor):**
+- **Multiple visibility groups per material**: `Passport.visibilityGroupIds: string[]` (was single `visibilityGroupId`)
+- Access granted if user is member of ANY assigned group; system groups (e.g. "Базовая") grant access to everyone
+- `effectiveVisGroupMap` in kbStore: `Record<materialId, string[]>` — tracks current effective visibility groups per material, updated only on publish
+- `CatalogNode.defaultVisibilityGroupIds?: string[]` — subsection default groups, auto-populated when creating material in that subsection
+- Access control (`canViewMaterial` in kbLogic.ts) checks ALL groups in array; drafts/approvals bypass visibility for author/owner/deputy/admin
+- UI: checkboxes for multi-group selection in material-wizard and material-view (draft edit mode)
+- **Access narrowing warning**: on publish, if visibility groups changed to more restrictive, shows dialog with count/names of users who lose access
+- Subscription cleanup: `cleanupSubscriptionsOnGroupChange(materialId, newGroupIds[])` removes subscriptions for users who lost access across ALL groups
+- `notifySubscribers(version, newGroupIds[])` checks access against all groups before sending email
+- Admin panel: "Группы по умолчанию для подразделов" section in Groups tab — dropdown per subsection to set default group
+- `updateCatalogNode(nodeId, updates)` store action for updating catalog node properties
 - Version numbering: major.minor format; `createNewVersion(materialId, majorBump?)` — if majorBump=true → major+1.0, else major.minor+1
 - Inline dialog in material-view.tsx for creating new version with checkbox for major bump
 - On publish: auto-archives previous published versions of same material, resets reviewDate/confirmedAt
-- Subscription cleanup: `cleanupSubscriptionsOnGroupChange()` removes subscriptions for users who lost access after visibility group change on publish; `notifySubscribers` checks access before sending
 - "Мои материалы" page (`/my-materials`): two sections — "Я - владелец" and "Я - заместитель владельца"
+- **Access enforcement everywhere**: catalog, search, home dashboards, my-materials, direct links, downloads — all filter through `visibleMaterials` which uses `canViewMaterial`; direct link to restricted material shows "Доступ ограничен" without content leak
 
 **Key Pages:**
 - `/` — Home dashboard with KPIs, overdue materials, recent activity
