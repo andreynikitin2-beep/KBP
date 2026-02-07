@@ -39,7 +39,48 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
-import type { Criticality, MaterialVersion } from "@/lib/mockData";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import type { Criticality, MaterialVersion, VisibilityGroup, User } from "@/lib/mockData";
+
+function computeAccessLoss(
+  oldGroupIds: string[],
+  newGroupIds: string[],
+  groups: VisibilityGroup[],
+  allUsers: User[],
+): { count: number; names: string[] } {
+  const oldGroups = oldGroupIds.map(id => groups.find(g => g.id === id)).filter(Boolean);
+  const newGroups = newGroupIds.map(id => groups.find(g => g.id === id)).filter(Boolean);
+
+  const oldHasSystem = oldGroups.some(g => g!.isSystem);
+  const newHasSystem = newGroups.some(g => g!.isSystem);
+
+  if (newHasSystem) return { count: 0, names: [] };
+
+  const newMemberSet = new Set<string>();
+  for (const g of newGroups) {
+    for (const uid of g!.memberIds) newMemberSet.add(uid);
+  }
+
+  let usersWithOldAccess: User[];
+  if (oldHasSystem) {
+    usersWithOldAccess = allUsers.filter(u => !u.deactivatedAt);
+  } else {
+    const oldMemberSet = new Set<string>();
+    for (const g of oldGroups) {
+      for (const uid of g!.memberIds) oldMemberSet.add(uid);
+    }
+    usersWithOldAccess = allUsers.filter(u => !u.deactivatedAt && oldMemberSet.has(u.id));
+  }
+
+  const losers = usersWithOldAccess.filter(u =>
+    !newMemberSet.has(u.id) && !u.roles.includes("Администратор")
+  );
+
+  return {
+    count: losers.length,
+    names: losers.slice(0, 10).map(u => u.displayName),
+  };
+}
 
 function fmt(iso?: string) {
   if (!iso) return "—";
@@ -77,7 +118,15 @@ export default function MaterialView() {
   const [rfcText, setRfcText] = useState("");
   const [rfcType, setRfcType] = useState<"Проблема" | "Предложение">("Проблема");
 
+  const [publishWarningOpen, setPublishWarningOpen] = useState(false);
+  const [publishAction, setPublishAction] = useState<"direct" | "approve" | null>(null);
+  const [accessLossInfo, setAccessLossInfo] = useState<{ count: number; names: string[] }>({ count: 0, names: [] });
+
   const isDraft = current?.status === "Черновик";
+
+  const previousPublished = useMemo(() => {
+    return allVersions.find(v => v.id !== current?.id && (v.status === "Опубликовано" || v.status === "Архив" || v.status === "На пересмотре"));
+  }, [allVersions, current]);
 
   const previousVersion = useMemo(() => {
     if (!current) return null;
@@ -311,6 +360,62 @@ export default function MaterialView() {
           </CardContent>
         </Card>
       )}
+      <Dialog open={publishWarningOpen} onOpenChange={setPublishWarningOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <ShieldAlert className="h-5 w-5" />
+              Изменение видимости
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm">
+              После публикации доступ к материалу и всем его предыдущим версиям потеряют:
+            </div>
+            <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
+              <div className="font-semibold text-orange-700">{accessLossInfo.count} пользователей</div>
+              {accessLossInfo.names.length > 0 && (
+                <div className="mt-1 text-sm text-orange-600">
+                  {accessLossInfo.names.join(", ")}
+                  {accessLossInfo.count > accessLossInfo.names.length && ` и ещё ${accessLossInfo.count - accessLossInfo.names.length}`}
+                </div>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Подписки пользователей, потерявших доступ, будут удалены автоматически.
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-2">
+            <Button variant="outline" className="rounded-xl" onClick={() => setPublishWarningOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              data-testid="button-confirm-publish-warning"
+              className="rounded-xl bg-orange-600 hover:bg-orange-700"
+              onClick={() => {
+                setPublishWarningOpen(false);
+                if (publishAction === "direct") {
+                  const res = publishDirect(current!.id);
+                  if (!res.ok) {
+                    toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                  } else {
+                    toast({ title: "Опубликовано", description: "Материал опубликован." });
+                  }
+                } else if (publishAction === "approve") {
+                  const res = approveAndPublish(current!.id);
+                  if (!res.ok) {
+                    toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                  } else {
+                    toast({ title: "Согласовано", description: "Материал одобрен и опубликован." });
+                  }
+                }
+              }}
+            >
+              Опубликовать с ограничением
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {isViewingOldVersion && displayVersion && (
         <Card className="mb-4 border-amber-400/60 bg-amber-50/40" data-testid="card-old-version-banner">
           <CardContent className="p-4">
@@ -399,6 +504,15 @@ export default function MaterialView() {
                       className="rounded-xl bg-green-500/20 text-green-700 hover:bg-green-500/30 border border-green-300/50"
                       variant="ghost"
                       onClick={() => {
+                        const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
+                        const newGids = current.passport.visibilityGroupIds;
+                        const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
+                        if (loss.count > 0) {
+                          setAccessLossInfo(loss);
+                          setPublishAction("direct");
+                          setPublishWarningOpen(true);
+                          return;
+                        }
                         const res = publishDirect(current.id);
                         if (!res.ok) {
                           toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
@@ -435,6 +549,15 @@ export default function MaterialView() {
                       variant="ghost"
                       className="rounded-xl bg-green-500/20 text-green-700 hover:bg-green-500/30 border border-green-300/50"
                       onClick={() => {
+                        const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
+                        const newGids = current.passport.visibilityGroupIds;
+                        const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
+                        if (loss.count > 0) {
+                          setAccessLossInfo(loss);
+                          setPublishAction("approve");
+                          setPublishWarningOpen(true);
+                          return;
+                        }
                         const res = approveAndPublish(current.id);
                         if (!res.ok) {
                           toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });

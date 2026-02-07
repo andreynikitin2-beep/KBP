@@ -92,6 +92,7 @@ type Store = {
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
   renameSubsection: (nodeId: string, title: string) => { ok: boolean; message?: string };
   deleteSubsection: (nodeId: string) => { ok: boolean; message?: string };
+  updateCatalogNode: (nodeId: string, updates: Partial<CatalogNode>) => { ok: boolean };
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -711,6 +712,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (hasMaterials) return { ok: false, message: "Нельзя удалить подраздел с материалами" };
 
         setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId));
+        return { ok: true };
+      },
+
+      updateCatalogNode: (nodeId: string, updates: Partial<CatalogNode>) => {
+        setCatalogNodes(prev => prev.map(n => n.id === nodeId ? { ...n, ...updates } : n));
         return { ok: true };
       },
     };

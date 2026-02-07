@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
@@ -310,7 +311,7 @@ function PoliciesTab() {
 
 export default function Admin() {
   const { toast } = useToast();
-  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups } = useKB();
+  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -1032,6 +1033,49 @@ export default function Admin() {
                     </div>
                   </Card>
                 </div>
+
+                <Card className="p-4 mt-4 md:col-span-full">
+                  <div className="text-sm font-semibold mb-3">Группы по умолчанию для подразделов</div>
+                  <div className="text-xs text-muted-foreground mb-3">
+                    При создании материала в подразделе группа видимости проставляется автоматически. Смена дефолта не меняет существующие материалы.
+                  </div>
+                  <div className="space-y-3">
+                    {catalogNodes.filter(n => n.type === "subsection").map(sub => {
+                      const parent = catalogNodes.find(n => n.id === sub.parentId);
+                      return (
+                        <div key={sub.id} className="flex items-center gap-3 p-2 rounded-lg border">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{parent?.title} / {sub.title}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {(sub.defaultVisibilityGroupIds || []).length === 0
+                                ? "Нет дефолтной группы"
+                                : (sub.defaultVisibilityGroupIds || []).map(gId => visibilityGroups.find(g => g.id === gId)?.title || gId).join(", ")}
+                            </div>
+                          </div>
+                          <Select
+                            value={(sub.defaultVisibilityGroupIds || [])[0] || "none"}
+                            onValueChange={(v) => {
+                              updateCatalogNode(sub.id, {
+                                defaultVisibilityGroupIds: v === "none" ? undefined : [v],
+                              });
+                              toast({ title: "Сохранено", description: `Дефолтная группа подраздела «${sub.title}» обновлена` });
+                            }}
+                          >
+                            <SelectTrigger className="w-48 rounded-xl" data-testid={`select-default-group-${sub.id}`}>
+                              <SelectValue placeholder="Не задана" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Не задана</SelectItem>
+                              {visibilityGroups.map(g => (
+                                <SelectItem key={g.id} value={g.id}>{g.title}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
               </TabsContent>
 
               {/* ── Отчёты ── */}
