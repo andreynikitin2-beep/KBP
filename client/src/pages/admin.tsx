@@ -9,9 +9,12 @@ import {
   CloudOff,
   Download,
   Edit2,
+  FileText,
   Mail,
   RefreshCw,
   Save,
+  Send,
+  Settings,
   Shield,
   SlidersHorizontal,
   Table2,
@@ -38,6 +41,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
@@ -312,7 +316,7 @@ function PoliciesTab() {
 
 export default function Admin() {
   const { toast } = useToast();
-  const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode } = useKB();
+  const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -348,6 +352,19 @@ export default function Admin() {
   const [adMapLegalEntity, setAdMapLegalEntity] = useState("");
   const [adMapDisplayName, setAdMapDisplayName] = useState("");
   const [adMapEmail, setAdMapEmail] = useState("");
+
+  const [emailEditing, setEmailEditing] = useState(false);
+  const [emSenderAddress, setEmSenderAddress] = useState("");
+  const [emSenderName, setEmSenderName] = useState("");
+  const [emSmtpHost, setEmSmtpHost] = useState("");
+  const [emSmtpPort, setEmSmtpPort] = useState(587);
+  const [emSmtpUser, setEmSmtpUser] = useState("");
+  const [emSmtpUseTls, setEmSmtpUseTls] = useState(true);
+  const [emEnabled, setEmEnabled] = useState(true);
+
+  const [editingTplKey, setEditingTplKey] = useState<string | null>(null);
+  const [tplSubject, setTplSubject] = useState("");
+  const [tplBody, setTplBody] = useState("");
 
   const scoped = useMemo(
     () => materials.filter((m) => m.passport.legalEntity === me.legalEntity),
@@ -405,6 +422,54 @@ export default function Admin() {
     if (res.ok) {
       toast({ title: "Сохранено", description: "Конфигурация AD/SSO обновлена" });
       setAdEditing(false);
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
+  }
+
+  function startEditEmail() {
+    setEmailEditing(true);
+    setEmSenderAddress(emailConfig.senderAddress);
+    setEmSenderName(emailConfig.senderName);
+    setEmSmtpHost(emailConfig.smtpHost);
+    setEmSmtpPort(emailConfig.smtpPort);
+    setEmSmtpUser(emailConfig.smtpUser);
+    setEmSmtpUseTls(emailConfig.smtpUseTls);
+    setEmEnabled(emailConfig.enabled);
+  }
+
+  function saveEmailConfig() {
+    if (!emSenderAddress.trim()) {
+      toast({ title: "Ошибка", description: "Адрес отправителя обязателен", variant: "destructive" });
+      return;
+    }
+    updateEmailConfig({
+      senderAddress: emSenderAddress.trim(),
+      senderName: emSenderName.trim(),
+      smtpHost: emSmtpHost.trim(),
+      smtpPort: emSmtpPort,
+      smtpUser: emSmtpUser.trim(),
+      smtpUseTls: emSmtpUseTls,
+      enabled: emEnabled,
+    });
+    toast({ title: "Сохранено", description: "Настройки почты обновлены" });
+    setEmailEditing(false);
+  }
+
+  function startEditTemplate(key: string) {
+    const tpl = emailTemplates.find((t) => t.key === key);
+    if (!tpl) return;
+    setEditingTplKey(key);
+    setTplSubject(tpl.subject);
+    setTplBody(tpl.body);
+  }
+
+  function saveTemplate() {
+    if (!editingTplKey) return;
+    const res = updateEmailTemplate(editingTplKey, { subject: tplSubject, body: tplBody });
+    if (res.ok) {
+      toast({ title: "Сохранено", description: "Шаблон обновлён" });
+      setEditingTplKey(null);
     } else {
       toast({ title: "Ошибка", description: res.message, variant: "destructive" });
     }
@@ -1304,57 +1369,219 @@ export default function Admin() {
 
               {/* ── Email-журнал ── */}
               <TabsContent value="mail" className="mt-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <div className="text-sm font-semibold">Журнал email‑уведомлений</div>
-                      <Badge variant="secondary" className="kb-chip" data-testid="badge-mail-count">
-                        {notificationsFiltered.length}
-                      </Badge>
+                <div className="space-y-6">
+
+                  {/* ── Email Config ── */}
+                  <Card className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Settings className="h-4 w-4 text-muted-foreground" />
+                        <div className="text-sm font-semibold">Настройки почтовой рассылки</div>
+                        {emailConfig.enabled
+                          ? <Badge className="bg-green-600 text-white text-[10px]">Активна</Badge>
+                          : <Badge variant="destructive" className="text-[10px]">Отключена</Badge>}
+                      </div>
+                      {!emailEditing ? (
+                        <Button data-testid="button-edit-email-config" size="sm" variant="outline" className="rounded-xl" onClick={startEditEmail}>
+                          <Edit2 className="mr-1.5 h-3.5 w-3.5" />
+                          Редактировать
+                        </Button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button data-testid="button-save-email-config" size="sm" className="rounded-xl" onClick={saveEmailConfig}>
+                            <Save className="mr-1.5 h-3.5 w-3.5" />
+                            Сохранить
+                          </Button>
+                          <Button data-testid="button-cancel-email-config" size="sm" variant="outline" className="rounded-xl" onClick={() => setEmailEditing(false)}>
+                            <X className="mr-1.5 h-3.5 w-3.5" />
+                            Отмена
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    <div className="mt-1 text-sm text-muted-foreground">Напоминания, просрочки, эскалации, публикации версий.</div>
-                  </div>
-                  <div className="w-[320px] max-w-full">
-                    <Input
-                      data-testid="input-mail-search"
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                      placeholder="Фильтр по теме или адресу…"
-                      className="rounded-2xl"
-                    />
-                  </div>
-                </div>
-                <Separator className="my-3" />
-                <div className="grid gap-2" data-testid="list-mails">
-                  {notificationsFiltered.map((n) => (
-                    <Card key={n.id} className="p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold" data-testid={`text-mail-subject-${n.id}`}>
-                            {n.subject}
+
+                    {emailEditing ? (
+                      <div className="mt-4 grid gap-4 md:grid-cols-2" data-testid="card-email-config-edit">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="em-enabled">Рассылка включена</Label>
+                            <Switch id="em-enabled" data-testid="switch-email-enabled" checked={emEnabled} onCheckedChange={setEmEnabled} />
                           </div>
-                          <div className="mt-1 text-xs text-muted-foreground">Кому: {n.to}</div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="em-sender-address">Адрес отправителя</Label>
+                            <Input id="em-sender-address" data-testid="input-email-sender-address" value={emSenderAddress} onChange={(e) => setEmSenderAddress(e.target.value)} placeholder="noreply@example.com" className="rounded-xl font-mono text-sm" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="em-sender-name">Имя отправителя</Label>
+                            <Input id="em-sender-name" data-testid="input-email-sender-name" value={emSenderName} onChange={(e) => setEmSenderName(e.target.value)} placeholder="Портал инструкций" className="rounded-xl text-sm" />
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground" data-testid={`text-mail-at-${n.id}`}>
-                          {new Date(n.at).toLocaleString("ru-RU")}
+                        <div className="space-y-4">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="em-smtp-host">SMTP-сервер</Label>
+                            <Input id="em-smtp-host" data-testid="input-email-smtp-host" value={emSmtpHost} onChange={(e) => setEmSmtpHost(e.target.value)} placeholder="smtp.example.com" className="rounded-xl font-mono text-sm" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="em-smtp-port">Порт</Label>
+                              <Input id="em-smtp-port" data-testid="input-email-smtp-port" type="number" value={emSmtpPort} onChange={(e) => setEmSmtpPort(Number(e.target.value))} className="rounded-xl text-sm w-full" />
+                            </div>
+                            <div className="flex items-end pb-0.5">
+                              <div className="flex items-center gap-2">
+                                <Switch id="em-tls" data-testid="switch-email-tls" checked={emSmtpUseTls} onCheckedChange={setEmSmtpUseTls} />
+                                <Label htmlFor="em-tls" className="text-sm">TLS</Label>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="em-smtp-user">Имя пользователя SMTP</Label>
+                            <Input id="em-smtp-user" data-testid="input-email-smtp-user" value={emSmtpUser} onChange={(e) => setEmSmtpUser(e.target.value)} placeholder="smtp-user" className="rounded-xl font-mono text-sm" />
+                          </div>
                         </div>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge variant="secondary" className="kb-chip">
-                          {n.template}
-                        </Badge>
-                        <Badge variant="outline" className="kb-chip">
-                          {n.status}
-                        </Badge>
+                    ) : (
+                      <div className="mt-3 grid gap-x-8 gap-y-2 md:grid-cols-2 text-sm" data-testid="card-email-config">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Отправитель</span>
+                          <span className="font-mono text-xs" data-testid="text-email-sender">{emailConfig.senderName} &lt;{emailConfig.senderAddress}&gt;</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">SMTP-сервер</span>
+                          <span className="font-mono text-xs" data-testid="text-email-smtp">{emailConfig.smtpHost}:{emailConfig.smtpPort}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Пользователь SMTP</span>
+                          <span className="font-mono text-xs">{emailConfig.smtpUser || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">TLS</span>
+                          <span className="text-xs">{emailConfig.smtpUseTls ? "Да" : "Нет"}</span>
+                        </div>
                       </div>
-                    </Card>
-                  ))}
-                  {!notificationsFiltered.length ? (
-                    <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-mails">
-                      Ничего не найдено.
+                    )}
+                  </Card>
+
+                  {/* ── Email Templates ── */}
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <div className="text-sm font-semibold">Шаблоны уведомлений</div>
+                      <Badge variant="secondary" className="kb-chip">{emailTemplates.length}</Badge>
                     </div>
-                  ) : null}
+                    <div className="text-xs text-muted-foreground mb-3">
+                      Переменные шаблона: <code className="bg-muted px-1 py-0.5 rounded">{"{{title}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{owner}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{days}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{dueDate}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{link}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{version}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{recipient}}"}</code>
+                    </div>
+                    <div className="grid gap-3" data-testid="list-email-templates">
+                      {emailTemplates.map((tpl) => (
+                        <div key={tpl.key} className="rounded-2xl border bg-muted/10 p-3" data-testid={`row-email-tpl-${tpl.key}`}>
+                          {editingTplKey === tpl.key ? (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Send className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-sm font-semibold">{tpl.label}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button data-testid={`button-save-tpl-${tpl.key}`} size="sm" className="rounded-xl h-7 text-xs" onClick={saveTemplate}>
+                                    <Save className="mr-1 h-3 w-3" />
+                                    Сохранить
+                                  </Button>
+                                  <Button data-testid={`button-cancel-tpl-${tpl.key}`} size="sm" variant="outline" className="rounded-xl h-7 text-xs" onClick={() => setEditingTplKey(null)}>
+                                    <X className="mr-1 h-3 w-3" />
+                                    Отмена
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Тема письма</Label>
+                                <Input data-testid={`input-tpl-subject-${tpl.key}`} value={tplSubject} onChange={(e) => setTplSubject(e.target.value)} className="rounded-xl text-sm" />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Текст письма</Label>
+                                <Textarea data-testid={`input-tpl-body-${tpl.key}`} value={tplBody} onChange={(e) => setTplBody(e.target.value)} className="rounded-xl text-sm min-h-[120px] font-mono" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <Send className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  <span className="text-sm font-semibold">{tpl.label}</span>
+                                  <Badge variant="outline" className="text-[10px] shrink-0">{tpl.key}</Badge>
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">{tpl.description}</div>
+                                <div className="mt-2 text-xs">
+                                  <span className="text-muted-foreground">Тема: </span>
+                                  <span className="font-mono">{tpl.subject}</span>
+                                </div>
+                              </div>
+                              <Button data-testid={`button-edit-tpl-${tpl.key}`} size="sm" variant="ghost" className="rounded-xl h-7 text-xs shrink-0" onClick={() => startEditTemplate(tpl.key)}>
+                                <Edit2 className="mr-1 h-3 w-3" />
+                                Изменить
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* ── Email Log ── */}
+                  <Card className="p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                          <div className="text-sm font-semibold">Журнал отправленных уведомлений</div>
+                          <Badge variant="secondary" className="kb-chip" data-testid="badge-mail-count">
+                            {notificationsFiltered.length}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">Напоминания, просрочки, эскалации, публикации версий.</div>
+                      </div>
+                      <div className="w-[320px] max-w-full">
+                        <Input
+                          data-testid="input-mail-search"
+                          value={q}
+                          onChange={(e) => setQ(e.target.value)}
+                          placeholder="Фильтр по теме или адресу…"
+                          className="rounded-2xl"
+                        />
+                      </div>
+                    </div>
+                    <Separator className="my-3" />
+                    <div className="grid gap-2" data-testid="list-mails">
+                      {notificationsFiltered.map((n) => (
+                        <div key={n.id} className="rounded-2xl border bg-muted/10 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold" data-testid={`text-mail-subject-${n.id}`}>
+                                {n.subject}
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">Кому: {n.to}</div>
+                            </div>
+                            <div className="text-xs text-muted-foreground" data-testid={`text-mail-at-${n.id}`}>
+                              {new Date(n.at).toLocaleString("ru-RU")}
+                            </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge variant="secondary" className="kb-chip">
+                              {emailTemplates.find(t => t.key === n.template)?.label || n.template}
+                            </Badge>
+                            <Badge variant={n.status === "FAILED" ? "destructive" : "outline"} className="kb-chip">
+                              {n.status === "SENT" ? "Отправлено" : n.status === "LOGGED" ? "В очереди" : "Ошибка"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                      {!notificationsFiltered.length ? (
+                        <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-mails">
+                          Ничего не найдено.
+                        </div>
+                      ) : null}
+                    </div>
+                  </Card>
+
                 </div>
               </TabsContent>
             </Tabs>

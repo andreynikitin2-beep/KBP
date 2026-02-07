@@ -47,8 +47,18 @@ Preferred communication style: Simple, everyday language.
 - Local user creation: `createLocalUser()` action with full form in admin panel
 - User deactivation/reactivation: `deactivateUser()`, `reactivateUser()` actions
 - policySeed.adIntegration: enabled, mode (SAML/OIDC/LDAP/demo), ssoUrl, syncFrequencyMinutes, syncStatus, syncLog[]
+- AD/SSO admin: fully editable config (enable/disable, protocol, SSO URL, sync frequency, attribute mapping)
+- `updateAdConfig(data)` store action for AD/SSO settings
 - Admin tabs: AD/SSO config + sync log, Пользователи (list + create local + deactivate/reactivate)
 - All files use `users` from kbStore instead of importing `demoUsers` directly
+
+**Email Notification System (full admin):**
+- `EmailConfig` type: senderAddress, senderName, smtpHost, smtpPort, smtpUser, smtpUseTls, enabled
+- `EmailTemplate` type: key, label, subject, body, description — 6 built-in templates (reminder_before, reminder_due, overdue, escalation, new_version, auto_transition)
+- Store state: `emailConfig` + `emailTemplates` with `updateEmailConfig()` and `updateEmailTemplate()` actions
+- Admin Email tab: 3 cards — (1) SMTP/sender config with edit mode, (2) template editor with inline editing of subject+body, (3) notification log with human-readable status/template labels
+- Templates use `{{variable}}` placeholders: title, owner, days, dueDate, link, version, recipient, changelog, newStatus, reason
+- Seed data in `mockData.ts`: `emailConfigSeed`, `emailTemplatesSeed`
 
 **Material-Level Visibility & Enhanced Versioning (Batch 14 + Multi-Group Refactor):**
 - **Multiple visibility groups per material**: `Passport.visibilityGroupIds: string[]` (was single `visibilityGroupId`)
