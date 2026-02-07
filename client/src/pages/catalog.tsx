@@ -34,7 +34,8 @@ export default function Catalog() {
   const { toast } = useToast();
   const {
     me, users, visibleMaterials: materials, catalogNodes,
-    setSectionOwners, addSubsection, renameSubsection, deleteSubsection,
+    setSectionOwners, addSection, renameSection, deleteSection,
+    addSubsection, renameSubsection, deleteSubsection,
   } = useKB();
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -43,6 +44,9 @@ export default function Catalog() {
   const [addSubDialog, setAddSubDialog] = useState<string | null>(null);
   const [newSubTitle, setNewSubTitle] = useState("");
   const [renameDialog, setRenameDialog] = useState<{ id: string; title: string } | null>(null);
+  const [addSectionDialog, setAddSectionDialog] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [renameSectionDialog, setRenameSectionDialog] = useState<{ id: string; title: string } | null>(null);
 
   const isAdmin = me.roles.includes("Администратор");
   const canCreateMaterial = me.roles.some(r => r === "Автор" || r === "Владелец" || r === "Заместитель владельца" || r === "Администратор");
@@ -100,6 +104,19 @@ export default function Catalog() {
       breadcrumbs={[{ label: "Портал инструкций", href: "/" }, { label: "Каталог" }]}
       search={q}
       onSearch={setQ}
+      actions={
+        isAdmin ? (
+          <Button
+            data-testid="button-add-section"
+            variant="outline"
+            className="rounded-xl"
+            onClick={() => { setNewSectionTitle(""); setAddSectionDialog(true); }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Добавить раздел
+          </Button>
+        ) : null
+      }
     >
       <div className="grid gap-4 md:grid-cols-12">
         <div className="md:col-span-8">
@@ -183,6 +200,37 @@ export default function Catalog() {
                               >
                                 <Plus className="h-3.5 w-3.5" />
                               </Button>
+                              {isAdmin && (
+                                <>
+                                  <Button
+                                    data-testid={`button-rename-section-${s.id}`}
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Переименовать раздел"
+                                    onClick={() => setRenameSectionDialog({ id: s.id, title: s.title })}
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    data-testid={`button-delete-section-${s.id}`}
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:text-destructive"
+                                    title="Удалить раздел"
+                                    onClick={() => {
+                                      const res = deleteSection(s.id);
+                                      toast({
+                                        title: res.ok ? "Раздел удалён" : "Ошибка",
+                                        description: res.ok ? s.title : res.message,
+                                        variant: res.ok ? "default" : "destructive",
+                                      });
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </>
+                              )}
                             </>
                           )}
                         </div>
@@ -477,6 +525,83 @@ export default function Catalog() {
                       variant: res.ok ? "default" : "destructive",
                     });
                     if (res.ok) setRenameDialog(null);
+                  }
+                }}
+              >
+                Сохранить
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addSectionDialog} onOpenChange={(open) => !open && setAddSectionDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Новый раздел</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <Label>Название раздела</Label>
+              <Input
+                data-testid="input-new-section-title"
+                value={newSectionTitle}
+                onChange={(e) => setNewSectionTitle(e.target.value)}
+                placeholder="Введите название…"
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAddSectionDialog(false)}>Отмена</Button>
+              <Button
+                data-testid="button-create-section"
+                disabled={!newSectionTitle.trim()}
+                onClick={() => {
+                  const res = addSection(newSectionTitle);
+                  toast({
+                    title: res.ok ? "Раздел создан" : "Ошибка",
+                    description: res.ok ? newSectionTitle : res.message,
+                    variant: res.ok ? "default" : "destructive",
+                  });
+                  if (res.ok) setAddSectionDialog(false);
+                }}
+              >
+                Создать
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!renameSectionDialog} onOpenChange={(open) => !open && setRenameSectionDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Переименовать раздел</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <div>
+              <Label>Новое название</Label>
+              <Input
+                data-testid="input-rename-section"
+                value={renameSectionDialog?.title || ""}
+                onChange={(e) => setRenameSectionDialog((prev) => prev ? { ...prev, title: e.target.value } : null)}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRenameSectionDialog(null)}>Отмена</Button>
+              <Button
+                data-testid="button-save-rename-section"
+                disabled={!renameSectionDialog?.title.trim()}
+                onClick={() => {
+                  if (renameSectionDialog) {
+                    const res = renameSection(renameSectionDialog.id, renameSectionDialog.title);
+                    toast({
+                      title: res.ok ? "Переименовано" : "Ошибка",
+                      description: res.ok ? renameSectionDialog.title : res.message,
+                      variant: res.ok ? "default" : "destructive",
+                    });
+                    if (res.ok) setRenameSectionDialog(null);
                   }
                 }}
               >

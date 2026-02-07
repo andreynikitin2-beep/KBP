@@ -97,6 +97,9 @@ type Store = {
 
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
+  addSection: (title: string) => { ok: boolean; node?: CatalogNode; message?: string };
+  renameSection: (nodeId: string, title: string) => { ok: boolean; message?: string };
+  deleteSection: (nodeId: string) => { ok: boolean; message?: string };
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
   renameSubsection: (nodeId: string, title: string) => { ok: boolean; message?: string };
   deleteSubsection: (nodeId: string) => { ok: boolean; message?: string };
@@ -696,6 +699,36 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setCatalogNodes((prev) =>
           prev.map((n) => (n.id === sectionId ? { ...n, ownerIds } : n)),
         );
+        return { ok: true };
+      },
+
+      addSection: (title: string) => {
+        if (!title.trim()) return { ok: false, message: "Название не может быть пустым" };
+        const id = `sec-${Date.now()}`;
+        const node: CatalogNode = { id, title: title.trim(), type: "section", ownerIds: [] };
+        setCatalogNodes((prev) => [...prev, node]);
+        return { ok: true, node };
+      },
+
+      renameSection: (nodeId: string, title: string) => {
+        const node = catalogNodes.find((n) => n.id === nodeId);
+        if (!node) return { ok: false, message: "Раздел не найден" };
+        if (node.type !== "section") return { ok: false, message: "Можно переименовать только раздел" };
+        if (!title.trim()) return { ok: false, message: "Название не может быть пустым" };
+        setCatalogNodes((prev) =>
+          prev.map((n) => (n.id === nodeId ? { ...n, title: title.trim() } : n)),
+        );
+        return { ok: true };
+      },
+
+      deleteSection: (nodeId: string) => {
+        const node = catalogNodes.find((n) => n.id === nodeId);
+        if (!node) return { ok: false, message: "Раздел не найден" };
+        if (node.type !== "section") return { ok: false, message: "Можно удалить только раздел" };
+        const subs = catalogNodes.filter((n) => n.type === "subsection" && n.parentId === nodeId);
+        const hasMaterials = subs.some((sub) => materials.some((m) => m.passport.sectionId === sub.id));
+        if (hasMaterials) return { ok: false, message: "Нельзя удалить раздел, в котором есть материалы" };
+        setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId && n.parentId !== nodeId));
         return { ok: true };
       },
 
