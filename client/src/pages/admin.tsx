@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
@@ -311,7 +312,7 @@ function PoliciesTab() {
 
 export default function Admin() {
   const { toast } = useToast();
-  const { me, materials, notifications, policy, users, syncADUsers, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode } = useKB();
+  const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -337,6 +338,16 @@ export default function Admin() {
   const [grpDlgOpen, setGrpDlgOpen] = useState(false);
   const [grpTitle, setGrpTitle] = useState("");
   const [grpMembers, setGrpMembers] = useState<string[]>([]);
+
+  const [adEditing, setAdEditing] = useState(false);
+  const [adEnabled, setAdEnabled] = useState(false);
+  const [adMode, setAdMode] = useState<"demo" | "SAML" | "OIDC" | "LDAP">("SAML");
+  const [adSsoUrl, setAdSsoUrl] = useState("");
+  const [adSyncFreq, setAdSyncFreq] = useState(60);
+  const [adMapDepartment, setAdMapDepartment] = useState("");
+  const [adMapLegalEntity, setAdMapLegalEntity] = useState("");
+  const [adMapDisplayName, setAdMapDisplayName] = useState("");
+  const [adMapEmail, setAdMapEmail] = useState("");
 
   const scoped = useMemo(
     () => materials.filter((m) => m.passport.legalEntity === me.legalEntity),
@@ -364,6 +375,40 @@ export default function Admin() {
   const activeUsers = useMemo(() => users.filter((u) => !u.deactivatedAt), [users]);
 
   const ad = policy.adIntegration;
+
+  function startEditAd() {
+    setAdEditing(true);
+    setAdEnabled(ad.enabled);
+    setAdMode(ad.mode);
+    setAdSsoUrl(ad.ssoUrl);
+    setAdSyncFreq(ad.syncFrequencyMinutes);
+    setAdMapDepartment(ad.mapping.department || "");
+    setAdMapLegalEntity(ad.mapping.legalEntity || "");
+    setAdMapDisplayName(ad.mapping.displayName || "");
+    setAdMapEmail(ad.mapping.email || "");
+  }
+
+  function saveAdConfig() {
+    const res = updateAdConfig({
+      enabled: adEnabled,
+      mode: adMode,
+      ssoUrl: adSsoUrl.trim(),
+      syncFrequencyMinutes: adSyncFreq,
+      mapping: {
+        roles: ad.mapping.roles,
+        department: adMapDepartment.trim() || null as any,
+        legalEntity: adMapLegalEntity.trim() || null as any,
+        displayName: adMapDisplayName.trim() || null as any,
+        email: adMapEmail.trim() || null as any,
+      },
+    });
+    if (res.ok) {
+      toast({ title: "Сохранено", description: "Конфигурация AD/SSO обновлена" });
+      setAdEditing(false);
+    } else {
+      toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+    }
+  }
 
   function handleSync() {
     setSyncing(true);
@@ -524,9 +569,9 @@ export default function Admin() {
       <div className="grid gap-4">
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Админ‑раздел (MVP прототип)</CardTitle>
+            <CardTitle className="text-base">Администрирование</CardTitle>
             <div className="mt-1 text-sm text-muted-foreground">
-              Справочники/политики/права/отчёты/экспорт. В демо — управление отображением и журнал email.
+              Политики, интеграции, пользователи, группы видимости, отчёты и журнал уведомлений.
             </div>
           </CardHeader>
           <Separator />
@@ -562,99 +607,211 @@ export default function Admin() {
               <TabsContent value="ad" className="mt-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Card className="p-4">
-                    <div className="flex items-center gap-2">
-                      {ad.enabled ? <Cloud className="h-4 w-4 text-green-600" /> : <CloudOff className="h-4 w-4 text-muted-foreground" />}
-                      <div className="text-sm font-semibold">Конфигурация AD/SSO</div>
-                    </div>
-                    <div className="mt-3 space-y-3" data-testid="card-ad-config">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Статус</span>
-                        {ad.enabled
-                          ? <Badge className="bg-green-600 text-white text-[10px]">Включено</Badge>
-                          : <Badge variant="destructive" className="text-[10px]">Выключено</Badge>}
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Режим</span>
-                        <Badge variant="outline" className="text-[10px]">{ad.mode}</Badge>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">SSO URL</span>
-                        <span className="text-xs font-mono truncate max-w-[200px]" data-testid="text-sso-url">{ad.ssoUrl}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Частота синхронизации</span>
-                        <span className="text-xs">Каждые {ad.syncFrequencyMinutes} минут</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Последняя синхронизация</span>
-                        <span className="text-xs" data-testid="text-last-sync">
-                          {ad.lastSyncAt
-                            ? formatDistanceToNow(new Date(ad.lastSyncAt), { addSuffix: true, locale: ru })
-                            : "Нет данных"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Статус синхронизации</span>
-                        <SyncStatusBadge status={ad.syncStatus} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Синхронизировано</span>
-                        <span className="text-xs" data-testid="text-synced-count">{ad.syncedUsersCount} пользователей</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Деактивировано</span>
-                        <span className="text-xs" data-testid="text-deactivated-count">{ad.deactivatedCount}</span>
-                      </div>
-
-                      <Separator />
-                      <div className="text-xs font-medium text-muted-foreground">Маппинг атрибутов</div>
-                      <div className="grid gap-2 text-sm" data-testid="list-ad-mapping">
-                        {Object.entries(ad.mapping).map(([k, v]) => (
-                          <div key={k} className="flex items-center justify-between" data-testid={`row-ad-map-${k}`}>
-                            <span className="text-muted-foreground">{k}</span>
-                            <span className="font-mono text-xs">{v === null ? "—" : String(v)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="p-4">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold">Журнал синхронизации</div>
-                      <Button
-                        data-testid="button-sync-ad"
-                        size="sm"
-                        className="rounded-xl"
-                        disabled={syncing}
-                        onClick={handleSync}
-                      >
-                        <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-                        Синхронизировать сейчас
-                      </Button>
-                    </div>
-                    <div className="mt-3 space-y-2" data-testid="list-sync-log">
-                      {ad.syncLog.map((entry, i) => (
-                        <div key={i} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-sync-log-${i}`}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(entry.at), { addSuffix: true, locale: ru })}
-                            </span>
-                            <SyncStatusBadge status={entry.status} />
-                          </div>
-                          <div className="mt-1 text-sm">{entry.message}</div>
-                          <div className="mt-1 flex flex-wrap gap-2">
-                            <Badge variant="outline" className="text-[10px]">Всего: {entry.usersTotal}</Badge>
-                            <Badge variant="outline" className="text-[10px]">Обновлено: {entry.usersUpdated}</Badge>
-                            <Badge variant="outline" className="text-[10px]">Деактивировано: {entry.usersDeactivated}</Badge>
-                          </div>
+                      <div className="flex items-center gap-2">
+                        {ad.enabled ? <Cloud className="h-4 w-4 text-green-600" /> : <CloudOff className="h-4 w-4 text-muted-foreground" />}
+                        <div className="text-sm font-semibold">Конфигурация AD/SSO</div>
+                      </div>
+                      {!adEditing ? (
+                        <Button data-testid="button-edit-ad" size="sm" variant="outline" className="rounded-xl" onClick={startEditAd}>
+                          <Edit2 className="mr-1.5 h-3.5 w-3.5" />
+                          Редактировать
+                        </Button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button data-testid="button-save-ad" size="sm" className="rounded-xl" onClick={saveAdConfig}>
+                            <Save className="mr-1.5 h-3.5 w-3.5" />
+                            Сохранить
+                          </Button>
+                          <Button data-testid="button-cancel-ad" size="sm" variant="outline" className="rounded-xl" onClick={() => setAdEditing(false)}>
+                            <X className="mr-1.5 h-3.5 w-3.5" />
+                            Отмена
+                          </Button>
                         </div>
-                      ))}
-                      {ad.syncLog.length === 0 && (
-                        <div className="text-sm text-muted-foreground p-4 text-center">Нет записей</div>
                       )}
                     </div>
+
+                    {adEditing ? (
+                      <div className="mt-4 space-y-4" data-testid="card-ad-config-edit">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="ad-enabled">Интеграция включена</Label>
+                          <Switch
+                            id="ad-enabled"
+                            data-testid="switch-ad-enabled"
+                            checked={adEnabled}
+                            onCheckedChange={setAdEnabled}
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Протокол</Label>
+                          <Select value={adMode} onValueChange={(v) => setAdMode(v as typeof adMode)}>
+                            <SelectTrigger data-testid="select-ad-mode" className="rounded-xl">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="SAML">SAML 2.0</SelectItem>
+                              <SelectItem value="OIDC">OpenID Connect (OIDC)</SelectItem>
+                              <SelectItem value="LDAP">LDAP / Active Directory</SelectItem>
+                              <SelectItem value="demo">Демо-режим</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="ad-sso-url">
+                            {adMode === "LDAP" ? "LDAP URL" : adMode === "OIDC" ? "Issuer URL" : "SSO URL (IdP)"}
+                          </Label>
+                          <Input
+                            id="ad-sso-url"
+                            data-testid="input-ad-sso-url"
+                            value={adSsoUrl}
+                            onChange={(e) => setAdSsoUrl(e.target.value)}
+                            placeholder={adMode === "LDAP" ? "ldap://dc.example.com:389" : "https://sso.example.com/saml2"}
+                            className="rounded-xl font-mono text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label htmlFor="ad-sync-freq">Частота синхронизации (минуты)</Label>
+                          <Input
+                            id="ad-sync-freq"
+                            data-testid="input-ad-sync-freq"
+                            type="number"
+                            min={5}
+                            max={1440}
+                            value={adSyncFreq}
+                            onChange={(e) => setAdSyncFreq(Number(e.target.value))}
+                            className="rounded-xl w-32"
+                          />
+                        </div>
+
+                        <Separator />
+                        <div className="text-xs font-medium text-muted-foreground">Маппинг атрибутов AD → Портал</div>
+                        <div className="grid gap-3">
+                          <div className="grid grid-cols-2 gap-2 items-center">
+                            <Label className="text-sm text-muted-foreground">displayName →</Label>
+                            <Input data-testid="input-ad-map-displayName" value={adMapDisplayName} onChange={(e) => setAdMapDisplayName(e.target.value)} placeholder="displayName" className="rounded-xl text-sm h-8" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 items-center">
+                            <Label className="text-sm text-muted-foreground">email →</Label>
+                            <Input data-testid="input-ad-map-email" value={adMapEmail} onChange={(e) => setAdMapEmail(e.target.value)} placeholder="mail" className="rounded-xl text-sm h-8" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 items-center">
+                            <Label className="text-sm text-muted-foreground">department →</Label>
+                            <Input data-testid="input-ad-map-department" value={adMapDepartment} onChange={(e) => setAdMapDepartment(e.target.value)} placeholder="department" className="rounded-xl text-sm h-8" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 items-center">
+                            <Label className="text-sm text-muted-foreground">legalEntity →</Label>
+                            <Input data-testid="input-ad-map-legalEntity" value={adMapLegalEntity} onChange={(e) => setAdMapLegalEntity(e.target.value)} placeholder="company" className="rounded-xl text-sm h-8" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-3" data-testid="card-ad-config">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Статус</span>
+                          {ad.enabled
+                            ? <Badge className="bg-green-600 text-white text-[10px]">Включено</Badge>
+                            : <Badge variant="destructive" className="text-[10px]">Выключено</Badge>}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Протокол</span>
+                          <Badge variant="outline" className="text-[10px]">{ad.mode}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">{ad.mode === "LDAP" ? "LDAP URL" : "SSO URL"}</span>
+                          <span className="text-xs font-mono truncate max-w-[240px]" data-testid="text-sso-url">{ad.ssoUrl || "—"}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Частота синхронизации</span>
+                          <span className="text-xs">Каждые {ad.syncFrequencyMinutes} мин.</span>
+                        </div>
+
+                        <Separator />
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Последняя синхронизация</span>
+                          <span className="text-xs" data-testid="text-last-sync">
+                            {ad.lastSyncAt
+                              ? formatDistanceToNow(new Date(ad.lastSyncAt), { addSuffix: true, locale: ru })
+                              : "Нет данных"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Статус синхронизации</span>
+                          <SyncStatusBadge status={ad.syncStatus} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Синхронизировано</span>
+                          <span className="text-xs" data-testid="text-synced-count">{ad.syncedUsersCount} пользователей</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Деактивировано</span>
+                          <span className="text-xs" data-testid="text-deactivated-count">{ad.deactivatedCount}</span>
+                        </div>
+
+                        <Separator />
+                        <div className="text-xs font-medium text-muted-foreground">Маппинг атрибутов</div>
+                        <div className="grid gap-2 text-sm" data-testid="list-ad-mapping">
+                          {Object.entries(ad.mapping).map(([k, v]) => (
+                            <div key={k} className="flex items-center justify-between" data-testid={`row-ad-map-${k}`}>
+                              <span className="text-muted-foreground">{k}</span>
+                              <span className="font-mono text-xs">{v === null ? "—" : String(v)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </Card>
+
+                  <div className="space-y-4">
+                    <Card className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-semibold">Синхронизация</div>
+                        <Button
+                          data-testid="button-sync-ad"
+                          size="sm"
+                          className="rounded-xl"
+                          disabled={syncing || !ad.enabled}
+                          onClick={handleSync}
+                        >
+                          <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                          Синхронизировать сейчас
+                        </Button>
+                      </div>
+                      {!ad.enabled && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Включите интеграцию AD/SSO для выполнения синхронизации.
+                        </div>
+                      )}
+                    </Card>
+
+                    <Card className="p-4">
+                      <div className="text-sm font-semibold mb-3">Журнал синхронизации</div>
+                      <div className="space-y-2" data-testid="list-sync-log">
+                        {ad.syncLog.map((entry, i) => (
+                          <div key={i} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-sync-log-${i}`}>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(entry.at), { addSuffix: true, locale: ru })}
+                              </span>
+                              <SyncStatusBadge status={entry.status} />
+                            </div>
+                            <div className="mt-1 text-sm">{entry.message}</div>
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              <Badge variant="outline" className="text-[10px]">Всего: {entry.usersTotal}</Badge>
+                              <Badge variant="outline" className="text-[10px]">Обновлено: {entry.usersUpdated}</Badge>
+                              <Badge variant="outline" className="text-[10px]">Деактивировано: {entry.usersDeactivated}</Badge>
+                            </div>
+                          </div>
+                        ))}
+                        {ad.syncLog.length === 0 && (
+                          <div className="text-sm text-muted-foreground p-4 text-center">Нет записей</div>
+                        )}
+                      </div>
+                    </Card>
+                  </div>
                 </div>
               </TabsContent>
 

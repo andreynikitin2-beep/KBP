@@ -69,6 +69,7 @@ type Store = {
   returnForRevision: (versionId: string, comment: string) => { ok: boolean; message?: string };
   autoDailyCheck: () => { transitioned: string[]; emails: NotificationLog[] };
 
+  updateAdConfig: (data: Partial<PolicyConfig["adIntegration"]>) => { ok: boolean; message?: string };
   syncADUsers: () => { ok: boolean; deactivated: string[]; message: string };
   createLocalUser: (data: { displayName: string; email: string; department: string; legalEntity: string; roles: User["roles"] }) => { ok: boolean; user?: User; message?: string };
   updateUser: (userId: string, data: { displayName?: string; email?: string; department?: string; legalEntity?: string; roles?: User["roles"] }) => { ok: boolean; message?: string };
@@ -428,6 +429,14 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (emails.length) setNotifications((p) => [...emails, ...p]);
 
         return { transitioned, emails };
+      },
+
+      updateAdConfig: (data) => {
+        setPolicy((prev) => ({
+          ...prev,
+          adIntegration: { ...prev.adIntegration, ...data },
+        }));
+        return { ok: true };
       },
 
       syncADUsers: () => {
