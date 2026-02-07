@@ -11,6 +11,7 @@ import {
   Edit2,
   FileText,
   Mail,
+  Plus,
   RefreshCw,
   Save,
   Send,
@@ -316,7 +317,7 @@ function PoliciesTab() {
 
 export default function Admin() {
   const { toast } = useToast();
-  const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
+  const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, addSection, renameSection, deleteSection, addSubsection, renameSubsection, deleteSubsection, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [syncing, setSyncing] = useState(false);
@@ -1262,45 +1263,178 @@ export default function Admin() {
                 </div>
 
                 <Card className="p-4 mt-4 md:col-span-full">
-                  <div className="text-sm font-semibold mb-3">Группы по умолчанию для подразделов</div>
+                  <div className="text-sm font-semibold mb-3">Структура каталога и группы по умолчанию</div>
                   <div className="text-xs text-muted-foreground mb-3">
-                    При создании материала в подразделе группа видимости проставляется автоматически. Смена дефолта не меняет существующие материалы.
+                    Управляйте разделами и подразделами каталога. При создании материала группа видимости проставляется из дефолта подраздела.
                   </div>
-                  <div className="space-y-3">
-                    {catalogNodes.filter(n => n.type === "subsection").map(sub => {
-                      const parent = catalogNodes.find(n => n.id === sub.parentId);
+                  <div className="space-y-4">
+                    {catalogNodes.filter(n => n.type === "section").map(section => {
+                      const subs = catalogNodes.filter(n => n.type === "subsection" && n.parentId === section.id);
                       return (
-                        <div key={sub.id} className="flex items-center gap-3 p-2 rounded-lg border">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{parent?.title} / {sub.title}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {(sub.defaultVisibilityGroupIds || []).length === 0
-                                ? "Нет дефолтной группы"
-                                : (sub.defaultVisibilityGroupIds || []).map(gId => visibilityGroups.find(g => g.id === gId)?.title || gId).join(", ")}
+                        <div key={section.id} className="rounded-2xl border p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm font-bold">{section.title}</span>
+                              <Badge variant="secondary" className="text-[10px]">{subs.length} подразд.</Badge>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                data-testid={`button-admin-add-sub-${section.id}`}
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-[10px] rounded-lg"
+                                onClick={() => {
+                                  const title = prompt("Название нового подраздела:");
+                                  if (title?.trim()) {
+                                    const res = addSubsection(section.id, title.trim());
+                                    toast({
+                                      title: res.ok ? "Подраздел создан" : "Ошибка",
+                                      description: res.ok ? title.trim() : res.message,
+                                      variant: res.ok ? "default" : "destructive",
+                                    });
+                                  }
+                                }}
+                              >
+                                <Plus className="mr-1 h-3 w-3" />
+                                Подраздел
+                              </Button>
+                              <Button
+                                data-testid={`button-admin-rename-section-${section.id}`}
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-[10px] rounded-lg"
+                                onClick={() => {
+                                  const title = prompt("Новое название раздела:", section.title);
+                                  if (title?.trim() && title.trim() !== section.title) {
+                                    const res = renameSection(section.id, title.trim());
+                                    toast({
+                                      title: res.ok ? "Переименовано" : "Ошибка",
+                                      description: res.ok ? title.trim() : res.message,
+                                      variant: res.ok ? "default" : "destructive",
+                                    });
+                                  }
+                                }}
+                              >
+                                <Edit2 className="mr-1 h-3 w-3" />
+                              </Button>
+                              <Button
+                                data-testid={`button-admin-delete-section-${section.id}`}
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-[10px] rounded-lg text-destructive"
+                                onClick={() => {
+                                  const res = deleteSection(section.id);
+                                  toast({
+                                    title: res.ok ? "Раздел удалён" : "Ошибка",
+                                    description: res.ok ? section.title : res.message,
+                                    variant: res.ok ? "default" : "destructive",
+                                  });
+                                }}
+                              >
+                                <Trash2 className="mr-1 h-3 w-3" />
+                              </Button>
                             </div>
                           </div>
-                          <Select
-                            value={(sub.defaultVisibilityGroupIds || [])[0] || "none"}
-                            onValueChange={(v) => {
-                              updateCatalogNode(sub.id, {
-                                defaultVisibilityGroupIds: v === "none" ? undefined : [v],
-                              });
-                              toast({ title: "Сохранено", description: `Дефолтная группа подраздела «${sub.title}» обновлена` });
-                            }}
-                          >
-                            <SelectTrigger className="w-48 rounded-xl" data-testid={`select-default-group-${sub.id}`}>
-                              <SelectValue placeholder="Не задана" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">Не задана</SelectItem>
-                              {visibilityGroups.map(g => (
-                                <SelectItem key={g.id} value={g.id}>{g.title}</SelectItem>
+                          {subs.length > 0 && (
+                            <div className="mt-2 space-y-1.5 ml-6">
+                              {subs.map(sub => (
+                                <div key={sub.id} className="flex items-center gap-3 p-2 rounded-lg border bg-muted/10">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium truncate">{sub.title}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {(sub.defaultVisibilityGroupIds || []).length === 0
+                                        ? "Нет дефолтной группы"
+                                        : (sub.defaultVisibilityGroupIds || []).map(gId => visibilityGroups.find(g => g.id === gId)?.title || gId).join(", ")}
+                                    </div>
+                                  </div>
+                                  <Select
+                                    value={(sub.defaultVisibilityGroupIds || [])[0] || "none"}
+                                    onValueChange={(v) => {
+                                      updateCatalogNode(sub.id, {
+                                        defaultVisibilityGroupIds: v === "none" ? undefined : [v],
+                                      });
+                                      toast({ title: "Сохранено", description: `Дефолтная группа подраздела «${sub.title}» обновлена` });
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-44 rounded-xl" data-testid={`select-default-group-${sub.id}`}>
+                                      <SelectValue placeholder="Не задана" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">Не задана</SelectItem>
+                                      {visibilityGroups.map(g => (
+                                        <SelectItem key={g.id} value={g.id}>{g.title}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      data-testid={`button-admin-rename-sub-${sub.id}`}
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6"
+                                      title="Переименовать"
+                                      onClick={() => {
+                                        const title = prompt("Новое название подраздела:", sub.title);
+                                        if (title?.trim() && title.trim() !== sub.title) {
+                                          const res = renameSubsection(sub.id, title.trim());
+                                          toast({
+                                            title: res.ok ? "Переименовано" : "Ошибка",
+                                            description: res.ok ? title.trim() : res.message,
+                                            variant: res.ok ? "default" : "destructive",
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <Edit2 className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      data-testid={`button-admin-delete-sub-${sub.id}`}
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 text-destructive hover:text-destructive"
+                                      title="Удалить"
+                                      onClick={() => {
+                                        const res = deleteSubsection(sub.id);
+                                        toast({
+                                          title: res.ok ? "Подраздел удалён" : "Ошибка",
+                                          description: res.ok ? sub.title : res.message,
+                                          variant: res.ok ? "default" : "destructive",
+                                        });
+                                      }}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
                               ))}
-                            </SelectContent>
-                          </Select>
+                            </div>
+                          )}
+                          {subs.length === 0 && (
+                            <div className="mt-2 ml-6 text-xs text-muted-foreground italic">Нет подразделов</div>
+                          )}
                         </div>
                       );
                     })}
+                    <Button
+                      data-testid="button-admin-add-section"
+                      variant="outline"
+                      className="rounded-xl w-full"
+                      onClick={() => {
+                        const title = prompt("Название нового раздела:");
+                        if (title?.trim()) {
+                          const res = addSection(title.trim());
+                          toast({
+                            title: res.ok ? "Раздел создан" : "Ошибка",
+                            description: res.ok ? title.trim() : res.message,
+                            variant: res.ok ? "default" : "destructive",
+                          });
+                        }
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Добавить раздел
+                    </Button>
                   </div>
                 </Card>
               </TabsContent>
