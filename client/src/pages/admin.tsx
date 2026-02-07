@@ -607,31 +607,33 @@ export default function Admin() {
       search={q}
       onSearch={setQ}
       actions={
-        <Button
-          data-testid="button-export-registry"
-          variant="outline"
-          className="rounded-xl"
-          onClick={() => {
-            downloadCsv(
-              "registry.csv",
-              [
-                ["Материал", "Версия", "Статус", "Критичность", "Следующий пересмотр", "Владелец"],
-                ...scoped.map((m) => [
-                  m.passport.title,
-                  m.version,
-                  m.status,
-                  m.passport.criticality,
-                  m.passport.nextReviewAt ? new Date(m.passport.nextReviewAt).toLocaleDateString("ru-RU") : "",
-                  users.find((u) => u.id === m.passport.ownerId)?.displayName || "",
-                ]),
-              ],
-            );
-            toast({ title: "Экспорт готов", description: "CSV открыт как Excel (демо)." });
-          }}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Экспорт в Excel
-        </Button>
+        me.roles.includes("Администратор") ? (
+          <Button
+            data-testid="button-export-registry"
+            variant="outline"
+            className="rounded-xl"
+            onClick={() => {
+              downloadCsv(
+                "registry.csv",
+                [
+                  ["Материал", "Версия", "Статус", "Критичность", "Следующий пересмотр", "Владелец"],
+                  ...scoped.map((m) => [
+                    m.passport.title,
+                    m.version,
+                    m.status,
+                    m.passport.criticality,
+                    m.passport.nextReviewAt ? new Date(m.passport.nextReviewAt).toLocaleDateString("ru-RU") : "",
+                    users.find((u) => u.id === m.passport.ownerId)?.displayName || "",
+                  ]),
+                ],
+              );
+              toast({ title: "Экспорт готов", description: "CSV открыт как Excel (демо)." });
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Экспорт в Excel
+          </Button>
+        ) : null
       }
     >
       <div className="grid gap-4">
