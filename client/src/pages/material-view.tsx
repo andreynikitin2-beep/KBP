@@ -35,6 +35,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
@@ -90,7 +91,7 @@ export default function MaterialView() {
   const [editSectionId, setEditSectionId] = useState("");
   const [editOwnerId, setEditOwnerId] = useState("");
   const [editDeputyId, setEditDeputyId] = useState<string | undefined>(undefined);
-  const [editVisibilityGroupId, setEditVisibilityGroupId] = useState("g-base");
+  const [editVisibilityGroupIds, setEditVisibilityGroupIds] = useState<string[]>(["g-base"]);
   const [editTags, setEditTags] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
 
@@ -108,7 +109,7 @@ export default function MaterialView() {
       setEditSectionId(current.passport.sectionId);
       setEditOwnerId(current.passport.ownerId || "");
       setEditDeputyId(current.passport.deputyId);
-      setEditVisibilityGroupId(current.passport.visibilityGroupIds[0] || "g-base");
+      setEditVisibilityGroupIds(current.passport.visibilityGroupIds);
       setEditTags(current.passport.tags.join(", "));
       setEditDepartment(current.passport.department || "");
       setEditContentKind(current.content.kind);
@@ -148,7 +149,7 @@ export default function MaterialView() {
           sectionId: editSectionId,
           ownerId: editOwnerId || undefined,
           deputyId: editDeputyId,
-          visibilityGroupIds: [editVisibilityGroupId],
+          visibilityGroupIds: editVisibilityGroupIds,
           tags: editTags.split(",").map(t => t.trim()).filter(Boolean),
           department: editDepartment || undefined,
           reviewPeriodDays: periodRow?.days,
@@ -192,7 +193,7 @@ export default function MaterialView() {
     deputyId: editDeputyId,
     legalEntity: current?.passport.legalEntity || "",
     department: editDepartment || undefined,
-    visibilityGroupIds: [editVisibilityGroupId],
+    visibilityGroupIds: editVisibilityGroupIds,
     reviewPeriodDays: current?.passport.reviewPeriodDays,
     nextReviewAt: current?.passport.nextReviewAt,
     lastReviewedAt: current?.passport.lastReviewedAt,
@@ -207,7 +208,9 @@ export default function MaterialView() {
 
   const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
   const dv = displayVersion || current;
-  const materialGroup = dv ? visibilityGroups.find((g) => dv.passport.visibilityGroupIds.includes(g.id)) : null;
+  const materialGroups = dv ? visibilityGroups.filter((g) => dv.passport.visibilityGroupIds.includes(g.id)) : [];
+  const hasRestrictedGroups = materialGroups.some(g => !g.isSystem);
+  const allSystem = materialGroups.every(g => g.isSystem);
   const owner = dv ? users.find((u) => u.id === dv.passport.ownerId) : null;
   const deputy = dv ? users.find((u) => u.id === dv.passport.deputyId) : null;
 
@@ -245,7 +248,7 @@ export default function MaterialView() {
           <CardContent className="p-6">
             <div className="text-sm text-muted-foreground">
               {current
-                ? "Этот материал доступен только участникам группы видимости «" + (materialGroup?.title || "—") + "». У вас нет доступа."
+                ? "Этот материал доступен только участникам групп видимости «" + materialGroups.map(g => g.title).join("», «") + "». У вас нет доступа."
                 : "Материал недоступен или отсутствует."}
             </div>
           </CardContent>
@@ -626,12 +629,12 @@ export default function MaterialView() {
                 <Badge className="kb-chip" variant="outline" data-testid="badge-scope">
                   {dv.passport.legalEntity}
                 </Badge>
-                {materialGroup && !materialGroup.isSystem && (
-                  <Badge className="kb-chip" variant="secondary" data-testid="badge-visibility-group">
+                {materialGroups.filter(g => !g.isSystem).map(g => (
+                  <Badge key={g.id} className="kb-chip" variant="secondary" data-testid={`badge-visibility-group-${g.id}`}>
                     <Users className="mr-1 h-3.5 w-3.5" />
-                    {materialGroup.title}
+                    {g.title}
                   </Badge>
-                )}
+                ))}
                 {!isViewingOldVersion && dueDays !== null ? (
                   <Badge className="kb-chip" variant={dueDays < 0 ? "destructive" : "secondary"} data-testid="badge-review-due">
                     <CalendarClock className="mr-1 h-3.5 w-3.5" />
@@ -794,17 +797,25 @@ export default function MaterialView() {
                         </div>
 
                         <div>
-                          <Label>Группа видимости</Label>
-                          <Select value={editVisibilityGroupId} onValueChange={v => setEditVisibilityGroupId(v)}>
-                            <SelectTrigger data-testid="select-edit-visibility" className={`mt-1 rounded-xl ${isFieldChanged(editVisibilityGroupId, previousVersion?.passport.visibilityGroupIds[0]) ? 'text-foreground' : 'text-muted-foreground'}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {visibilityGroups.map(g => (
-                                <SelectItem key={g.id} value={g.id}>{g.title}{g.isSystem ? " (все пользователи)" : ""}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Label>Группы видимости</Label>
+                          <div className="mt-1 rounded-xl border p-3 space-y-2 max-h-48 overflow-y-auto">
+                            {visibilityGroups.map(g => (
+                              <label key={g.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                                <Checkbox
+                                  data-testid={`checkbox-edit-vis-group-${g.id}`}
+                                  checked={editVisibilityGroupIds.includes(g.id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setEditVisibilityGroupIds(prev => [...prev, g.id]);
+                                    } else {
+                                      setEditVisibilityGroupIds(prev => prev.filter(id => id !== g.id));
+                                    }
+                                  }}
+                                />
+                                <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
 
                         <div>
@@ -879,20 +890,21 @@ export default function MaterialView() {
                         <Card className="p-4 md:col-span-2">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-muted-foreground" />
-                            <div className="text-xs text-muted-foreground">Группа видимости</div>
+                            <div className="text-xs text-muted-foreground">Группы видимости</div>
                           </div>
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="font-semibold" data-testid="text-visibility-group">
-                              {materialGroup?.title || "—"}
-                            </span>
-                            {materialGroup?.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
-                            {!materialGroup?.isSystem && (
-                              <Badge variant="outline" className="text-[10px]">{materialGroup?.memberIds.length || 0} уч.</Badge>
-                            )}
+                          <div className="mt-1 space-y-1">
+                            {materialGroups.length === 0 && <span className="font-semibold" data-testid="text-visibility-group">—</span>}
+                            {materialGroups.map(g => (
+                              <div key={g.id} className="flex items-center gap-2" data-testid={`text-visibility-group-${g.id}`}>
+                                <span className="font-semibold">{g.title}</span>
+                                {g.isSystem && <Badge variant="secondary" className="text-[10px]">Системная</Badge>}
+                                {!g.isSystem && <Badge variant="outline" className="text-[10px]">{g.memberIds.length} уч.</Badge>}
+                              </div>
+                            ))}
                           </div>
-                          {!materialGroup?.isSystem && (
+                          {hasRestrictedGroups && (
                             <div className="mt-1 text-xs text-muted-foreground">
-                              Материал виден только участникам этой группы
+                              Материал виден только участникам выбранных групп
                             </div>
                           )}
                         </Card>

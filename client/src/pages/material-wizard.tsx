@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
@@ -11,10 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { visibilityGroups } from "@/lib/mockData";
-import type { Criticality, MaterialVersion } from "@/lib/mockData";
+import type { CatalogNode, Criticality, MaterialVersion } from "@/lib/mockData";
 import { getSectionPath, validatePassport } from "@/lib/kbLogic";
 
 function nextVersionLike(prev?: string) {
@@ -35,7 +36,7 @@ export default function MaterialWizard() {
   const [sectionId, setSectionId] = useState("");
   const [ownerId, setOwnerId] = useState(me.id);
   const [deputyId, setDeputyId] = useState<string | undefined>(undefined);
-  const [visibilityGroupId, setVisibilityGroupId] = useState("g-base");
+  const [visibilityGroupIds, setVisibilityGroupIds] = useState<string[]>(["g-base"]);
   const [tags, setTags] = useState("hr, отпуск");
   const [contentKind, setContentKind] = useState<"file" | "page">("file");
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
@@ -76,8 +77,17 @@ export default function MaterialWizard() {
     lastReviewedAt: new Date().toISOString(),
     nextReviewAt: computedNextReview,
     reviewPeriodDays: periodRow?.days,
-    visibilityGroupIds: [visibilityGroupId],
+    visibilityGroupIds,
   };
+
+  useEffect(() => {
+    if (sectionId) {
+      const node = catalogNodes.find(n => n.id === sectionId);
+      if (node?.defaultVisibilityGroupIds?.length) {
+        setVisibilityGroupIds(node.defaultVisibilityGroupIds);
+      }
+    }
+  }, [sectionId, catalogNodes]);
 
   const missing = useMemo(() => validatePassport(passportDraft), [passportDraft]);
 
@@ -197,24 +207,28 @@ export default function MaterialWizard() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <Label>Группа видимости</Label>
-                    <Select value={visibilityGroupId} onValueChange={(v) => setVisibilityGroupId(v)}>
-                      <SelectTrigger data-testid="select-visibility-group" className="mt-1 rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {visibilityGroups.map((g) => (
-                          <SelectItem key={g.id} value={g.id}>
-                            {g.title}{g.isSystem ? " (все пользователи)" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      Если группа ≠ «Базовая», материал видят только участники группы
-                    </div>
+                <div>
+                  <Label>Группы видимости</Label>
+                  <div className="mt-1 rounded-xl border p-3 space-y-2 max-h-48 overflow-y-auto">
+                    {visibilityGroups.map((g) => (
+                      <label key={g.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          data-testid={`checkbox-vis-group-${g.id}`}
+                          checked={visibilityGroupIds.includes(g.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setVisibilityGroupIds(prev => [...prev, g.id]);
+                            } else {
+                              setVisibilityGroupIds(prev => prev.filter(id => id !== g.id));
+                            }
+                          }}
+                        />
+                        <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Материал видят участники выбранных групп. Если выбрана «Базовая» — все пользователи.
                   </div>
                 </div>
 
