@@ -45,7 +45,7 @@ export function canViewMaterial(
   user: User,
   material: MaterialVersion,
   groups: VisibilityGroup[],
-  effectiveGroupId?: string,
+  effectiveGroupIds?: string[],
 ) {
   if (user.roles.includes("Администратор")) return true;
 
@@ -57,11 +57,16 @@ export function canViewMaterial(
     if (isAuthor || isOwner || isDeputy) return true;
   }
 
-  const groupId = effectiveGroupId ?? material.passport.visibilityGroupId;
-  const group = groups.find((g) => g.id === groupId);
-  if (!group) return true;
-  if (group.isSystem) return true;
-  return group.memberIds.includes(user.id);
+  const gIds = effectiveGroupIds ?? material.passport.visibilityGroupIds;
+  if (!gIds || gIds.length === 0) return true;
+
+  for (const gId of gIds) {
+    const group = groups.find((g) => g.id === gId);
+    if (!group) continue;
+    if (group.isSystem) return true;
+    if (group.memberIds.includes(user.id)) return true;
+  }
+  return false;
 }
 
 export function canViewAudit(user: User) {

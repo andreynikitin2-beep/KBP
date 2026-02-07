@@ -37,6 +37,7 @@ export type CatalogNode = {
   parentId?: string;
   allowedRoles?: Role[];
   ownerIds?: string[];
+  defaultVisibilityGroupIds?: string[];
 };
 
 export type Passport = {
@@ -55,7 +56,7 @@ export type Passport = {
   lastReviewedAt?: string;
   nextReviewAt?: string;
   reviewPeriodDays?: number;
-  visibilityGroupId: string;
+  visibilityGroupIds: string[];
 };
 
 export type MaterialVersion = {
@@ -257,12 +258,14 @@ export const catalog: CatalogNode[] = [
     title: "Онбординг",
     type: "subsection",
     parentId: "sec-hr",
+    defaultVisibilityGroupIds: ["g-base"],
   },
   {
     id: "sub-leave",
     title: "Отпуска и отсутствия",
     type: "subsection",
     parentId: "sec-hr",
+    defaultVisibilityGroupIds: ["g-hr-confidential"],
   },
   {
     id: "sec-it",
@@ -276,6 +279,7 @@ export const catalog: CatalogNode[] = [
     title: "VPN и удалённый доступ",
     type: "subsection",
     parentId: "sec-it",
+    defaultVisibilityGroupIds: ["g-base"],
   },
   {
     id: "sub-accounts",
@@ -307,12 +311,14 @@ export const catalog: CatalogNode[] = [
     title: "Инциденты и расследования",
     type: "subsection",
     parentId: "sec-security",
+    defaultVisibilityGroupIds: ["g-security"],
   },
   {
     id: "sub-compliance",
     title: "Комплаенс и политики",
     type: "subsection",
     parentId: "sec-security",
+    defaultVisibilityGroupIds: ["g-security"],
   },
 ];
 
@@ -350,7 +356,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-75)),
       nextReviewAt: iso(days(-5)),
       reviewPeriodDays: 90,
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
       relatedLinks: [
         { label: "Заявка в ServiceDesk", url: "https://example.local/servicedesk" },
       ],
@@ -395,7 +401,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-120)),
       nextReviewAt: iso(days(-30)),
       reviewPeriodDays: 90,
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
     },
     content: {
       kind: "file",
@@ -429,7 +435,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-80)),
       nextReviewAt: iso(days(-40)),
       reviewPeriodDays: 90,
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
     },
     content: {
       kind: "file",
@@ -461,7 +467,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-6)),
       nextReviewAt: iso(days(24)),
       reviewPeriodDays: 30,
-      visibilityGroupId: "g-hr-confidential",
+      visibilityGroupIds: ["g-hr-confidential"],
     },
     content: {
       kind: "page",
@@ -491,7 +497,7 @@ export const materials: MaterialVersion[] = [
       criticality: "Низкая",
       sectionId: "sub-accounts",
       legalEntity: "ООО «Альфа»",
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
     },
     content: {
       kind: "file",
@@ -529,7 +535,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-3)),
       nextReviewAt: iso(days(177)),
       reviewPeriodDays: 180,
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
     },
     content: {
       kind: "page",
@@ -565,7 +571,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-15)),
       nextReviewAt: iso(days(15)),
       reviewPeriodDays: 30,
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
     },
     content: {
       kind: "file",
@@ -602,7 +608,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-1)),
       nextReviewAt: iso(days(89)),
       reviewPeriodDays: 90,
-      visibilityGroupId: "g-base",
+      visibilityGroupIds: ["g-base"],
     },
     content: {
       kind: "page",
@@ -637,7 +643,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-45)),
       nextReviewAt: iso(days(-15)),
       reviewPeriodDays: 30,
-      visibilityGroupId: "g-security",
+      visibilityGroupIds: ["g-security"],
     },
     content: {
       kind: "file",
@@ -673,7 +679,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-2)),
       nextReviewAt: iso(days(28)),
       reviewPeriodDays: 30,
-      visibilityGroupId: "g-security",
+      visibilityGroupIds: ["g-security"],
     },
     content: {
       kind: "page",
@@ -709,7 +715,7 @@ export const materials: MaterialVersion[] = [
       lastReviewedAt: iso(days(-10)),
       nextReviewAt: iso(days(170)),
       reviewPeriodDays: 180,
-      visibilityGroupId: "g-hr-confidential",
+      visibilityGroupIds: ["g-hr-confidential"],
     },
     content: {
       kind: "page",

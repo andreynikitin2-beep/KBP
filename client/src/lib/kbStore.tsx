@@ -119,11 +119,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
   const [subscriptionMap, setSubscriptionMap] = useState<Record<string, string[]>>({});
 
-  const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string>>(() => {
-    const map: Record<string, string> = {};
+  const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string[]>>(() => {
+    const map: Record<string, string[]> = {};
     for (const m of seedMaterials) {
       if (m.status === "Опубликовано" || m.status === "На пересмотре") {
-        map[m.materialId] = m.passport.visibilityGroupId;
+        map[m.materialId] = m.passport.visibilityGroupIds;
       }
     }
     return map;
@@ -132,9 +132,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
   const mySubscriptions = useMemo(() => subscriptionMap[meId] || [], [subscriptionMap, meId]);
 
-  const cleanupSubscriptionsOnGroupChange = (materialId: string, newGroupId: string) => {
-    const group = groups.find((g) => g.id === newGroupId);
-    if (!group || group.isSystem) return;
+  const cleanupSubscriptionsOnGroupChange = (materialId: string, newGroupIds: string[]) => {
+    const relevantGroups = newGroupIds.map(gId => groups.find((g) => g.id === gId)).filter(Boolean);
+    if (relevantGroups.some(g => g!.isSystem)) return;
 
     setSubscriptionMap((prev) => {
       const next = { ...prev };
@@ -143,7 +143,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const user = users.find((u) => u.id === userId);
         if (!user) continue;
         if (user.roles.includes("Администратор")) continue;
-        if (!group.memberIds.includes(userId)) {
+        const hasAccess = relevantGroups.some(g => g!.memberIds.includes(userId));
+        if (!hasAccess) {
           next[userId] = subs.filter((id) => id !== materialId);
         }
       }
@@ -151,14 +152,15 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const notifySubscribers = (version: MaterialVersion, newGroupId: string) => {
-    const group = groups.find((g) => g.id === newGroupId);
+  const notifySubscribers = (version: MaterialVersion, newGroupIds: string[]) => {
+    const relevantGroups = newGroupIds.map(gId => groups.find((g) => g.id === gId)).filter(Boolean);
+    const anySystem = relevantGroups.some(g => g!.isSystem);
     const allSubs = Object.entries(subscriptionMap);
     for (const [userId, subs] of allSubs) {
       if (!subs.includes(version.materialId)) continue;
       const user = users.find((u) => u.id === userId);
       if (!user) continue;
-      const hasAccess = !group || group.isSystem || group.memberIds.includes(userId) || user.roles.includes("Администратор");
+      const hasAccess = anySystem || user.roles.includes("Администратор") || relevantGroups.some(g => g!.memberIds.includes(userId));
       if (hasAccess) {
         const email = seedEmail(notifications, {
           to: user.email,
@@ -309,8 +311,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           }),
         );
 
-        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupId }));
-        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupId);
+        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupIds }));
+        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupIds);
 
         const email = seedEmail(notifications, {
           to: me.email,
@@ -320,7 +322,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         });
         setNotifications((p) => [email, ...p]);
 
-        notifySubscribers(version, version.passport.visibilityGroupId);
+        notifySubscribers(version, version.passport.visibilityGroupIds);
 
         return { ok: true };
       },
@@ -350,8 +352,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           }),
         );
 
-        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupId }));
-        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupId);
+        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupIds }));
+        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupIds);
 
         const authorEmail = users.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
         const email = seedEmail(notifications, {
@@ -362,7 +364,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         });
         setNotifications((p) => [email, ...p]);
 
-        notifySubscribers(version, version.passport.visibilityGroupId);
+        notifySubscribers(version, version.passport.visibilityGroupIds);
 
         return { ok: true };
       },

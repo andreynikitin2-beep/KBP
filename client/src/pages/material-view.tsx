@@ -108,7 +108,7 @@ export default function MaterialView() {
       setEditSectionId(current.passport.sectionId);
       setEditOwnerId(current.passport.ownerId || "");
       setEditDeputyId(current.passport.deputyId);
-      setEditVisibilityGroupId(current.passport.visibilityGroupId);
+      setEditVisibilityGroupId(current.passport.visibilityGroupIds[0] || "g-base");
       setEditTags(current.passport.tags.join(", "));
       setEditDepartment(current.passport.department || "");
       setEditContentKind(current.content.kind);
@@ -148,7 +148,7 @@ export default function MaterialView() {
           sectionId: editSectionId,
           ownerId: editOwnerId || undefined,
           deputyId: editDeputyId,
-          visibilityGroupId: editVisibilityGroupId,
+          visibilityGroupIds: [editVisibilityGroupId],
           tags: editTags.split(",").map(t => t.trim()).filter(Boolean),
           department: editDepartment || undefined,
           reviewPeriodDays: periodRow?.days,
@@ -192,7 +192,7 @@ export default function MaterialView() {
     deputyId: editDeputyId,
     legalEntity: current?.passport.legalEntity || "",
     department: editDepartment || undefined,
-    visibilityGroupId: editVisibilityGroupId,
+    visibilityGroupIds: [editVisibilityGroupId],
     reviewPeriodDays: current?.passport.reviewPeriodDays,
     nextReviewAt: current?.passport.nextReviewAt,
     lastReviewedAt: current?.passport.lastReviewedAt,
@@ -207,7 +207,7 @@ export default function MaterialView() {
 
   const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
   const dv = displayVersion || current;
-  const materialGroup = dv ? visibilityGroups.find((g) => g.id === dv.passport.visibilityGroupId) : null;
+  const materialGroup = dv ? visibilityGroups.find((g) => dv.passport.visibilityGroupIds.includes(g.id)) : null;
   const owner = dv ? users.find((u) => u.id === dv.passport.ownerId) : null;
   const deputy = dv ? users.find((u) => u.id === dv.passport.deputyId) : null;
 
@@ -796,7 +796,7 @@ export default function MaterialView() {
                         <div>
                           <Label>Группа видимости</Label>
                           <Select value={editVisibilityGroupId} onValueChange={v => setEditVisibilityGroupId(v)}>
-                            <SelectTrigger data-testid="select-edit-visibility" className={`mt-1 rounded-xl ${isFieldChanged(editVisibilityGroupId, previousVersion?.passport.visibilityGroupId) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            <SelectTrigger data-testid="select-edit-visibility" className={`mt-1 rounded-xl ${isFieldChanged(editVisibilityGroupId, previousVersion?.passport.visibilityGroupIds[0]) ? 'text-foreground' : 'text-muted-foreground'}`}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>

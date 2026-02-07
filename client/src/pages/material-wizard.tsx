@@ -76,7 +76,7 @@ export default function MaterialWizard() {
     lastReviewedAt: new Date().toISOString(),
     nextReviewAt: computedNextReview,
     reviewPeriodDays: periodRow?.days,
-    visibilityGroupId,
+    visibilityGroupIds: [visibilityGroupId],
   };
 
   const missing = useMemo(() => validatePassport(passportDraft), [passportDraft]);
