@@ -86,6 +86,20 @@ Preferred communication style: Simple, everyday language.
 - `/my-materials` — Personal materials dashboard for owners and deputies
 - `/admin` — Admin panel with 7 tabs: Политики, AD/SSO, Пользователи, Права, Группы, Отчёты, Email-журнал
 
+**Helpfulness Ratings & View Dedup (Batch 15):**
+- Portal timezone: `PORTAL_TZ = "Europe/Moscow"` — all date calculations use Moscow time
+- `HelpfulRating` type: userId, materialId, date (YYYY-MM-DD Moscow), value (helpful/not_helpful)
+- Rating limit: 1 rating per user per material per calendar day (Moscow timezone); immutable within day
+- Store state: `ratings: HelpfulRating[]` with `rateMaterial()`, `canRateToday()`, `getMaterialRatings()`
+- View dedup: `VIEW_DEDUP_MINUTES = 30` — same user can increment view count only once per 30 min window
+- `recordView(materialId)` store action: always logs to auditViews, only increments stats.views on dedup pass
+- Popularity formula: `popularity_score = 0.7 * log(views_30d + 1) + 0.3 * helpfulness_score`
+- Helpfulness formula (Bayesian smoothing): `helpfulness_score = (helpful + m*C) / (total + m)` where m=20, C=avg portal helpfulness
+- Home showcase: 3 tabs — "Новое" (by date), "Популярное" (by popularity_score), "Самые полезные" (by helpfulness_score, min 5 ratings)
+- Sorting controls on home page search results and catalog: by date, popularity, criticality, status, next review
+- `MIN_RATINGS_FOR_HELPFUL = 5` — minimum ratings for "Most Helpful" showcase
+- Helper functions: `getMoscowDate()`, `getMoscowDateString()`, `computeHelpfulnessScore()`, `computePopularityScore()`
+
 **Domain Logic** (`kbLogic.ts`):
 - Role-based access control (Читатель, Автор, Владелец, Заместитель владельца, Администратор)
 - Visibility scoping by roles and visibility groups (legal entity is metadata only, no access restrictions)
