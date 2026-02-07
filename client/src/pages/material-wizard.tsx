@@ -14,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { visibilityGroups } from "@/lib/mockData";
 import type { CatalogNode, Criticality, MaterialVersion } from "@/lib/mockData";
 import { getSectionPath, validatePassport } from "@/lib/kbLogic";
 
@@ -28,7 +27,7 @@ function nextVersionLike(prev?: string) {
 export default function MaterialWizard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, policy, catalogNodes } = useKB();
+  const { me, users, materials, setMaterials, policy, catalogNodes, visibilityGroups } = useKB();
 
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
