@@ -84,7 +84,7 @@ function computeAccessLoss(
 
 function fmt(iso?: string) {
   if (!iso) return "—";
-  return format(new Date(iso), "d MMM yyyy", { locale: ru });
+  return format(new Date(iso), "d MMM yyyy, HH:mm", { locale: ru });
 }
 
 export default function MaterialView() {
@@ -92,6 +92,7 @@ export default function MaterialView() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy } = useKB();
+  const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
   const allVersions = useMemo(() => getAllVersions(materialId), [getAllVersions, materialId]);
@@ -749,9 +750,6 @@ export default function MaterialView() {
                 <Badge className="kb-chip" variant="outline" data-testid="badge-criticality">
                   {dv.passport.criticality}
                 </Badge>
-                <Badge className="kb-chip" variant="outline" data-testid="badge-scope">
-                  {dv.passport.legalEntity}
-                </Badge>
                 {materialGroups.filter(g => !g.isSystem).map(g => (
                   <Badge key={g.id} className="kb-chip" variant="secondary" data-testid={`badge-visibility-group-${g.id}`}>
                     <Users className="mr-1 h-3.5 w-3.5" />
@@ -795,12 +793,16 @@ export default function MaterialView() {
                   <TabsTrigger data-testid="tab-versions" value="versions">
                     Версии
                   </TabsTrigger>
-                  <TabsTrigger data-testid="tab-rfc" value="rfc">
-                    RFC
-                  </TabsTrigger>
-                  <TabsTrigger data-testid="tab-discussions" value="discussions">
-                    Обсуждения
-                  </TabsTrigger>
+                  {isAdmin && (
+                    <TabsTrigger data-testid="tab-rfc" value="rfc">
+                      RFC
+                    </TabsTrigger>
+                  )}
+                  {isAdmin && (
+                    <TabsTrigger data-testid="tab-discussions" value="discussions">
+                      Обсуждения
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger data-testid="tab-audit" value="audit">
                     Аудит
                   </TabsTrigger>
@@ -1364,7 +1366,7 @@ export default function MaterialView() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="rfc" className="mt-4">
+                {isAdmin && (<TabsContent value="rfc" className="mt-4">
                   <div className="grid gap-4 lg:grid-cols-2">
                     <Card className="p-4">
                       <div className="flex items-center gap-2">
@@ -1498,9 +1500,9 @@ export default function MaterialView() {
                       </div>
                     </Card>
                   </div>
-                </TabsContent>
+                </TabsContent>)}
 
-                <TabsContent value="discussions" className="mt-4">
+                {isAdmin && (<TabsContent value="discussions" className="mt-4">
                   <Card className="p-4">
                     <div className="flex items-start gap-2">
                       <div className="mt-0.5 rounded-xl bg-accent/60 p-2">
@@ -1530,7 +1532,7 @@ export default function MaterialView() {
                       </div>
                     </div>
                   </Card>
-                </TabsContent>
+                </TabsContent>)}
 
                 <TabsContent value="audit" className="mt-4">
                   {!canViewAudit(me) ? (

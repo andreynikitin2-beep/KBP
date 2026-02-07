@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useMemo, useState } from "react";
 import {
-  Bell,
   BookOpen,
   Building2,
   ChevronRight,
@@ -242,10 +241,6 @@ export function AppShell({
               </div>
             )}
 
-            <Button data-testid="button-notifications" variant="ghost" size="icon" className="rounded-full relative">
-              <Bell className="h-4 w-4 text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-orange-500 text-[10px] font-bold text-white flex items-center justify-center border-2 border-background">3</span>
-            </Button>
             <UserSwitch />
 
             <Sheet>
@@ -336,44 +331,13 @@ export function AppShell({
 
       <footer className="border-t bg-background/50">
         <div className="mx-auto max-w-7xl px-4 py-6">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <div className="text-sm font-semibold">Портал инструкций</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                MVP‑прототип: все данные в памяти браузера. Email‑уведомления логируются.
-              </div>
-            </div>
-            <div className="md:justify-self-center">
-              <div className="text-xs text-muted-foreground">Режимы контента</div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <Badge className="kb-chip" variant="secondary">
-                  PDF/DOCX
-                </Badge>
-                <Badge className="kb-chip" variant="secondary">
-                  Страница портала
-                </Badge>
-                <Badge className="kb-chip" variant="secondary">
-                  Глубокие ссылки
-                </Badge>
-              </div>
-            </div>
-            <div className="md:justify-self-end">
-              <div className="text-xs text-muted-foreground">Безопасность</div>
-              <div className="mt-2 flex items-center gap-2">
-                <Badge className="kb-chip" variant="secondary">
-                  RBAC
-                </Badge>
-                <Badge className="kb-chip" variant="secondary">
-                  Юридическое лицо
-                </Badge>
-                <Badge className="kb-chip" variant="secondary">
-                  Аудит
-                </Badge>
-              </div>
-            </div>
+          <div className="text-sm font-semibold">Портал инструкций</div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            По всем вопросам использования системы или технической поддержки обращайтесь в службу технической поддержки по адресу{" "}
+            <a href="mailto:hd@progorod.veb.ru" className="text-primary underline">hd@progorod.veb.ru</a>
           </div>
           <div className="mt-4 text-xs text-muted-foreground">
-            © Демо. Интеграции AD/SAML/OIDC/LDAP и SMTP предусмотрены как точки расширения.
+            © {new Date().getFullYear()} Портал инструкций
           </div>
         </div>
       </footer>

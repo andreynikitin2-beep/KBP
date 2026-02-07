@@ -98,7 +98,7 @@ function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
 }
 
 export default function Home() {
-  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck } = useKB();
+  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck, visibilityGroups } = useKB();
   const [q, setQ] = useState("");
 
   const isAuthor = me.roles.includes("Автор");
@@ -182,6 +182,90 @@ export default function Home() {
     >
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8 space-y-4">
+
+          {isOwnerOrDeputy && (
+            <Card data-testid="card-owner-module">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Мои задачи (владелец / заместитель)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-[10px]">{awaitingApproval.length}</Badge>
+                    <span className="text-sm font-semibold">Ждут согласования</span>
+                  </div>
+                  {awaitingApproval.length ? (
+                    <div className="space-y-1">
+                      {awaitingApproval.map((m) => (
+                        <CompactMaterialRow key={m.id} id={m.id} label="На согласовании" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-awaiting">Нет материалов на согласовании.</div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
+                    <span className="text-sm font-semibold">На пересмотре</span>
+                  </div>
+                  {myOnReview.length ? (
+                    <div className="space-y-1">
+                      {myOnReview.map((m) => (
+                        <CompactMaterialRow key={m.id} id={m.id} label="Требует пересмотра" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-review">Нет материалов на пересмотре.</div>
+                  )}
+                </div>
+
+                {isAdmin && (
+                <>
+                <Separator />
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
+                    <span className="text-sm font-semibold">Мои RFC (запросы на изменение)</span>
+                  </div>
+                  {myRfcs.length ? (
+                    <div className="space-y-1">
+                      {myRfcs.map((r) => {
+                        const mat = allMaterials.find((m) => m.materialId === r.materialId);
+                        return (
+                          <Link key={r.id} href={`/materials/${r.materialId}`}>
+                            <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group" data-testid={`row-rfc-${r.id}`}>
+                              <div className="h-8 w-8 rounded flex items-center justify-center bg-orange-100 text-orange-600 group-hover:bg-orange-200 transition-colors shrink-0">
+                                <GitPullRequest className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-semibold leading-tight line-clamp-1">{r.title}</div>
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  {r.type} · {r.status} · {mat?.passport.title || r.materialId}
+                                </div>
+                              </div>
+                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-rfcs">Нет активных RFC.</div>
+                  )}
+                </div>
+                </>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="overflow-hidden" data-testid="card-showcase">
             <CardHeader className="pb-3">
@@ -271,86 +355,6 @@ export default function Home() {
                     У вас нет черновиков. Создайте новый материал.
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
-
-          {isOwnerOrDeputy && (
-            <Card data-testid="card-owner-module">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  Мои задачи (владелец / заместитель)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant="secondary" className="text-[10px]">{awaitingApproval.length}</Badge>
-                    <span className="text-sm font-semibold">Ждут согласования</span>
-                  </div>
-                  {awaitingApproval.length ? (
-                    <div className="space-y-1">
-                      {awaitingApproval.map((m) => (
-                        <CompactMaterialRow key={m.id} id={m.id} label="На согласовании" />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-awaiting">Нет материалов на согласовании.</div>
-                  )}
-                </div>
-
-                <Separator />
-
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
-                    <span className="text-sm font-semibold">На пересмотре</span>
-                  </div>
-                  {myOnReview.length ? (
-                    <div className="space-y-1">
-                      {myOnReview.map((m) => (
-                        <CompactMaterialRow key={m.id} id={m.id} label="Требует пересмотра" />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-review">Нет материалов на пересмотре.</div>
-                  )}
-                </div>
-
-                <Separator />
-
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
-                    <span className="text-sm font-semibold">Мои RFC (запросы на изменение)</span>
-                  </div>
-                  {myRfcs.length ? (
-                    <div className="space-y-1">
-                      {myRfcs.map((r) => {
-                        const mat = allMaterials.find((m) => m.materialId === r.materialId);
-                        return (
-                          <Link key={r.id} href={`/materials/${r.materialId}`}>
-                            <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group" data-testid={`row-rfc-${r.id}`}>
-                              <div className="h-8 w-8 rounded flex items-center justify-center bg-orange-100 text-orange-600 group-hover:bg-orange-200 transition-colors shrink-0">
-                                <GitPullRequest className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-semibold leading-tight line-clamp-1">{r.title}</div>
-                                <div className="text-[10px] text-muted-foreground mt-0.5">
-                                  {r.type} · {r.status} · {mat?.passport.title || r.materialId}
-                                </div>
-                              </div>
-                              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                            </div>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-rfcs">Нет активных RFC.</div>
-                  )}
-                </div>
               </CardContent>
             </Card>
           )}
@@ -470,6 +474,21 @@ export default function Home() {
                     </Badge>
                   ))}
                 </div>
+                {(() => {
+                  const myGroups = visibilityGroups.filter(g => !g.isSystem && g.memberIds.includes(me.id));
+                  return myGroups.length > 0 ? (
+                    <div className="mt-3">
+                      <div className="text-xs text-muted-foreground mb-1.5">Группы видимости</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {myGroups.map(g => (
+                          <Badge key={g.id} variant="outline" className="kb-chip">
+                            {g.title}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               <div className="rounded-2xl border bg-muted/30 p-4">
@@ -512,10 +531,12 @@ export default function Home() {
                       <span className="text-muted-foreground">На пересмотре</span>
                       <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
                     </div>
+                    {isAdmin && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Активные RFC</span>
                       <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
                     </div>
+                    )}
                   </div>
                 </div>
               )}

@@ -45,6 +45,7 @@ export default function Catalog() {
   const [renameDialog, setRenameDialog] = useState<{ id: string; title: string } | null>(null);
 
   const isAdmin = me.roles.includes("Администратор");
+  const canCreateMaterial = me.roles.some(r => r === "Автор" || r === "Владелец" || r === "Заместитель владельца" || r === "Администратор");
 
   const sections = useMemo(() => catalogNodes.filter((n) => n.type === "section"), [catalogNodes]);
 
@@ -257,7 +258,7 @@ export default function Catalog() {
                                       </Button>
                                     </>
                                   )}
-                                  {!count && subAllowed && (
+                                  {!count && subAllowed && canCreateMaterial && (
                                     <Link href="/materials/new">
                                       <Button data-testid={`button-create-in-${sub.id}`} size="sm" className="rounded-xl h-7 text-xs">
                                         Создать
