@@ -845,6 +845,79 @@ export const notificationLogSeed: NotificationLog[] = [
   },
 ];
 
+export type EmailTemplate = {
+  key: string;
+  label: string;
+  subject: string;
+  body: string;
+  description: string;
+};
+
+export const emailTemplatesSeed: EmailTemplate[] = [
+  {
+    key: "reminder_before",
+    label: "Напоминание до срока",
+    subject: "Напоминание: пересмотр «{{title}}» через {{days}} дн.",
+    body: "Уважаемый(ая) {{owner}},\n\nНапоминаем, что срок пересмотра материала «{{title}}» наступает через {{days}} дней ({{dueDate}}).\n\nПожалуйста, подтвердите актуальность или внесите необходимые изменения.\n\nСсылка: {{link}}",
+    description: "Отправляется владельцу до наступления срока пересмотра",
+  },
+  {
+    key: "reminder_due",
+    label: "Срок пересмотра наступил",
+    subject: "Пересмотр: срок актуальности «{{title}}» истёк",
+    body: "Уважаемый(ая) {{owner}},\n\nСрок актуальности материала «{{title}}» истёк {{dueDate}}.\n\nНеобходимо подтвердить актуальность или создать новую версию.\n\nСсылка: {{link}}",
+    description: "Отправляется владельцу при наступлении срока пересмотра",
+  },
+  {
+    key: "overdue",
+    label: "Просрочка пересмотра",
+    subject: "Просрочка: «{{title}}» — пересмотр не выполнен",
+    body: "Уважаемый(ая) {{owner}},\n\nМатериал «{{title}}» просрочен: срок пересмотра истёк {{dueDate}}.\n\nМатериал будет переведён в статус «На пересмотре» если не будет подтверждён.\n\nСсылка: {{link}}",
+    description: "Отправляется при просрочке пересмотра материала",
+  },
+  {
+    key: "escalation",
+    label: "Эскалация",
+    subject: "Эскалация: «{{title}}» — требуется вмешательство",
+    body: "Уважаемый(ая) администратор,\n\nМатериал «{{title}}» (владелец: {{owner}}) просрочен более {{days}} дней.\n\nТребуется вмешательство для решения вопроса актуальности.\n\nСсылка: {{link}}",
+    description: "Эскалация администратору при длительной просрочке",
+  },
+  {
+    key: "new_version",
+    label: "Новая версия опубликована",
+    subject: "Новая версия: «{{title}}» v{{version}}",
+    body: "Уважаемый(ая) {{recipient}},\n\nОпубликована новая версия материала «{{title}}» (v{{version}}).\n\nОсновные изменения: {{changelog}}\n\nСсылка: {{link}}",
+    description: "Уведомление подписчикам при публикации новой версии",
+  },
+  {
+    key: "auto_transition",
+    label: "Автоматический переход статуса",
+    subject: "Статус изменён: «{{title}}» → {{newStatus}}",
+    body: "Уважаемый(ая) {{owner}},\n\nСтатус материала «{{title}}» автоматически изменён на «{{newStatus}}».\n\nПричина: {{reason}}\n\nСсылка: {{link}}",
+    description: "Уведомление при автоматическом изменении статуса материала",
+  },
+];
+
+export type EmailConfig = {
+  senderAddress: string;
+  senderName: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpUseTls: boolean;
+  enabled: boolean;
+};
+
+export const emailConfigSeed: EmailConfig = {
+  senderAddress: "kb-portal@progorod.veb.ru",
+  senderName: "Портал инструкций",
+  smtpHost: "smtp.progorod.veb.ru",
+  smtpPort: 587,
+  smtpUser: "kb-portal",
+  smtpUseTls: true,
+  enabled: true,
+};
+
 export const policySeed = {
   reviewPeriods: [
     { criticality: "Критическая" as Criticality, days: 30, remindBeforeDays: [14, 7, 1], escalationAfterDays: [3, 7] },

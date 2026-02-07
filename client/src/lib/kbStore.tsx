@@ -7,8 +7,10 @@ import {
   policySeed,
   visibilityGroups as seedGroups,
   catalog as seedCatalog,
+  emailTemplatesSeed,
+  emailConfigSeed,
 } from "./mockData";
-import type { CatalogNode, Criticality, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
+import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 
 type ADSyncLogEntry = {
@@ -88,6 +90,11 @@ type Store = {
   getAllVersions: (materialId: string) => MaterialVersion[];
   viewOldVersion: (versionId: string) => MaterialVersion | undefined;
 
+  emailConfig: EmailConfig;
+  emailTemplates: EmailTemplate[];
+  updateEmailConfig: (data: Partial<EmailConfig>) => { ok: boolean; message?: string };
+  updateEmailTemplate: (key: string, data: { subject?: string; body?: string }) => { ok: boolean; message?: string };
+
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
@@ -118,6 +125,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationLog[]>(notificationLogSeed);
   const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>(seedCatalog);
   const [policy, setPolicy] = useState<PolicyConfig>(() => policySeed as PolicyConfig);
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>(emailConfigSeed);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(emailTemplatesSeed);
   const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
   const [subscriptionMap, setSubscriptionMap] = useState<Record<string, string[]>>({});
 
@@ -724,12 +733,29 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
 
+      emailConfig,
+      emailTemplates,
+
+      updateEmailConfig: (data: Partial<EmailConfig>) => {
+        setEmailConfig((prev) => ({ ...prev, ...data }));
+        return { ok: true };
+      },
+
+      updateEmailTemplate: (key: string, data: { subject?: string; body?: string }) => {
+        const tpl = emailTemplates.find((t) => t.key === key);
+        if (!tpl) return { ok: false, message: "Шаблон не найден" };
+        setEmailTemplates((prev) =>
+          prev.map((t) => (t.key === key ? { ...t, ...data } : t)),
+        );
+        return { ok: true };
+      },
+
       updateCatalogNode: (nodeId: string, updates: Partial<CatalogNode>) => {
         setCatalogNodes(prev => prev.map(n => n.id === nodeId ? { ...n, ...updates } : n));
         return { ok: true };
       },
     };
-  }, [catalogNodes, effectiveVisGroupMap, groups, materials, me, meId, mySubscriptions, notifications, policy, rfcs, users]);
+  }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, notifications, policy, rfcs, users]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
