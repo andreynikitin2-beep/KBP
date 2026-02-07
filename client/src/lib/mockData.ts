@@ -1,3 +1,10 @@
+export type HelpfulRating = {
+  userId: string;
+  materialId: string;
+  date: string;
+  value: "helpful" | "not_helpful";
+};
+
 export type Role =
   | "Читатель"
   | "Автор"

@@ -91,7 +91,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -215,22 +215,13 @@ export default function MaterialView() {
 
   useEffect(() => {
     if (!current) return;
-    setMaterials((prev) =>
-      prev.map((m) =>
-        m.id === current.id
-          ? {
-              ...m,
-              stats: { ...m.stats, views: m.stats.views + 1 },
-              auditViews: [{ userId: me.id, at: new Date().toISOString() }, ...m.auditViews].slice(0, 200),
-            }
-          : m,
-      ),
-    );
+    recordView(current.materialId);
   }, [current?.id]);
 
   const overdue = current ? isOverdue(current) : false;
   const canConfirm = current ? canConfirmActuality(me, current) : false;
   const dueDays = current ? daysToNextReview(current) : null;
+  const canRate = current ? canRateToday(current.materialId) : false;
 
   const editPassportDraft: MaterialVersion["passport"] | null = isDraft ? {
     title: editTitle,
@@ -1592,14 +1583,11 @@ export default function MaterialView() {
                     data-testid="button-helpful-yes"
                     variant="secondary"
                     className="rounded-xl"
-                    disabled={isViewingOldVersion}
+                    disabled={isViewingOldVersion || !canRate}
+                    title={!canRate ? "Вы уже оценили сегодня" : undefined}
                     onClick={() => {
-                      setMaterials((prev) =>
-                        prev.map((m) =>
-                          m.id === current.id ? { ...m, stats: { ...m.stats, helpfulYes: m.stats.helpfulYes + 1 } } : m,
-                        ),
-                      );
-                      toast({ title: "Спасибо", description: "Отметили: помогло" });
+                      const res = rateMaterial(current.materialId, "helpful");
+                      toast({ title: res.ok ? "Спасибо" : "Ограничение", description: res.ok ? "Отметили: помогло" : res.message || "" });
                     }}
                   >
                     <ThumbsUp className="mr-2 h-4 w-4" />
@@ -1609,14 +1597,11 @@ export default function MaterialView() {
                     data-testid="button-helpful-no"
                     variant="outline"
                     className="rounded-xl"
-                    disabled={isViewingOldVersion}
+                    disabled={isViewingOldVersion || !canRate}
+                    title={!canRate ? "Вы уже оценили сегодня" : undefined}
                     onClick={() => {
-                      setMaterials((prev) =>
-                        prev.map((m) =>
-                          m.id === current.id ? { ...m, stats: { ...m.stats, helpfulNo: m.stats.helpfulNo + 1 } } : m,
-                        ),
-                      );
-                      toast({ title: "Принято", description: "Отметили: не помогло" });
+                      const res = rateMaterial(current.materialId, "not_helpful");
+                      toast({ title: res.ok ? "Принято" : "Ограничение", description: res.ok ? "Отметили: не помогло" : res.message || "" });
                     }}
                   >
                     <ThumbsDown className="mr-2 h-4 w-4" />
@@ -1626,6 +1611,7 @@ export default function MaterialView() {
                 <div className="mt-3 text-xs text-muted-foreground" data-testid="text-helpful-stats">
                   Помогло: {dv.stats.helpfulYes} · Не помогло: {dv.stats.helpfulNo}
                 </div>
+                {!canRate && <div className="text-xs text-amber-600 mt-1">Оценка уже поставлена сегодня</div>}
               </div>
 
               <div className="rounded-2xl border bg-muted/30 p-4">

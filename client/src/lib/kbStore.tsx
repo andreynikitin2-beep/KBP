@@ -10,8 +10,10 @@ import {
   emailTemplatesSeed,
   emailConfigSeed,
 } from "./mockData";
-import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
+import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+
+const VIEW_DEDUP_MINUTES = 30;
 
 type ADSyncLogEntry = {
   at: string;
@@ -82,6 +84,14 @@ type Store = {
   updateGroup: (groupId: string, data: { title?: string; memberIds?: string[] }) => { ok: boolean; message?: string };
   deleteGroup: (groupId: string) => { ok: boolean; message?: string };
 
+  ratings: HelpfulRating[];
+  rateMaterial: (materialId: string, value: "helpful" | "not_helpful") => { ok: boolean; message?: string };
+  canRateToday: (materialId: string) => boolean;
+  getMaterialRatings: (materialId: string) => { helpful: number; notHelpful: number; total: number };
+
+  recordView: (materialId: string) => void;
+  viewDedupMinutes: number;
+
   subscriptions: string[];
   toggleSubscription: (materialId: string) => void;
   isSubscribed: (materialId: string) => boolean;
@@ -132,6 +142,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(emailTemplatesSeed);
   const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
   const [subscriptionMap, setSubscriptionMap] = useState<Record<string, string[]>>({});
+  const [ratings, setRatings] = useState<HelpfulRating[]>([]);
+  const [viewLog, setViewLog] = useState<Array<{ userId: string; materialId: string; at: number }>>([]);
 
   const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string[]>>(() => {
     const map: Record<string, string[]> = {};
@@ -629,6 +641,70 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
 
+      ratings,
+
+      rateMaterial: (materialId: string, value: "helpful" | "not_helpful") => {
+        const today = getMoscowDateString();
+        const alreadyRated = ratings.some(
+          (r) => r.userId === meId && r.materialId === materialId && r.date === today,
+        );
+        if (alreadyRated) return { ok: false, message: "Вы уже оценили этот материал сегодня" };
+        const newRating: HelpfulRating = { userId: meId, materialId, date: today, value };
+        setRatings((prev) => [...prev, newRating]);
+        const statKey = value === "helpful" ? "helpfulYes" : "helpfulNo";
+        setMaterials((prev) =>
+          prev.map((m) =>
+            m.materialId === materialId && m.status !== "Архив"
+              ? { ...m, stats: { ...m.stats, [statKey]: m.stats[statKey] + 1 } }
+              : m,
+          ),
+        );
+        return { ok: true };
+      },
+
+      canRateToday: (materialId: string) => {
+        const today = getMoscowDateString();
+        return !ratings.some(
+          (r) => r.userId === meId && r.materialId === materialId && r.date === today,
+        );
+      },
+
+      getMaterialRatings: (materialId: string) => {
+        const matRatings = ratings.filter((r) => r.materialId === materialId);
+        const helpful = matRatings.filter((r) => r.value === "helpful").length;
+        const notHelpful = matRatings.filter((r) => r.value === "not_helpful").length;
+        return { helpful, notHelpful, total: helpful + notHelpful };
+      },
+
+      recordView: (materialId: string) => {
+        const now = Date.now();
+        const recent = viewLog.find(
+          (v) =>
+            v.userId === meId &&
+            v.materialId === materialId &&
+            now - v.at < VIEW_DEDUP_MINUTES * 60 * 1000,
+        );
+        const version = materials.find(
+          (m) => m.materialId === materialId && m.status !== "Архив",
+        ) || materials.find((m) => m.materialId === materialId);
+        if (version) {
+          setMaterials((prev) =>
+            prev.map((m) =>
+              m.id === version.id
+                ? {
+                    ...m,
+                    stats: recent ? m.stats : { ...m.stats, views: m.stats.views + 1 },
+                    auditViews: [{ userId: meId, at: new Date().toISOString() }, ...m.auditViews].slice(0, 200),
+                  }
+                : m,
+            ),
+          );
+        }
+        setViewLog((prev) => [...prev, { userId: meId, materialId, at: now }]);
+      },
+
+      viewDedupMinutes: VIEW_DEDUP_MINUTES,
+
       subscriptions: mySubscriptions,
       toggleSubscription: (materialId: string) => {
         setSubscriptionMap((prev) => {
@@ -788,7 +864,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
     };
-  }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, notifications, policy, rfcs, users]);
+  }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, notifications, policy, ratings, rfcs, users, viewLog]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

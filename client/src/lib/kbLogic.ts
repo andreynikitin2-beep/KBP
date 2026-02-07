@@ -1,5 +1,42 @@
 import type { CatalogNode, MaterialVersion, NotificationLog, RFC, Role, User, VisibilityGroup } from "./mockData";
 
+export const PORTAL_TZ = "Europe/Moscow";
+
+export function getMoscowDate(date?: Date): Date {
+  const d = date || new Date();
+  const utc = d.getTime() + d.getTimezoneOffset() * 60000;
+  return new Date(utc + 3 * 3600000);
+}
+
+export function getMoscowDateString(date?: Date): string {
+  const m = getMoscowDate(date);
+  const y = m.getFullYear();
+  const mo = String(m.getMonth() + 1).padStart(2, "0");
+  const da = String(m.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${da}`;
+}
+
+export const POPULARITY_WEIGHTS = { w1: 0.7, w2: 0.3, w3: 0 };
+export const HELPFULNESS_SMOOTHING = 20;
+export const MIN_RATINGS_FOR_HELPFUL = 5;
+export const POPULARITY_VIEW_DAYS = 30;
+
+export function computeHelpfulnessScore(
+  helpful: number,
+  total: number,
+  avgHelpfulness: number,
+  m: number = HELPFULNESS_SMOOTHING,
+): number {
+  return (helpful + m * avgHelpfulness) / (total + m);
+}
+
+export function computePopularityScore(
+  views30d: number,
+  helpfulnessScore: number,
+): number {
+  return POPULARITY_WEIGHTS.w1 * Math.log(views30d + 1) + POPULARITY_WEIGHTS.w2 * helpfulnessScore;
+}
+
 export function hasAnyRole(user: User, required?: Role[]) {
   if (!required || required.length === 0) return true;
   return required.some((r) => user.roles.includes(r));

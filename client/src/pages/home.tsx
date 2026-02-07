@@ -16,6 +16,8 @@ import {
   Search,
   Settings,
   Sparkles,
+  Star,
+  ThumbsUp,
   TriangleAlert,
 } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
@@ -25,8 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useKB } from "@/lib/kbStore";
-import { computeKpis, daysToNextReview, isOverdue, searchMaterials } from "@/lib/kbLogic";
+import { computeHelpfulnessScore, computeKpis, computePopularityScore, daysToNextReview, isOverdue, MIN_RATINGS_FOR_HELPFUL, searchMaterials } from "@/lib/kbLogic";
+
+const critOrder: Record<string, number> = { "Критическая": 0, "Высокая": 1, "Средняя": 2, "Низкая": 3 };
+const statusOrder: Record<string, number> = { "Опубликовано": 0, "На пересмотре": 1, "На согласовании": 2, "Черновик": 3, "Архив": 4 };
 
 function MaterialCard({ id }: { id: string }) {
   const { visibleMaterials: materials } = useKB();
@@ -100,6 +106,7 @@ function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
 export default function Home() {
   const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck, visibilityGroups } = useKB();
   const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "popularity" | "criticality" | "status">("date");
 
   const isAuthor = me.roles.includes("Автор");
   const isOwner = me.roles.includes("Владелец");
@@ -143,10 +150,51 @@ export default function Home() {
 
   const results = useMemo(() => searchMaterials(showcaseMaterials, q), [showcaseMaterials, q]);
 
+  const sortedResults = useMemo(() => {
+    const list = [...results];
+    switch (sortBy) {
+      case "date": return list.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+      case "popularity": return list.sort((a, b) => b.stats.views - a.stats.views);
+      case "criticality": return list.sort((a, b) => (critOrder[a.passport.criticality] ?? 9) - (critOrder[b.passport.criticality] ?? 9));
+      case "status": return list.sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9));
+      default: return list;
+    }
+  }, [results, sortBy]);
+
+  const avgHelpfulness = useMemo(() => {
+    const published = showcaseMaterials.filter(m => m.status === "Опубликовано");
+    const totalH = published.reduce((s, m) => s + m.stats.helpfulYes, 0);
+    const totalR = published.reduce((s, m) => s + m.stats.helpfulYes + m.stats.helpfulNo, 0);
+    return totalR > 0 ? totalH / totalR : 0.5;
+  }, [showcaseMaterials]);
+
   const popular = useMemo(() =>
-    [...showcaseMaterials].filter((m) => m.status === "Опубликовано").sort((a, b) => b.stats.views - a.stats.views).slice(0, 4),
-    [showcaseMaterials],
+    [...showcaseMaterials]
+      .filter(m => m.status === "Опубликовано")
+      .map(m => {
+        const total = m.stats.helpfulYes + m.stats.helpfulNo;
+        const hs = computeHelpfulnessScore(m.stats.helpfulYes, total, avgHelpfulness);
+        const ps = computePopularityScore(m.stats.views, hs);
+        return { ...m, _ps: ps };
+      })
+      .sort((a, b) => b._ps - a._ps)
+      .slice(0, 4),
+    [showcaseMaterials, avgHelpfulness],
   );
+
+  const mostHelpful = useMemo(() =>
+    [...showcaseMaterials]
+      .filter(m => m.status === "Опубликовано" && (m.stats.helpfulYes + m.stats.helpfulNo) >= MIN_RATINGS_FOR_HELPFUL)
+      .map(m => {
+        const total = m.stats.helpfulYes + m.stats.helpfulNo;
+        const hs = computeHelpfulnessScore(m.stats.helpfulYes, total, avgHelpfulness);
+        return { ...m, _hs: hs };
+      })
+      .sort((a, b) => b._hs - a._hs)
+      .slice(0, 4),
+    [showcaseMaterials, avgHelpfulness],
+  );
+
   const newest = useMemo(() =>
     [...showcaseMaterials].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, 4),
     [showcaseMaterials],
@@ -279,15 +327,28 @@ export default function Home() {
                     Новое и популярное из доступных вам материалов.
                   </div>
                 </div>
-                <div className="relative w-full md:w-[320px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    data-testid="input-showcase-search"
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Поиск по материалам…"
-                    className="pl-9 rounded-xl"
-                  />
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-[320px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      data-testid="input-showcase-search"
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="Поиск по материалам…"
+                      className="pl-9 rounded-xl"
+                    />
+                  </div>
+                  <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+                    <SelectTrigger className="w-[180px] rounded-xl" data-testid="select-sort">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date">По дате</SelectItem>
+                      <SelectItem value="popularity">По популярности</SelectItem>
+                      <SelectItem value="criticality">По критичности</SelectItem>
+                      <SelectItem value="status">По статусу</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardHeader>
@@ -296,9 +357,9 @@ export default function Home() {
               {q ? (
                 <div className="space-y-3">
                   <div className="text-sm text-muted-foreground mb-2">
-                    Найдено: {results.length}
+                    Найдено: {sortedResults.length}
                   </div>
-                  {results.length ? results.slice(0, 6).map((m) => (
+                  {sortedResults.length ? sortedResults.slice(0, 6).map((m) => (
                     <MaterialCard key={m.id} id={m.id} />
                   )) : (
                     <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-search">
@@ -308,9 +369,10 @@ export default function Home() {
                 </div>
               ) : (
                 <Tabs defaultValue="new" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger data-testid="tab-new" value="new">Новое</TabsTrigger>
                     <TabsTrigger data-testid="tab-popular" value="popular">Популярное</TabsTrigger>
+                    <TabsTrigger data-testid="tab-helpful" value="helpful">Самые полезные</TabsTrigger>
                   </TabsList>
                   <TabsContent value="new" className="mt-4 space-y-3">
                     {newest.map((m) => (
@@ -321,6 +383,15 @@ export default function Home() {
                     {popular.map((m) => (
                       <MaterialCard key={m.id} id={m.id} />
                     ))}
+                  </TabsContent>
+                  <TabsContent value="helpful" className="mt-4 space-y-3">
+                    {mostHelpful.length ? mostHelpful.map(m => (
+                      <MaterialCard key={m.id} id={m.id} />
+                    )) : (
+                      <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground" data-testid="empty-helpful">
+                        Недостаточно оценок для формирования рейтинга (нужно минимум {MIN_RATINGS_FOR_HELPFUL}).
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               )}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ChevronDown, ChevronRight, Edit2, Folder, Lock, Plus, Search, Tag, Trash2, UserCog, Users } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,26 @@ export default function Catalog() {
   const [addSectionDialog, setAddSectionDialog] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [renameSectionDialog, setRenameSectionDialog] = useState<{ id: string; title: string } | null>(null);
+  const [sortBy, setSortBy] = useState<"date" | "popularity" | "criticality" | "status" | "review">("date");
+
+  const critOrder: Record<string, number> = { "Критическая": 0, "Высокая": 1, "Средняя": 2, "Низкая": 3 };
+  const statusOrder: Record<string, number> = { "Опубликовано": 0, "На пересмотре": 1, "На согласовании": 2, "Черновик": 3, "Архив": 4 };
+
+  const sortMats = (list: typeof materials) => {
+    const arr = [...list];
+    switch (sortBy) {
+      case "date": return arr.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
+      case "popularity": return arr.sort((a, b) => b.stats.views - a.stats.views);
+      case "criticality": return arr.sort((a, b) => (critOrder[a.passport.criticality] ?? 9) - (critOrder[b.passport.criticality] ?? 9));
+      case "status": return arr.sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9));
+      case "review": return arr.sort((a, b) => {
+        const aDate = a.passport.nextReviewAt ? +new Date(a.passport.nextReviewAt) : Infinity;
+        const bDate = b.passport.nextReviewAt ? +new Date(b.passport.nextReviewAt) : Infinity;
+        return aDate - bDate;
+      });
+      default: return arr;
+    }
+  };
 
   const isAdmin = me.roles.includes("Администратор");
   const canCreateMaterial = me.roles.some(r => r === "Автор" || r === "Владелец" || r === "Заместитель владельца" || r === "Администратор");
@@ -105,17 +126,31 @@ export default function Catalog() {
       search={q}
       onSearch={setQ}
       actions={
-        isAdmin ? (
-          <Button
-            data-testid="button-add-section"
-            variant="outline"
-            className="rounded-xl"
-            onClick={() => { setNewSectionTitle(""); setAddSectionDialog(true); }}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Добавить раздел
-          </Button>
-        ) : null
+        <div className="flex items-center gap-2">
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
+            <SelectTrigger className="w-[180px] rounded-xl" data-testid="select-sort-catalog">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date">По дате</SelectItem>
+              <SelectItem value="popularity">По популярности</SelectItem>
+              <SelectItem value="criticality">По критичности</SelectItem>
+              <SelectItem value="status">По статусу</SelectItem>
+              <SelectItem value="review">По дате пересмотра</SelectItem>
+            </SelectContent>
+          </Select>
+          {isAdmin && (
+            <Button
+              data-testid="button-add-section"
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => { setNewSectionTitle(""); setAddSectionDialog(true); }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Добавить раздел
+            </Button>
+          )}
+        </div>
       }
     >
       <div className="grid gap-4 md:grid-cols-12">
@@ -318,7 +353,7 @@ export default function Catalog() {
 
                               {isExpanded && subAllowed && (
                                 <div className="ml-6 mt-1 mb-2 space-y-1" data-testid={`materials-list-${sub.id}`}>
-                                  {(qLower ? filteredMats : subMaterials).map((m) => (
+                                  {sortMats(qLower ? filteredMats : subMaterials).map((m) => (
                                     <Link key={m.id} href={`/materials/${m.materialId}`}>
                                       <div
                                         className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer group border border-transparent hover:border-border"
