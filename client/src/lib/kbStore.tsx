@@ -1,17 +1,7 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
-import {
-  notificationLogSeed,
-  demoUsers,
-  materials as seedMaterials,
-  rfcs as seedRfcs,
-  policySeed,
-  visibilityGroups as seedGroups,
-  catalog as seedCatalog,
-  emailTemplatesSeed,
-  emailConfigSeed,
-} from "./mockData";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+import { api } from "./api";
 
 const VIEW_DEDUP_MINUTES = 30;
 
@@ -39,10 +29,30 @@ export type RbacDefaults = {
   canViewAudit: string[];
 };
 
+export type ADIntegration = {
+  enabled: boolean;
+  mode: "demo" | "SAML" | "OIDC" | "LDAP";
+  ssoUrl: string;
+  syncFrequencyMinutes: number;
+  lastSyncAt: string | null;
+  syncStatus: "success" | "error" | "in_progress" | "never";
+  syncedUsersCount: number;
+  deactivatedCount: number;
+  mapping: {
+    roles: string | null;
+    department: string;
+    legalEntity: string;
+    displayName: string;
+    email: string;
+  };
+  syncLog: ADSyncLogEntry[];
+  _id?: string;
+};
+
 export type PolicyConfig = {
-  reviewPeriods: ReviewPeriod[];
-  rbacDefaults: RbacDefaults;
-  adIntegration: typeof policySeed.adIntegration;
+  reviewPeriods: (ReviewPeriod & { _id?: string })[];
+  rbacDefaults: RbacDefaults & { [key: `_id_${string}`]: string };
+  adIntegration: ADIntegration;
 };
 
 type Store = {
@@ -118,44 +128,188 @@ type Store = {
 
 const Ctx = createContext<Store | null>(null);
 
+const defaultEmailConfig: EmailConfig = {
+  senderAddress: '', senderName: '', smtpHost: '', smtpPort: 587,
+  smtpUser: '', smtpPassword: '', smtpUseTls: true, enabled: false,
+};
+
+const defaultAdIntegration: ADIntegration = {
+  enabled: false,
+  mode: "demo",
+  ssoUrl: "",
+  syncFrequencyMinutes: 60,
+  lastSyncAt: null,
+  syncStatus: "never",
+  syncedUsersCount: 0,
+  deactivatedCount: 0,
+  mapping: {
+    roles: null,
+    department: "department",
+    legalEntity: "company",
+    displayName: "displayName",
+    email: "mail",
+  },
+  syncLog: [],
+};
+
 function computeNextReview(
   criticality: MaterialVersion["passport"]["criticality"],
   lastReviewedAtIso: string,
-  policy: typeof policySeed,
+  policyData: PolicyConfig,
 ) {
-  const row = policy.reviewPeriods.find((r) => r.criticality === criticality);
+  const row = policyData.reviewPeriods.find((r) => r.criticality === criticality);
   const days = row?.days ?? 180;
   const d = new Date(lastReviewedAtIso);
   d.setDate(d.getDate() + days);
   return { next: d.toISOString(), periodDays: days };
 }
 
+function persistNotification(notif: NotificationLog) {
+  api.createNotification({
+    to: notif.to,
+    subject: notif.subject,
+    template: notif.template,
+    related: notif.related,
+    status: notif.status,
+  }).catch(console.error);
+}
+
 export function KBStoreProvider({ children }: { children: React.ReactNode }) {
-  const [meId, setMeId] = useState(demoUsers[0].id);
-  const [users, setUsers] = useState<User[]>(demoUsers);
-  const [materials, setMaterials] = useState<MaterialVersion[]>(seedMaterials);
-  const [rfcs, setRfcs] = useState<RFC[]>(seedRfcs);
-  const [notifications, setNotifications] = useState<NotificationLog[]>(notificationLogSeed);
-  const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>(seedCatalog);
-  const [policy, setPolicy] = useState<PolicyConfig>(() => policySeed as PolicyConfig);
-  const [emailConfig, setEmailConfig] = useState<EmailConfig>(emailConfigSeed);
-  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>(emailTemplatesSeed);
-  const [groups, setGroups] = useState<VisibilityGroup[]>(seedGroups);
+  const [loading, setLoading] = useState(true);
+  const [meId, setMeIdRaw] = useState('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [materials, setMaterials] = useState<MaterialVersion[]>([]);
+  const [rfcs, setRfcs] = useState<RFC[]>([]);
+  const [notifications, setNotifications] = useState<NotificationLog[]>([]);
+  const [catalogNodes, setCatalogNodes] = useState<CatalogNode[]>([]);
+  const [policy, setPolicy] = useState<PolicyConfig>({
+    reviewPeriods: [],
+    rbacDefaults: {
+      canPublish: [],
+      canApprove: [],
+      canEditDraft: [],
+      canManagePolicies: [],
+      canViewAudit: [],
+    } as any,
+    adIntegration: defaultAdIntegration,
+  });
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>(defaultEmailConfig);
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
+  const [groups, setGroups] = useState<VisibilityGroup[]>([]);
   const [subscriptionMap, setSubscriptionMap] = useState<Record<string, string[]>>({});
   const [ratings, setRatings] = useState<HelpfulRating[]>([]);
   const [viewLog, setViewLog] = useState<Array<{ userId: string; materialId: string; at: number }>>([]);
+  const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string[]>>({});
 
-  const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string[]>>(() => {
-    const map: Record<string, string[]> = {};
-    for (const m of seedMaterials) {
-      if (m.status === "Опубликовано" || m.status === "На пересмотре") {
-        map[m.materialId] = m.passport.visibilityGroupIds;
+  const setMeId = (id: string) => {
+    setMeIdRaw(id);
+    if (id) {
+      api.getUserSubscriptions(id).then(subs => {
+        setSubscriptionMap(prev => ({ ...prev, [id]: subs }));
+      }).catch(console.error);
+    }
+  };
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [
+          usersData, materialsData, rfcsData, notificationsData,
+          catalogData, groupsData, ratingsData,
+          emailConfigData, emailTemplatesData,
+          reviewPeriodsData, rbacDefaultsData,
+          adConfigData, adSyncLogData,
+          effectiveVisGroupsData
+        ] = await Promise.all([
+          api.getUsers(),
+          api.getMaterialVersions(),
+          api.getRfcs(),
+          api.getNotifications(),
+          api.getCatalogNodes(),
+          api.getVisibilityGroups(),
+          api.getRatings(),
+          api.getEmailConfig(),
+          api.getEmailTemplates(),
+          api.getReviewPeriods(),
+          api.getRbacDefaults(),
+          api.getAdConfig(),
+          api.getAdSyncLog(),
+          api.getEffectiveVisGroups(),
+        ]);
+
+        setUsers(usersData);
+        setMeIdRaw(usersData[0]?.id || '');
+        setMaterials(materialsData);
+        setRfcs(rfcsData);
+        setNotifications(notificationsData);
+        setCatalogNodes(catalogData);
+        setGroups(groupsData);
+        setRatings(ratingsData);
+        if (emailConfigData) setEmailConfig(emailConfigData);
+        setEmailTemplates(emailTemplatesData);
+
+        const reviewPeriods = reviewPeriodsData.map((rp: any) => ({
+          criticality: rp.criticality,
+          days: rp.days,
+          remindBeforeDays: rp.remindBeforeDays,
+          escalationAfterDays: rp.escalationAfterDays,
+          _id: rp.id,
+        }));
+        const rbacDefaults: any = {};
+        for (const rd of rbacDefaultsData) {
+          rbacDefaults[rd.key] = rd.roles;
+          rbacDefaults[`_id_${rd.key}`] = rd.id;
+        }
+
+        setPolicy({
+          reviewPeriods,
+          rbacDefaults,
+          adIntegration: adConfigData ? {
+            enabled: adConfigData.enabled,
+            mode: adConfigData.mode,
+            ssoUrl: adConfigData.ssoUrl,
+            syncFrequencyMinutes: adConfigData.syncFrequencyMinutes,
+            lastSyncAt: adConfigData.lastSyncAt,
+            syncStatus: adConfigData.syncStatus,
+            syncedUsersCount: adConfigData.syncedUsersCount,
+            deactivatedCount: adConfigData.deactivatedCount,
+            mapping: {
+              roles: adConfigData.mappingRoles,
+              department: adConfigData.mappingDepartment,
+              legalEntity: adConfigData.mappingLegalEntity,
+              displayName: adConfigData.mappingDisplayName,
+              email: adConfigData.mappingEmail,
+            },
+            syncLog: adSyncLogData.map((s: any) => ({
+              at: s.syncedAt,
+              status: s.status,
+              usersTotal: s.usersTotal,
+              usersUpdated: s.usersUpdated,
+              usersDeactivated: s.usersDeactivated,
+              message: s.message,
+            })),
+            _id: adConfigData.id,
+          } : defaultAdIntegration,
+        });
+
+        setEffectiveVisGroupMap(effectiveVisGroupsData);
+
+        if (usersData.length > 0) {
+          const subs = await api.getUserSubscriptions(usersData[0].id);
+          setSubscriptionMap(prev => ({ ...prev, [usersData[0].id]: subs }));
+        }
+      } catch (err) {
+        console.error("Failed to load data from API:", err);
+      } finally {
+        setLoading(false);
       }
     }
-    return map;
-  });
+    loadData();
+  }, []);
 
-  const me = useMemo(() => users.find((u) => u.id === meId)!, [users, meId]);
+  const me = useMemo(() => users.find((u) => u.id === meId) || {
+    id: '', displayName: '', email: '', roles: [] as Role[], legalEntity: '', department: '', isAvailable: true, source: 'local' as const
+  }, [users, meId]);
   const mySubscriptions = useMemo(() => subscriptionMap[meId] || [], [subscriptionMap, meId]);
 
   const cleanupSubscriptionsOnGroupChange = (materialId: string, newGroupIds: string[]) => {
@@ -172,6 +326,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const hasAccess = relevantGroups.some(g => g!.memberIds.includes(userId));
         if (!hasAccess) {
           next[userId] = subs.filter((id) => id !== materialId);
+          api.removeSubscriber(materialId, userId).catch(console.error);
         }
       }
       return next;
@@ -195,6 +350,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+        persistNotification(email);
       }
     }
   };
@@ -235,21 +391,34 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       catalogNodes,
 
       updateReviewPeriod: (criticality: Criticality, data: Partial<Omit<ReviewPeriod, "criticality">>) => {
-        setPolicy((prev) => ({
-          ...prev,
-          reviewPeriods: prev.reviewPeriods.map((p) =>
-            p.criticality === criticality ? { ...p, ...data } : p,
-          ),
-        }));
+        setPolicy((prev) => {
+          const updated = {
+            ...prev,
+            reviewPeriods: prev.reviewPeriods.map((p) =>
+              p.criticality === criticality ? { ...p, ...data } : p,
+            ),
+          };
+          const rp = updated.reviewPeriods.find(p => p.criticality === criticality);
+          if (rp && rp._id) {
+            api.updateReviewPeriod(rp._id, { ...data }).catch(console.error);
+          }
+          return updated;
+        });
         return { ok: true };
       },
 
       updateRbacDefaults: (key: keyof RbacDefaults, roles: string[]) => {
         if (roles.length === 0) return { ok: false, message: "Нужно выбрать хотя бы одну роль" };
-        setPolicy((prev) => ({
-          ...prev,
-          rbacDefaults: { ...prev.rbacDefaults, [key]: roles },
-        }));
+        setPolicy((prev) => {
+          const dbId = (prev.rbacDefaults as any)[`_id_${key}`];
+          if (dbId) {
+            api.updateRbacDefault(dbId, { roles }).catch(console.error);
+          }
+          return {
+            ...prev,
+            rbacDefaults: { ...prev.rbacDefaults, [key]: roles },
+          };
+        });
         return { ok: true };
       },
 
@@ -259,7 +428,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (!canConfirmActuality(me, version)) return { ok: false, message: "Недостаточно прав" };
 
         const lastReviewedAt = new Date().toISOString();
-        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policySeed);
+        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policy);
 
         setMaterials((prev) =>
           prev.map((m) =>
@@ -286,6 +455,14 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+        persistNotification(email);
+
+        api.updateMaterialVersionRaw(versionId, {
+          status: version.status === "На пересмотре" ? "Опубликовано" : version.status,
+          lastReviewedAt,
+          nextReviewAt: next,
+          reviewPeriodDays: periodDays,
+        }).catch(console.error);
 
         return { ok: true };
       },
@@ -309,6 +486,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+        persistNotification(email);
+
+        api.updateMaterialVersionRaw(versionId, { status: "На согласовании" }).catch(console.error);
 
         return { ok: true };
       },
@@ -319,8 +499,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (!canPublishDirectly(me, version)) return { ok: false, message: "Только владелец/заместитель может публиковать без согласования" };
 
         const lastReviewedAt = new Date().toISOString();
-        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policySeed);
+        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policy);
 
+        const archivedIds: string[] = [];
         setMaterials((prev) =>
           prev.map((m) => {
             if (m.id === versionId) {
@@ -331,6 +512,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
               };
             }
             if (m.materialId === version.materialId && m.id !== versionId && (m.status === "Опубликовано" || m.status === "На пересмотре")) {
+              archivedIds.push(m.id);
               return { ...m, status: "Архив" as MaterialVersion["status"] };
             }
             return m;
@@ -347,8 +529,20 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+        persistNotification(email);
 
         notifySubscribers(version, version.passport.visibilityGroupIds);
+
+        api.updateMaterialVersionRaw(versionId, {
+          status: "Опубликовано",
+          lastReviewedAt,
+          nextReviewAt: next,
+          reviewPeriodDays: periodDays,
+        }).catch(console.error);
+        for (const aid of archivedIds) {
+          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(console.error);
+        }
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
 
         return { ok: true };
       },
@@ -359,19 +553,22 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (!canApproveAndPublish(me, version)) return { ok: false, message: "Недостаточно прав для согласования" };
 
         const lastReviewedAt = new Date().toISOString();
-        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policySeed);
+        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policy);
+        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[APPROVED BY ${me.displayName}]`;
 
+        const archivedIds: string[] = [];
         setMaterials((prev) =>
           prev.map((m) => {
             if (m.id === versionId) {
               return {
                 ...m,
                 status: "Опубликовано" as MaterialVersion["status"],
-                changelog: (m.changelog ? m.changelog + "\n" : "") + `[APPROVED BY ${me.displayName}]`,
+                changelog: newChangelog,
                 passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
               };
             }
             if (m.materialId === version.materialId && m.id !== versionId && (m.status === "Опубликовано" || m.status === "На пересмотре")) {
+              archivedIds.push(m.id);
               return { ...m, status: "Архив" as MaterialVersion["status"] };
             }
             return m;
@@ -389,8 +586,21 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+        persistNotification(email);
 
         notifySubscribers(version, version.passport.visibilityGroupIds);
+
+        api.updateMaterialVersionRaw(versionId, {
+          status: "Опубликовано",
+          changelog: newChangelog,
+          lastReviewedAt,
+          nextReviewAt: next,
+          reviewPeriodDays: periodDays,
+        }).catch(console.error);
+        for (const aid of archivedIds) {
+          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(console.error);
+        }
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
 
         return { ok: true };
       },
@@ -401,13 +611,15 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (!canReturnForRevision(me, version)) return { ok: false, message: "Недостаточно прав" };
         if (!comment.trim()) return { ok: false, message: "Комментарий обязателен при возврате на доработку" };
 
+        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[RETURNED] ${me.displayName}: ${comment}`;
+
         setMaterials((prev) =>
           prev.map((m) =>
             m.id === versionId
               ? {
                   ...m,
                   status: "Черновик" as MaterialVersion["status"],
-                  changelog: (m.changelog ? m.changelog + "\n" : "") + `[RETURNED] ${me.displayName}: ${comment}`,
+                  changelog: newChangelog,
                 }
               : m,
           ),
@@ -421,6 +633,12 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           related: { materialId: version.materialId, versionId: version.id },
         });
         setNotifications((p) => [email, ...p]);
+        persistNotification(email);
+
+        api.updateMaterialVersionRaw(versionId, {
+          status: "Черновик",
+          changelog: newChangelog,
+        }).catch(console.error);
 
         return { ok: true };
       },
@@ -434,23 +652,32 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           if (!overdue) return m;
           if (m.status === "Опубликовано") {
             transitioned.push(m.id);
-            emails.push(
-              seedEmail(notifications, {
-                to:
-                  users.find((u) => u.id === (m.passport.ownerId || ""))?.email ||
-                  "unknown@demo.local",
-                subject: `Просрочка пересмотра: ${m.passport.title}`,
-                template: "overdue",
-                related: { materialId: m.materialId, versionId: m.id },
-              }),
-            );
+            const email = seedEmail(notifications, {
+              to:
+                users.find((u) => u.id === (m.passport.ownerId || ""))?.email ||
+                "unknown@demo.local",
+              subject: `Просрочка пересмотра: ${m.passport.title}`,
+              template: "overdue",
+              related: { materialId: m.materialId, versionId: m.id },
+            });
+            emails.push(email);
             return { ...m, status: "На пересмотре" };
           }
           return m;
         });
 
-        if (transitioned.length) setMaterials(nextMaterials);
-        if (emails.length) setNotifications((p) => [...emails, ...p]);
+        if (transitioned.length) {
+          setMaterials(nextMaterials);
+          for (const tid of transitioned) {
+            api.updateMaterialVersionRaw(tid, { status: "На пересмотре" }).catch(console.error);
+          }
+        }
+        if (emails.length) {
+          setNotifications((p) => [...emails, ...p]);
+          for (const email of emails) {
+            persistNotification(email);
+          }
+        }
 
         return { transitioned, emails };
       },
@@ -460,6 +687,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           adIntegration: { ...prev.adIntegration, ...data },
         }));
+        api.updateAdConfig(data).catch(console.error);
         return { ok: true };
       },
 
@@ -496,6 +724,10 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             ),
           );
 
+          for (const mid of affectedMaterials) {
+            api.updateMaterialVersionRaw(mid, { status: "На пересмотре" }).catch(console.error);
+          }
+
           const adminEmail = users.find((u) => u.roles.includes("Администратор"))?.email || "admin@demo.local";
           const email = seedEmail(notifications, {
             to: adminEmail,
@@ -504,6 +736,13 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             related: {},
           });
           setNotifications((p) => [email, ...p]);
+          persistNotification(email);
+        }
+
+        for (const u of users) {
+          if (u.source === "ad" && !u.deactivatedAt) {
+            api.updateUser(u.id, { lastSyncAt: now } as any).catch(console.error);
+          }
         }
 
         return {
@@ -528,6 +767,13 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           source: "local",
         };
         setUsers((prev) => [...prev, newUser]);
+
+        api.createUser({
+          ...newUser,
+          username: data.email,
+          password: 'changeme',
+        } as any).catch(console.error);
+
         return { ok: true, user: newUser };
       },
 
@@ -557,6 +803,10 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             ),
           );
 
+          for (const o of owned) {
+            api.updateMaterialVersionRaw(o.id, { status: "На пересмотре" }).catch(console.error);
+          }
+
           const adminEmail = users.find((u) => u.roles.includes("Администратор"))?.email || "admin@demo.local";
           const email = seedEmail(notifications, {
             to: adminEmail,
@@ -565,7 +815,10 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             related: {},
           });
           setNotifications((p) => [email, ...p]);
+          persistNotification(email);
         }
+
+        api.updateUser(userId, { deactivatedAt: now, isAvailable: false } as any).catch(console.error);
 
         return { ok: true };
       },
@@ -581,12 +834,20 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ),
         );
 
+        api.updateUser(userId, { deactivatedAt: null, isAvailable: true } as any).catch(console.error);
+
         return { ok: true };
       },
 
       updateUser: (userId: string, data: { displayName?: string; email?: string; department?: string; legalEntity?: string; roles?: User["roles"] }) => {
         const user = users.find((u) => u.id === userId);
         if (!user) return { ok: false, message: "Пользователь не найден" };
+
+        const updateData: any = { ...data };
+        if (data.roles !== undefined) {
+          const roles = data.roles.length > 0 ? data.roles : ["Читатель" as const];
+          updateData.roles = roles.includes("Читатель") ? roles : ["Читатель" as const, ...roles];
+        }
 
         setUsers((prev) =>
           prev.map((u) => {
@@ -603,6 +864,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             return updated;
           }),
         );
+
+        api.updateUser(userId, updateData).catch(console.error);
+
         return { ok: true };
       },
 
@@ -611,6 +875,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const id = `g-${Date.now()}`;
         const group: VisibilityGroup = { id, title: data.title.trim(), isSystem: false, memberIds: data.memberIds };
         setGroups((prev) => [...prev, group]);
+
+        api.createVisibilityGroup({ title: data.title.trim(), isSystem: false, memberIds: data.memberIds }).then(created => {
+          setGroups(prev => prev.map(g => g.id === id ? { ...g, id: created.id } : g));
+        }).catch(console.error);
+
         return { ok: true, group };
       },
 
@@ -629,6 +898,12 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             };
           }),
         );
+
+        api.updateVisibilityGroup(groupId, {
+          title: data.title !== undefined ? data.title.trim() : undefined,
+          memberIds: data.memberIds,
+        } as any).catch(console.error);
+
         return { ok: true };
       },
 
@@ -638,6 +913,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (group.isSystem) return { ok: false, message: "Системную группу нельзя удалить" };
 
         setGroups((prev) => prev.filter((g) => g.id !== groupId));
+
+        api.deleteVisibilityGroup(groupId).catch(console.error);
+
         return { ok: true };
       },
 
@@ -659,6 +937,15 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
               : m,
           ),
         );
+
+        api.createRating(newRating).catch(console.error);
+        const version = materials.find(m => m.materialId === materialId && m.status !== "Архив");
+        if (version) {
+          api.updateMaterialVersionRaw(version.id, {
+            [statKey]: version.stats[statKey] + 1,
+          }).catch(console.error);
+        }
+
         return { ok: true };
       },
 
@@ -699,6 +986,12 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
                 : m,
             ),
           );
+
+          api.createAuditView(materialId, meId).catch(console.error);
+          if (!recent) {
+            api.createViewLog(materialId, meId).catch(console.error);
+            api.updateMaterialVersionRaw(version.id, { views: version.stats.views + 1 }).catch(console.error);
+          }
         }
         setViewLog((prev) => [...prev, { userId: meId, materialId, at: now }]);
       },
@@ -707,6 +1000,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
       subscriptions: mySubscriptions,
       toggleSubscription: (materialId: string) => {
+        const isCurrentlySub = (subscriptionMap[meId] || []).includes(materialId);
         setSubscriptionMap((prev) => {
           const current = prev[meId] || [];
           const next = current.includes(materialId)
@@ -714,6 +1008,12 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             : [...current, materialId];
           return { ...prev, [meId]: next };
         });
+
+        if (isCurrentlySub) {
+          api.removeSubscriber(materialId, meId).catch(console.error);
+        } else {
+          api.addSubscriber(materialId, meId).catch(console.error);
+        }
       },
       isSubscribed: (materialId: string) => mySubscriptions.includes(materialId),
 
@@ -754,6 +1054,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           return [...updated, newVersion];
         });
 
+        api.createMaterialVersion(newVersion).catch(console.error);
+        if (current.status !== "Архив") {
+          api.updateMaterialVersionRaw(current.id, { status: "Архив" }).catch(console.error);
+        }
+
         return { ok: true, version: newVersion };
       },
 
@@ -775,6 +1080,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setCatalogNodes((prev) =>
           prev.map((n) => (n.id === sectionId ? { ...n, ownerIds } : n)),
         );
+
+        api.updateCatalogNode(sectionId, { ownerIds } as any).catch(console.error);
+
         return { ok: true };
       },
 
@@ -783,6 +1091,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const id = `sec-${Date.now()}`;
         const node: CatalogNode = { id, title: title.trim(), type: "section", ownerIds: [] };
         setCatalogNodes((prev) => [...prev, node]);
+
+        api.createCatalogNode({ title: title.trim(), type: "section", ownerIds: [] }).then(created => {
+          setCatalogNodes(prev => prev.map(n => n.id === id ? { ...n, id: created.id } : n));
+        }).catch(console.error);
+
         return { ok: true, node };
       },
 
@@ -794,6 +1107,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setCatalogNodes((prev) =>
           prev.map((n) => (n.id === nodeId ? { ...n, title: title.trim() } : n)),
         );
+
+        api.updateCatalogNode(nodeId, { title: title.trim() }).catch(console.error);
+
         return { ok: true };
       },
 
@@ -804,7 +1120,15 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const subs = catalogNodes.filter((n) => n.type === "subsection" && n.parentId === nodeId);
         const hasMaterials = subs.some((sub) => materials.some((m) => m.passport.sectionId === sub.id));
         if (hasMaterials) return { ok: false, message: "Нельзя удалить раздел, в котором есть материалы" };
+
+        const subIds = subs.map(s => s.id);
         setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId && n.parentId !== nodeId));
+
+        api.deleteCatalogNode(nodeId).catch(console.error);
+        for (const sid of subIds) {
+          api.deleteCatalogNode(sid).catch(console.error);
+        }
+
         return { ok: true };
       },
 
@@ -816,6 +1140,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const id = `sub-${Date.now()}`;
         const node: CatalogNode = { id, title: title.trim(), type: "subsection", parentId };
         setCatalogNodes((prev) => [...prev, node]);
+
+        api.createCatalogNode({ title: title.trim(), type: "subsection", parentId }).then(created => {
+          setCatalogNodes(prev => prev.map(n => n.id === id ? { ...n, id: created.id } : n));
+        }).catch(console.error);
+
         return { ok: true, node };
       },
 
@@ -827,6 +1156,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setCatalogNodes((prev) =>
           prev.map((n) => (n.id === nodeId ? { ...n, title: title.trim() } : n)),
         );
+
+        api.updateCatalogNode(nodeId, { title: title.trim() }).catch(console.error);
+
         return { ok: true };
       },
 
@@ -839,6 +1171,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         if (hasMaterials) return { ok: false, message: "Нельзя удалить подраздел с материалами" };
 
         setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId));
+
+        api.deleteCatalogNode(nodeId).catch(console.error);
+
         return { ok: true };
       },
 
@@ -847,6 +1182,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
       updateEmailConfig: (data: Partial<EmailConfig>) => {
         setEmailConfig((prev) => ({ ...prev, ...data }));
+        api.updateEmailConfig(data).catch(console.error);
         return { ok: true };
       },
 
@@ -856,15 +1192,28 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setEmailTemplates((prev) =>
           prev.map((t) => (t.key === key ? { ...t, ...data } : t)),
         );
+
+        const tplRecord = emailTemplates.find(t => t.key === key);
+        if (tplRecord && (tplRecord as any).id) {
+          api.updateEmailTemplate((tplRecord as any).id, data).catch(console.error);
+        }
+
         return { ok: true };
       },
 
       updateCatalogNode: (nodeId: string, updates: Partial<CatalogNode>) => {
         setCatalogNodes(prev => prev.map(n => n.id === nodeId ? { ...n, ...updates } : n));
+        api.updateCatalogNode(nodeId, updates).catch(console.error);
         return { ok: true };
       },
     };
   }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, notifications, policy, ratings, rfcs, users, viewLog]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>;
+  }
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
