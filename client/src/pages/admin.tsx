@@ -258,7 +258,7 @@ function PoliciesTab() {
           Роли, которым по умолчанию разрешены определённые действия в системе.
         </div>
         <div className="space-y-2" data-testid="list-rbac-defaults">
-          {(Object.entries(policy.rbacDefaults) as [keyof RbacDefaults, string[]][]).map(([key, roles]) => (
+          {(Object.entries(policy.rbacDefaults) as [keyof RbacDefaults, string[]][]).filter(([key]) => !key.startsWith('_id_')).map(([key, roles]) => (
             <div key={key} className="rounded-2xl border bg-muted/20 p-3" data-testid={`row-rbac-${key}`}>
               {editingRbac === key ? (
                 <div className="space-y-2">
