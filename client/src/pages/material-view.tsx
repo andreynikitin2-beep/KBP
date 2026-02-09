@@ -92,7 +92,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -610,25 +610,12 @@ export default function MaterialView() {
                           toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
                           return;
                         }
-                        const now = new Date().toISOString();
-                        const newChangelog = (current.changelog ? current.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`;
-                        setMaterials((prev) =>
-                          prev.map((m) =>
-                            m.id === current.id
-                              ? {
-                                  ...m,
-                                  status: "Опубликовано",
-                                  changelog: newChangelog,
-                                  passport: {
-                                    ...m.passport,
-                                    lastReviewedAt: now,
-                                  },
-                                }
-                              : m
-                          )
-                        );
-                        api.updateMaterialVersionRaw(current.id, { status: "Опубликовано", changelog: newChangelog, lastReviewedAt: now }).catch(console.error);
-                        toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+                        const res = adminForcePublish(current.id, comment);
+                        if (res.ok) {
+                          toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+                        } else {
+                          toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                        }
                       }}
                     >
                       <ShieldAlert className="mr-2 h-4 w-4" />
@@ -718,25 +705,12 @@ export default function MaterialView() {
                           toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
                           return;
                         }
-                        const now = new Date().toISOString();
-                        const newChangelog = (current.changelog ? current.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`;
-                        setMaterials((prev) =>
-                          prev.map((m) =>
-                            m.id === current.id
-                              ? {
-                                  ...m,
-                                  status: "Опубликовано",
-                                  changelog: newChangelog,
-                                  passport: {
-                                    ...m.passport,
-                                    lastReviewedAt: now,
-                                  },
-                                }
-                              : m
-                          )
-                        );
-                        api.updateMaterialVersionRaw(current.id, { status: "Опубликовано", changelog: newChangelog, lastReviewedAt: now }).catch(console.error);
-                        toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+                        const res = adminForcePublish(current.id, comment);
+                        if (res.ok) {
+                          toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
+                        } else {
+                          toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                        }
                       }}
                     >
                       <ShieldAlert className="mr-2 h-4 w-4" />

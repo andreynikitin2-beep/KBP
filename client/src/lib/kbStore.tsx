@@ -81,6 +81,7 @@ type Store = {
   publishDirect: (versionId: string) => { ok: boolean; message?: string };
   approveAndPublish: (versionId: string) => { ok: boolean; message?: string };
   returnForRevision: (versionId: string, comment: string) => { ok: boolean; message?: string };
+  adminForcePublish: (versionId: string, comment: string) => { ok: boolean; message?: string };
   autoDailyCheck: () => { transitioned: string[]; emails: NotificationLog[] };
 
   updateAdConfig: (data: Partial<PolicyConfig["adIntegration"]>) => { ok: boolean; message?: string };
@@ -457,6 +458,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setNotifications((p) => [email, ...p]);
         persistNotification(email);
 
+        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupIds }));
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
+
         api.updateMaterialVersionRaw(versionId, {
           status: version.status === "На пересмотре" ? "Опубликовано" : version.status,
           lastReviewedAt,
@@ -639,6 +643,64 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           status: "Черновик",
           changelog: newChangelog,
         }).catch(console.error);
+
+        return { ok: true };
+      },
+
+      adminForcePublish: (versionId: string, comment: string) => {
+        const version = materials.find((m) => m.id === versionId);
+        if (!version) return { ok: false, message: "Версия не найдена" };
+        if (!me.roles.includes("Администратор")) return { ok: false, message: "Только администратор может принудительно публиковать" };
+        if (!comment.trim()) return { ok: false, message: "Комментарий обязателен" };
+
+        const lastReviewedAt = new Date().toISOString();
+        const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policy);
+        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`;
+
+        const archivedIds: string[] = [];
+        setMaterials((prev) =>
+          prev.map((m) => {
+            if (m.id === versionId) {
+              return {
+                ...m,
+                status: "Опубликовано" as MaterialVersion["status"],
+                changelog: newChangelog,
+                passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
+              };
+            }
+            if (m.materialId === version.materialId && m.id !== versionId && (m.status === "Опубликовано" || m.status === "На пересмотре")) {
+              archivedIds.push(m.id);
+              return { ...m, status: "Архив" as MaterialVersion["status"] };
+            }
+            return m;
+          }),
+        );
+
+        setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupIds }));
+        cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupIds);
+
+        const email = seedEmail(notifications, {
+          to: me.email,
+          subject: `Принудительно опубликовано: ${version.passport.title}`,
+          template: "new_version",
+          related: { materialId: version.materialId, versionId: version.id },
+        });
+        setNotifications((p) => [email, ...p]);
+        persistNotification(email);
+
+        notifySubscribers(version, version.passport.visibilityGroupIds);
+
+        api.updateMaterialVersionRaw(versionId, {
+          status: "Опубликовано",
+          changelog: newChangelog,
+          lastReviewedAt,
+          nextReviewAt: next,
+          reviewPeriodDays: periodDays,
+        }).catch(console.error);
+        for (const aid of archivedIds) {
+          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(console.error);
+        }
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
 
         return { ok: true };
       },
