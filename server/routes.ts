@@ -2,6 +2,22 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 
+const TIMESTAMP_FIELDS = [
+  "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
+  "slaReactedAt", "slaUpdatedAt", "lastSyncAt", "deactivatedAt", "syncedAt"
+];
+
+function coerceDates(data: any): any {
+  if (!data || typeof data !== "object") return data;
+  const result = { ...data };
+  for (const key of TIMESTAMP_FIELDS) {
+    if (key in result && typeof result[key] === "string") {
+      result[key] = new Date(result[key]);
+    }
+  }
+  return result;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -29,7 +45,7 @@ export async function registerRoutes(
 
   app.post("/api/users", async (req, res) => {
     try {
-      const user = await storage.createUser(req.body);
+      const user = await storage.createUser(coerceDates(req.body));
       res.json(user);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -38,7 +54,7 @@ export async function registerRoutes(
 
   app.patch("/api/users/:id", async (req, res) => {
     try {
-      const user = await storage.updateUser(req.params.id, req.body);
+      const user = await storage.updateUser(req.params.id, coerceDates(req.body));
       if (!user) return res.status(404).json({ error: "User not found" });
       res.json(user);
     } catch (e) {
@@ -156,7 +172,7 @@ export async function registerRoutes(
 
   app.post("/api/material-versions", async (req, res) => {
     try {
-      const version = await storage.createMaterialVersion(req.body);
+      const version = await storage.createMaterialVersion(coerceDates(req.body));
       res.json(version);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -165,7 +181,7 @@ export async function registerRoutes(
 
   app.patch("/api/material-versions/:id", async (req, res) => {
     try {
-      const version = await storage.updateMaterialVersion(req.params.id, req.body);
+      const version = await storage.updateMaterialVersion(req.params.id, coerceDates(req.body));
       if (!version) return res.status(404).json({ error: "Material version not found" });
       res.json(version);
     } catch (e) {
@@ -241,7 +257,7 @@ export async function registerRoutes(
   // AUDIT VIEWS
   app.post("/api/audit-views", async (req, res) => {
     try {
-      const view = await storage.createAuditView(req.body);
+      const view = await storage.createAuditView(coerceDates(req.body));
       res.json(view);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -251,7 +267,7 @@ export async function registerRoutes(
   // VIEW LOG
   app.post("/api/view-log", async (req, res) => {
     try {
-      const log = await storage.createViewLog(req.body);
+      const log = await storage.createViewLog(coerceDates(req.body));
       res.json(log);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -297,7 +313,7 @@ export async function registerRoutes(
 
   app.post("/api/rfcs", async (req, res) => {
     try {
-      const rfc = await storage.createRfc(req.body);
+      const rfc = await storage.createRfc(coerceDates(req.body));
       res.json(rfc);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -306,7 +322,7 @@ export async function registerRoutes(
 
   app.patch("/api/rfcs/:id", async (req, res) => {
     try {
-      const rfc = await storage.updateRfc(req.params.id, req.body);
+      const rfc = await storage.updateRfc(req.params.id, coerceDates(req.body));
       if (!rfc) return res.status(404).json({ error: "RFC not found" });
       res.json(rfc);
     } catch (e) {
@@ -345,7 +361,7 @@ export async function registerRoutes(
 
   app.post("/api/notifications", async (req, res) => {
     try {
-      const notification = await storage.createNotification(req.body);
+      const notification = await storage.createNotification(coerceDates(req.body));
       res.json(notification);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -499,7 +515,7 @@ export async function registerRoutes(
 
   app.post("/api/ad-sync-log", async (req, res) => {
     try {
-      const log = await storage.createAdSyncLog(req.body);
+      const log = await storage.createAdSyncLog(coerceDates(req.body));
       res.json(log);
     } catch (e) {
       res.status(500).json({ error: String(e) });
