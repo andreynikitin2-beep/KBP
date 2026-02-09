@@ -38,7 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Criticality, MaterialVersion, VisibilityGroup, User } from "@/lib/mockData";
 import { api } from "@/lib/api";
@@ -105,12 +105,18 @@ export default function MaterialView() {
   const [activeTab, setActiveTab] = useState("passport");
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
+  const accessibleVersions = useMemo(() => {
+    return allVersions.filter(v => canViewVersion(me, v, visibilityGroups));
+  }, [allVersions, me, visibilityGroups]);
+
   const displayVersion = useMemo(() => {
     if (selectedVersionId) {
-      return allVersions.find(v => v.id === selectedVersionId) || current;
+      const found = allVersions.find(v => v.id === selectedVersionId);
+      if (found && canViewVersion(me, found, visibilityGroups)) return found;
+      return current;
     }
     return current;
-  }, [selectedVersionId, allVersions, current]);
+  }, [selectedVersionId, allVersions, current, me, visibilityGroups]);
 
   const isViewingOldVersion = displayVersion !== null && current !== null && displayVersion.id !== current.id;
 
@@ -1299,7 +1305,7 @@ export default function MaterialView() {
                     </div>
                   </div>
                   <div className="mt-3 space-y-2" data-testid="list-versions">
-                    {allVersions.map((v, idx) => {
+                    {accessibleVersions.map((v, idx) => {
                       const author = users.find((u) => u.id === v.createdBy);
                       const isCurrent = v.id === current.id;
                       const isSelected = selectedVersionId === v.id;
@@ -1372,7 +1378,7 @@ export default function MaterialView() {
                         </div>
                       );
                     })}
-                    {allVersions.length === 0 && (
+                    {accessibleVersions.length === 0 && (
                       <div className="rounded-2xl border bg-muted/30 p-6 text-sm text-muted-foreground text-center">
                         Нет версий
                       </div>
