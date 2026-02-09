@@ -41,6 +41,7 @@ import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Criticality, MaterialVersion, VisibilityGroup, User } from "@/lib/mockData";
+import { api } from "@/lib/api";
 
 function computeAccessLoss(
   oldGroupIds: string[],
@@ -210,6 +211,22 @@ export default function MaterialView() {
           : { kind: "page" as const, page: { html: editPageHtml } },
       } : m
     ));
+    api.updateMaterialVersionRaw(current.id, {
+      title: editTitle,
+      purpose: editPurpose || null,
+      criticality: editCriticality,
+      sectionId: editSectionId,
+      ownerId: editOwnerId || null,
+      deputyId: editDeputyId || null,
+      visibilityGroupIds: editVisibilityGroupIds,
+      tags: editTags.split(",").map(t => t.trim()).filter(Boolean),
+      department: editDepartment || null,
+      reviewPeriodDays: periodRow?.days,
+      nextReviewAt: computedNextReview.toISOString(),
+      contentKind: editContentKind,
+      contentFile: editContentKind === "file" ? { name: editFileName, type: editFileType, extractedText: editExtractedText } : null,
+      contentPage: editContentKind === "page" ? { html: editPageHtml } : null,
+    }).catch(console.error);
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
   };
 
@@ -587,21 +604,24 @@ export default function MaterialView() {
                           toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
                           return;
                         }
+                        const now = new Date().toISOString();
+                        const newChangelog = (current.changelog ? current.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`;
                         setMaterials((prev) =>
                           prev.map((m) =>
                             m.id === current.id
                               ? {
                                   ...m,
                                   status: "Опубликовано",
-                                  changelog: (m.changelog ? m.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`,
+                                  changelog: newChangelog,
                                   passport: {
                                     ...m.passport,
-                                    lastReviewedAt: new Date().toISOString(),
+                                    lastReviewedAt: now,
                                   },
                                 }
                               : m
                           )
                         );
+                        api.updateMaterialVersionRaw(current.id, { status: "Опубликовано", changelog: newChangelog, lastReviewedAt: now }).catch(console.error);
                         toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
                       }}
                     >
@@ -692,21 +712,24 @@ export default function MaterialView() {
                           toast({ title: "Ошибка", description: "Комментарий обязателен", variant: "destructive" });
                           return;
                         }
+                        const now = new Date().toISOString();
+                        const newChangelog = (current.changelog ? current.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`;
                         setMaterials((prev) =>
                           prev.map((m) =>
                             m.id === current.id
                               ? {
                                   ...m,
                                   status: "Опубликовано",
-                                  changelog: (m.changelog ? m.changelog + "\n" : "") + `[ADMIN FORCE PUBLISH] ${comment}`,
+                                  changelog: newChangelog,
                                   passport: {
                                     ...m.passport,
-                                    lastReviewedAt: new Date().toISOString(),
+                                    lastReviewedAt: now,
                                   },
                                 }
                               : m
                           )
                         );
+                        api.updateMaterialVersionRaw(current.id, { status: "Опубликовано", changelog: newChangelog, lastReviewedAt: now }).catch(console.error);
                         toast({ title: "Принудительно опубликовано", description: "Запись в аудит добавлена." });
                       }}
                     >

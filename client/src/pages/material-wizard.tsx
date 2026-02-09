@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import type { CatalogNode, Criticality, MaterialVersion } from "@/lib/mockData";
 import { getSectionPath, validatePassport } from "@/lib/kbLogic";
+import { api } from "@/lib/api";
 
 function nextVersionLike(prev?: string) {
   if (!prev) return "0.1";
@@ -376,6 +377,7 @@ export default function MaterialWizard() {
                       };
 
                       setMaterials((p) => [version, ...p]);
+                      api.createMaterialVersion(version).catch(console.error);
                       toast({ title: "Создано", description: "Материал добавлен в Черновики." });
                       setLocation(`/materials/${materialId}`);
                     }}
