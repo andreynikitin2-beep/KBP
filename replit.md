@@ -76,6 +76,7 @@ Preferred communication style: Simple, everyday language.
 - Inline dialog in material-view.tsx for creating new version with checkbox for major bump
 - On publish: auto-archives previous published versions of same material, resets reviewDate/confirmedAt
 - "Мои материалы" page (`/my-materials`): two sections — "Я - владелец" and "Я - заместитель владельца"
+- **Per-version access control**: `canViewVersion()` in kbLogic.ts checks each version's own `visibilityGroupIds`; old versions with restricted groups remain hidden even if the current version has broader access; version list in material-view.tsx shows only `accessibleVersions`; direct selection of inaccessible versions is blocked
 - **Access enforcement everywhere**: catalog, search, home dashboards, my-materials, direct links, downloads — all filter through `visibleMaterials` which uses `canViewMaterial`; direct link to restricted material shows "Доступ ограничен" without content leak
 
 **Key Pages:**
