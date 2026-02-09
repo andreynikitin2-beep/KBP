@@ -106,6 +106,30 @@ export function canViewMaterial(
   return false;
 }
 
+export function canViewVersion(
+  user: User,
+  version: MaterialVersion,
+  groups: VisibilityGroup[],
+) {
+  if (user.roles.includes("Администратор")) return true;
+
+  const isAuthor = version.createdBy === user.id;
+  const isOwner = version.passport.ownerId === user.id;
+  const isDeputy = version.passport.deputyId === user.id;
+  if (isAuthor || isOwner || isDeputy) return true;
+
+  const gIds = version.passport.visibilityGroupIds;
+  if (!gIds || gIds.length === 0) return true;
+
+  for (const gId of gIds) {
+    const group = groups.find((g) => g.id === gId);
+    if (!group) continue;
+    if (group.isSystem) return true;
+    if (group.memberIds.includes(user.id)) return true;
+  }
+  return false;
+}
+
 export function canViewAudit(user: User) {
   return user.roles.includes("Администратор");
 }
