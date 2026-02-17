@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
+import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NewHireAssignment, NewHireProfile, NewHireStatus, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 import { api } from "./api";
 
@@ -125,6 +125,17 @@ type Store = {
   renameSubsection: (nodeId: string, title: string) => { ok: boolean; message?: string };
   deleteSubsection: (nodeId: string) => { ok: boolean; message?: string };
   updateCatalogNode: (nodeId: string, updates: Partial<CatalogNode>) => { ok: boolean };
+
+  newHiresEnabled: boolean;
+  setNewHiresEnabled: (enabled: boolean) => void;
+  newHireProfiles: NewHireProfile[];
+  newHireAssignments: NewHireAssignment[];
+  detectNewHires: () => Promise<{ added: number }>;
+  assignMaterialsToNewHire: (userId: string) => Promise<{ assigned: number }>;
+  assignMaterialsToAllNewHires: () => Promise<{ assigned: number }>;
+  updateNewHireStatus: (profileId: string, status: NewHireStatus) => void;
+  acknowledgeAssignment: (assignmentId: string, versionId: string) => void;
+  getMyAssignments: () => NewHireAssignment[];
 };
 
 const Ctx = createContext<Store | null>(null);
@@ -201,6 +212,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [ratings, setRatings] = useState<HelpfulRating[]>([]);
   const [viewLog, setViewLog] = useState<Array<{ userId: string; materialId: string; at: number }>>([]);
   const [effectiveVisGroupMap, setEffectiveVisGroupMap] = useState<Record<string, string[]>>({});
+  const [newHiresEnabled, setNewHiresEnabledRaw] = useState(false);
+  const [newHireProfiles, setNewHireProfiles] = useState<NewHireProfile[]>([]);
+  const [newHireAssignments, setNewHireAssignments] = useState<NewHireAssignment[]>([]);
 
   const setMeId = (id: string) => {
     setMeIdRaw(id);
@@ -220,7 +234,10 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           emailConfigData, emailTemplatesData,
           reviewPeriodsData, rbacDefaultsData,
           adConfigData, adSyncLogData,
-          effectiveVisGroupsData
+          effectiveVisGroupsData,
+          newHiresConfigData,
+          newHireProfilesData,
+          newHireAssignmentsData,
         ] = await Promise.all([
           api.getUsers(),
           api.getMaterialVersions(),
@@ -236,6 +253,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           api.getAdConfig(),
           api.getAdSyncLog(),
           api.getEffectiveVisGroups(),
+          api.getNewHiresConfig().catch(() => ({ enabled: false })),
+          api.getNewHireProfiles().catch(() => []),
+          api.getNewHireAssignments().catch(() => []),
         ]);
 
         setUsers(usersData);
@@ -294,6 +314,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         });
 
         setEffectiveVisGroupMap(effectiveVisGroupsData);
+        setNewHiresEnabledRaw(newHiresConfigData.enabled);
+        setNewHireProfiles(newHireProfilesData as NewHireProfile[]);
+        setNewHireAssignments(newHireAssignmentsData as NewHireAssignment[]);
 
         if (usersData.length > 0) {
           const subs = await api.getUserSubscriptions(usersData[0].id);
@@ -1268,8 +1291,146 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         api.updateCatalogNode(nodeId, updates).catch(console.error);
         return { ok: true };
       },
+
+      newHiresEnabled,
+      setNewHiresEnabled: (enabled: boolean) => {
+        setNewHiresEnabledRaw(enabled);
+        api.updateNewHiresConfig({ enabled }).catch(console.error);
+      },
+      newHireProfiles,
+      newHireAssignments,
+
+      detectNewHires: async () => {
+        const existingUserIds = new Set(newHireProfiles.map(p => p.userId));
+        const recentUsers = users.filter(u => {
+          if (existingUserIds.has(u.id)) return false;
+          if (u.deactivatedAt) return false;
+          if (u.roles.includes("Администратор")) return false;
+          return true;
+        });
+        let added = 0;
+        for (const u of recentUsers) {
+          try {
+            const profile = await api.createNewHireProfile({
+              userId: u.id,
+              source: u.source === "ad" ? "AD" : "LOCAL",
+              status: "Новый",
+            });
+            setNewHireProfiles(prev => [...prev, profile as NewHireProfile]);
+            added++;
+          } catch (e) { console.error(e); }
+        }
+        return { added };
+      },
+
+      assignMaterialsToNewHire: async (userId: string) => {
+        const requiredMats = materials.filter(m =>
+          m.passport.newHireRequired && m.status === "Опубликовано"
+        );
+        const existingAssignments = new Set(
+          newHireAssignments.filter(a => a.userId === userId).map(a => a.materialId)
+        );
+        const batchId = `batch-${Date.now()}`;
+        let assigned = 0;
+        for (const mat of requiredMats) {
+          if (existingAssignments.has(mat.materialId)) continue;
+          try {
+            const assignment = await api.createNewHireAssignment({
+              userId,
+              materialId: mat.materialId,
+              assignedBy: me.id,
+              batchId,
+            });
+            setNewHireAssignments(prev => [...prev, assignment as NewHireAssignment]);
+            assigned++;
+          } catch (e) { console.error(e); }
+        }
+        const profile = newHireProfiles.find(p => p.userId === userId);
+        if (profile && profile.status === "Новый" && assigned > 0) {
+          try {
+            await api.updateNewHireProfile(profile.id, { status: "Задания выданы" });
+            setNewHireProfiles(prev => prev.map(p =>
+              p.id === profile.id ? { ...p, status: "Задания выданы" as const } : p
+            ));
+          } catch (e) { console.error(e); }
+        }
+        return { assigned };
+      },
+
+      assignMaterialsToAllNewHires: async () => {
+        const newProfiles = newHireProfiles.filter(p => p.status === "Новый");
+        let totalAssigned = 0;
+        const requiredMats = materials.filter(m =>
+          m.passport.newHireRequired && m.status === "Опубликовано"
+        );
+        const batchId = `batch-${Date.now()}`;
+        for (const profile of newProfiles) {
+          const existingAssignments = new Set(
+            newHireAssignments.filter(a => a.userId === profile.userId).map(a => a.materialId)
+          );
+          let assigned = 0;
+          for (const mat of requiredMats) {
+            if (existingAssignments.has(mat.materialId)) continue;
+            try {
+              const assignment = await api.createNewHireAssignment({
+                userId: profile.userId,
+                materialId: mat.materialId,
+                assignedBy: me.id,
+                batchId,
+              });
+              setNewHireAssignments(prev => [...prev, assignment as NewHireAssignment]);
+              assigned++;
+              totalAssigned++;
+            } catch (e) { console.error(e); }
+          }
+          if (assigned > 0) {
+            try {
+              await api.updateNewHireProfile(profile.id, { status: "Задания выданы" });
+              setNewHireProfiles(prev => prev.map(p =>
+                p.id === profile.id ? { ...p, status: "Задания выданы" as const } : p
+              ));
+            } catch (e) { console.error(e); }
+          }
+        }
+        return { assigned: totalAssigned };
+      },
+
+      updateNewHireStatus: (profileId: string, status: NewHireStatus) => {
+        setNewHireProfiles(prev => prev.map(p =>
+          p.id === profileId ? { ...p, status } : p
+        ));
+        api.updateNewHireProfile(profileId, { status }).catch(console.error);
+      },
+
+      acknowledgeAssignment: (assignmentId: string, versionId: string) => {
+        const now = new Date().toISOString();
+        setNewHireAssignments(prev => prev.map(a =>
+          a.id === assignmentId ? { ...a, acknowledgedAt: now, acknowledgedVersionId: versionId } : a
+        ));
+        api.acknowledgeAssignment(assignmentId, versionId).catch(console.error);
+        const assignment = newHireAssignments.find(a => a.id === assignmentId);
+        if (assignment) {
+          const userAssignments = newHireAssignments.filter(a => a.userId === assignment.userId);
+          const allAcknowledged = userAssignments.every(a =>
+            a.id === assignmentId || a.acknowledgedAt
+          );
+          if (allAcknowledged) {
+            const profile = newHireProfiles.find(p => p.userId === assignment.userId);
+            if (profile && profile.status !== "Завершено") {
+              setNewHireProfiles(prev => prev.map(p =>
+                p.id === profile.id ? { ...p, status: "Завершено" as const } : p
+              ));
+              api.updateNewHireProfile(profile.id, { status: "Завершено" }).catch(console.error);
+            }
+          }
+        }
+      },
+
+      getMyAssignments: () => {
+        return newHireAssignments.filter(a => a.userId === meId);
+      },
     };
-  }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, notifications, policy, ratings, rfcs, users, viewLog]);
+  }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, newHireAssignments, newHireProfiles, newHiresEnabled, notifications, policy, ratings, rfcs, users, viewLog]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">
