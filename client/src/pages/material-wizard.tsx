@@ -37,6 +37,7 @@ export default function MaterialWizard() {
   const [ownerId, setOwnerId] = useState(me.id);
   const [deputyId, setDeputyId] = useState<string | undefined>(undefined);
   const [visibilityGroupIds, setVisibilityGroupIds] = useState<string[]>(["g-base"]);
+  const [newHireRequired, setNewHireRequired] = useState(false);
   const [tags, setTags] = useState("hr, отпуск");
   const [contentKind, setContentKind] = useState<"file" | "page">("file");
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
@@ -78,6 +79,7 @@ export default function MaterialWizard() {
     nextReviewAt: computedNextReview,
     reviewPeriodDays: periodRow?.days,
     visibilityGroupIds,
+    newHireRequired: newHireRequired || undefined,
   };
 
   useEffect(() => {
@@ -229,6 +231,20 @@ export default function MaterialWizard() {
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">
                     Материал видят участники выбранных групп. Если выбрана «Базовая» — все пользователи.
+                  </div>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      data-testid="checkbox-new-hire-required"
+                      checked={newHireRequired}
+                      onCheckedChange={(checked) => setNewHireRequired(!!checked)}
+                    />
+                    <span className="text-sm font-medium">Обязателен для новых сотрудников</span>
+                  </label>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Материал будет автоматически назначен новым сотрудникам при адаптации.
                   </div>
                 </div>
 

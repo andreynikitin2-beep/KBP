@@ -10,6 +10,7 @@ import MaterialWizard from "@/pages/material-wizard";
 import Admin from "@/pages/admin";
 import Subscriptions from "@/pages/subscriptions";
 import MyMaterials from "@/pages/my-materials";
+import MyOnboarding from "@/pages/my-onboarding";
 
 import { queryClient } from "./lib/queryClient";
 
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/catalog" component={Catalog} />
       <Route path="/subscriptions" component={Subscriptions} />
       <Route path="/my-materials" component={MyMaterials} />
+      <Route path="/my-onboarding" component={MyOnboarding} />
       <Route path="/materials/new" component={MaterialWizard} />
       <Route path="/materials/:id" component={MaterialView} />
       <Route path="/admin" component={Admin} />

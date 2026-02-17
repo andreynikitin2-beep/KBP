@@ -92,7 +92,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, newHireAssignments, acknowledgeAssignment, newHiresEnabled } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -321,12 +321,53 @@ export default function MaterialView() {
     );
   }
 
+  const myAssignment = useMemo(() => {
+    if (!newHiresEnabled) return null;
+    return newHireAssignments.find(a => a.userId === me.id && a.materialId === materialId && !a.acknowledgedAt) || null;
+  }, [newHiresEnabled, newHireAssignments, me.id, materialId]);
+
+  const myAcknowledgedAssignment = useMemo(() => {
+    if (!newHiresEnabled) return null;
+    return newHireAssignments.find(a => a.userId === me.id && a.materialId === materialId && !!a.acknowledgedAt) || null;
+  }, [newHiresEnabled, newHireAssignments, me.id, materialId]);
+
   return (
     <AppShell
       title={current.passport.title}
       breadcrumbs={breadcrumbs}
       actions={<></>}
     >
+      {myAssignment && (
+        <Card className="mb-4 border-blue-300 bg-blue-50/50" data-testid="card-onboarding-assignment">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-blue-700">Задание для ознакомления</div>
+              <div className="text-sm text-muted-foreground">
+                Этот материал назначен вам для ознакомления. После прочтения нажмите кнопку.
+              </div>
+            </div>
+            <Button
+              data-testid="btn-acknowledge-material"
+              className="rounded-xl bg-blue-600 hover:bg-blue-700"
+              onClick={() => {
+                acknowledgeAssignment(myAssignment.id, current.id);
+                toast({ title: "Ознакомлен", description: "Вы отметили ознакомление с этим материалом." });
+              }}
+            >
+              <BadgeCheck className="h-4 w-4 mr-1" />
+              Ознакомлен
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {myAcknowledgedAssignment && (
+        <div className="mb-4 rounded-2xl border border-green-200 bg-green-50/50 p-3 text-sm text-green-700 flex items-center gap-2" data-testid="badge-already-acknowledged">
+          <BadgeCheck className="h-4 w-4" />
+          Вы ознакомились с этим материалом {myAcknowledgedAssignment.acknowledgedAt ? fmt(myAcknowledgedAssignment.acknowledgedAt) : ""}
+        </div>
+      )}
+
       {returnDialogOpen && (
         <Card className="mb-4 border-orange-300 bg-orange-50/50">
           <CardContent className="p-4">
@@ -1058,6 +1099,11 @@ export default function MaterialView() {
                                 {t}
                               </Badge>
                             ))}
+                            {dv.passport.newHireRequired && (
+                              <Badge variant="default" className="kb-chip bg-blue-600" data-testid="badge-new-hire-required">
+                                Для новых сотрудников
+                              </Badge>
+                            )}
                           </div>
                           <Separator className="my-3" />
                           <div className="text-xs text-muted-foreground">Группы тегов</div>

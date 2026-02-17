@@ -2,9 +2,9 @@
 
 ## Overview
 
-This is a **Knowledge Base Portal** ("Портал инструкций") — a Russian-language internal documentation management system with actuality control. It provides a catalog of instructional materials with passports (metadata), versioning, RFC workflows, audit trails, visibility controls, and admin dashboards.
+This project is a Knowledge Base Portal (Портал инструкций), an internal documentation management system in Russian, designed for efficient knowledge sharing and control. It features a catalog of instructional materials with rich metadata, versioning, RFC (Request for Comments) workflows, audit trails, granular visibility controls, and administrative dashboards. The system aims to enhance internal communication and ensure the actuality of shared information.
 
-The application is a full-stack TypeScript project using a React frontend with Express backend. Currently, all data is managed through **in-memory mock data** on the client side (via React context in `kbStore`), with a minimal server setup ready for backend API integration. The database schema exists but is minimal (just a users table).
+The application is a full-stack TypeScript project, utilizing a React frontend and an Express backend. It's built to manage internal documentation, streamline approval processes, and provide robust search and access capabilities for users, including specific features for new employee onboarding.
 
 ## User Preferences
 
@@ -14,158 +14,53 @@ Preferred communication style: Simple, everyday language.
 
 ### Frontend (Client)
 
-- **Framework**: React 18 with TypeScript
-- **Routing**: Wouter (lightweight client-side router)
-- **State Management**: React Context (`KBStoreProvider` in `kbStore.tsx`) holds all application state including materials, RFCs, notifications, and the current user
-- **Data Layer**: Currently uses mock/seed data defined in `mockData.ts` — no API calls for domain data yet. TanStack React Query is set up but mainly for future API integration
-- **UI Components**: shadcn/ui component library (new-york style) built on Radix UI primitives with Tailwind CSS v4
-- **Styling**: Tailwind CSS with CSS variables for theming, custom fonts (Manrope + Literata via Google Fonts)
-- **Build Tool**: Vite
+The frontend is a React 18 application with TypeScript, using Wouter for client-side routing. State management is handled globally via React Context (`KBStoreProvider`), which stores all application data, including materials, RFCs, notifications, and user information. UI components are built using `shadcn/ui` (new-york style) based on Radix UI primitives and styled with Tailwind CSS v4. Custom fonts (Manrope + Literata) are integrated, and Vite serves as the build tool.
 
-**Approval Workflow (Batch 5):**
-- Owner/Deputy as creator → direct publish without approval
-- Author (non-owner) as creator → must submit for approval → owner/deputy approves/rejects
-- "Вернуть на доработку" requires mandatory comment
-- Admin force-publish overrides all rules
-- Logic functions: `canPublishDirectly`, `canSubmitForApproval`, `canApproveAndPublish`, `canReturnForRevision` in `kbLogic.ts`
-- Store actions: `submitForApproval`, `publishDirect`, `approveAndPublish`, `returnForRevision` in `kbStore.tsx`
+Key features include:
 
-**WYSIWYG Page Editor (Batch 12):**
-- Rich text editor based on Tiptap (free, open-source): `client/src/components/kb/RichEditor.tsx`
-- Supported features: headings (H1-H3), bold/italic/underline/strike, highlight, blockquote ("Важно" callout), code blocks, bullet/ordered lists, task lists (checklists), tables (with dynamic row/column management), images (base64), links, text alignment, horizontal rules
-- Word import: .docx files imported via mammoth.js with embedded image extraction (base64); paste-cleaning strips Word-specific markup (MSO styles, spans, fonts)
-- Page content viewer: `client/src/components/kb/PageViewer.tsx` — renders HTML with auto-generated heading anchors, collapsible TOC (table of contents), per-heading "copy link" buttons
-- Deep links: headings auto-get `id` attributes via slugify; URL hash scrolls to heading on page load; heading :target highlighted with accent background
-- Content model: `MaterialVersion.content.page` stores `{ html: string }` (was blocks array, migrated to HTML in Batch 12)
-- CSS styles for both editor (.tiptap) and viewer (.tiptap-content) in `client/src/index.css`
-
-**AD/SSO Integration & User Management (Batch 11):**
-- User type extended: `source` (ad/local), `adAccountName`, `lastSyncAt`, `deactivatedAt`
-- Users are now mutable state in kbStore (not static demoUsers import)
-- AD sync: `syncADUsers()` action updates lastSyncAt for AD users, handles deactivation cascade
-- Deactivation cascade: if owner/deputy deactivated → their published materials move to "На пересмотре" + email to admin
-- Local user creation: `createLocalUser()` action with full form in admin panel
-- User deactivation/reactivation: `deactivateUser()`, `reactivateUser()` actions
-- policySeed.adIntegration: enabled, mode (SAML/OIDC/LDAP/demo), ssoUrl, syncFrequencyMinutes, syncStatus, syncLog[]
-- AD/SSO admin: fully editable config (enable/disable, protocol, SSO URL, sync frequency, attribute mapping)
-- `updateAdConfig(data)` store action for AD/SSO settings
-- Admin tabs: AD/SSO config + sync log, Пользователи (list + create local + deactivate/reactivate)
-- All files use `users` from kbStore instead of importing `demoUsers` directly
-
-**Email Notification System (full admin):**
-- `EmailConfig` type: senderAddress, senderName, smtpHost, smtpPort, smtpUser, smtpUseTls, enabled
-- `EmailTemplate` type: key, label, subject, body, description — 6 built-in templates (reminder_before, reminder_due, overdue, escalation, new_version, auto_transition)
-- Store state: `emailConfig` + `emailTemplates` with `updateEmailConfig()` and `updateEmailTemplate()` actions
-- Admin Email tab: 3 cards — (1) SMTP/sender config with edit mode, (2) template editor with inline editing of subject+body, (3) notification log with human-readable status/template labels
-- Templates use `{{variable}}` placeholders: title, owner, days, dueDate, link, version, recipient, changelog, newStatus, reason
-- Seed data in `mockData.ts`: `emailConfigSeed`, `emailTemplatesSeed`
-
-**Material-Level Visibility & Enhanced Versioning (Batch 14 + Multi-Group Refactor):**
-- **Multiple visibility groups per material**: `Passport.visibilityGroupIds: string[]` (was single `visibilityGroupId`)
-- Access granted if user is member of ANY assigned group; system groups (e.g. "Базовая") grant access to everyone
-- `effectiveVisGroupMap` in kbStore: `Record<materialId, string[]>` — tracks current effective visibility groups per material, updated only on publish
-- `CatalogNode.defaultVisibilityGroupIds?: string[]` — subsection default groups, auto-populated when creating material in that subsection
-- Access control (`canViewMaterial` in kbLogic.ts) checks ALL groups in array; drafts/approvals bypass visibility for author/owner/deputy/admin
-- UI: checkboxes for multi-group selection in material-wizard and material-view (draft edit mode)
-- **Access narrowing warning**: on publish, if visibility groups changed to more restrictive, shows dialog with count/names of users who lose access
-- Subscription cleanup: `cleanupSubscriptionsOnGroupChange(materialId, newGroupIds[])` removes subscriptions for users who lost access across ALL groups
-- `notifySubscribers(version, newGroupIds[])` checks access against all groups before sending email
-- Admin panel: "Группы по умолчанию для подразделов" section in Groups tab — dropdown per subsection to set default group
-- `updateCatalogNode(nodeId, updates)` store action for updating catalog node properties
-- Version numbering: major.minor format; `createNewVersion(materialId, majorBump?)` — if majorBump=true → major+1.0, else major.minor+1
-- Inline dialog in material-view.tsx for creating new version with checkbox for major bump
-- On publish: auto-archives previous published versions of same material, resets reviewDate/confirmedAt
-- "Мои материалы" page (`/my-materials`): two sections — "Я - владелец" and "Я - заместитель владельца"
-- **Per-version access control**: `canViewVersion()` in kbLogic.ts checks each version's own `visibilityGroupIds`; old versions with restricted groups remain hidden even if the current version has broader access; version list in material-view.tsx shows only `accessibleVersions`; direct selection of inaccessible versions is blocked
-- **Access enforcement everywhere**: catalog, search, home dashboards, my-materials, direct links, downloads — all filter through `visibleMaterials` which uses `canViewMaterial`; direct link to restricted material shows "Доступ ограничен" without content leak
-
-**Key Pages:**
-- `/` — Home dashboard with KPIs, overdue materials, recent activity
-- `/catalog` — Hierarchical catalog browser with scope-based access control
-- `/materials/new` — Material creation wizard (multi-step form)
-- `/materials/:id` — Material detail view with passport, versions, RFC workflow, audit
-- `/my-materials` — Personal materials dashboard for owners and deputies
-- `/admin` — Admin panel with 7 tabs: Политики, AD/SSO, Пользователи, Права, Группы, Отчёты, Email-журнал
-
-**Helpfulness Ratings & View Dedup (Batch 15):**
-- Portal timezone: `PORTAL_TZ = "Europe/Moscow"` — all date calculations use Moscow time
-- `HelpfulRating` type: userId, materialId, date (YYYY-MM-DD Moscow), value (helpful/not_helpful)
-- Rating limit: 1 rating per user per material per calendar day (Moscow timezone); immutable within day
-- Store state: `ratings: HelpfulRating[]` with `rateMaterial()`, `canRateToday()`, `getMaterialRatings()`
-- View dedup: `VIEW_DEDUP_MINUTES = 30` — same user can increment view count only once per 30 min window
-- `recordView(materialId)` store action: always logs to auditViews, only increments stats.views on dedup pass
-- Popularity formula: `popularity_score = 0.7 * log(views_30d + 1) + 0.3 * helpfulness_score`
-- Helpfulness formula (Bayesian smoothing): `helpfulness_score = (helpful + m*C) / (total + m)` where m=20, C=avg portal helpfulness
-- Home showcase: 3 tabs — "Новое" (by date), "Популярное" (by popularity_score), "Самые полезные" (by helpfulness_score, min 5 ratings)
-- Sorting controls on home page search results and catalog: by date, popularity, criticality, status, next review
-- `MIN_RATINGS_FOR_HELPFUL = 5` — minimum ratings for "Most Helpful" showcase
-- Helper functions: `getMoscowDate()`, `getMoscowDateString()`, `computeHelpfulnessScore()`, `computePopularityScore()`
-
-**Domain Logic** (`kbLogic.ts`):
-- Role-based access control (Читатель, Автор, Владелец, Заместитель владельца, Администратор)
-- Visibility scoping by roles and visibility groups (legal entity is metadata only, no access restrictions)
-- Branches/locations removed entirely (Batch 13)
-- Actuality confirmation workflow
-- Material status lifecycle: Черновик → На согласовании → Опубликовано → На пересмотре → Архив
-- Overdue detection based on review periods and criticality levels
+-   **Approval Workflow**: Supports direct publishing for owners/deputies, approval requests for authors, and an "Admin force-publish" override. Includes "Вернуть на доработку" (Return for revision) functionality.
+-   **WYSIWYG Page Editor**: A rich text editor based on Tiptap, supporting various formatting, tables, images (base64), links, and task lists. It includes `.docx` import via `mammoth.js` with image extraction and paste-cleaning. Content is stored as HTML.
+-   **Page Content Viewer**: Renders HTML content with auto-generated heading anchors, a collapsible table of contents, and "copy link" buttons for headings. Supports deep linking via URL hash.
+-   **AD/SSO Integration & User Management**: Extends user profiles with AD synchronization capabilities (`adAccountName`, `lastSyncAt`, `deactivatedAt`). Provides admin tools for AD/SSO configuration, user deactivation/reactivation, and local user creation. Deactivation triggers material status changes for owners/deputies.
+-   **Email Notification System**: Configurable SMTP settings and email templates with placeholders for automated notifications (e.g., reminders, escalations, new versions).
+-   **Material-Level Visibility & Enhanced Versioning**: Materials can belong to multiple visibility groups, with access granted if a user is a member of any assigned group. Features a warning for access narrowing on publish and cleans up subscriptions accordingly. Versioning follows a `major.minor` format, with old versions retaining their specific visibility settings.
+-   **New Hires Onboarding**: Marks materials as "required for new hires." Manages new hire profiles and assignments, tracks acknowledgment, and automatically detects and assigns materials to new users. Features an `/my-onboarding` page for users to track their progress.
+-   **Helpfulness Ratings & View Dedup**: Allows users to rate materials as "helpful" or "not helpful" (once per day). Implements view deduplication (once per 30 minutes) for accurate view counts. Material popularity and helpfulness scores are calculated using specific formulas to power "Popular" and "Most Helpful" showcases.
+-   **Domain Logic**: Implements role-based access control (Reader, Author, Owner, Deputy Owner, Administrator), visibility scoping, material status lifecycle (Draft, Pending Approval, Published, Under Review, Archive), and overdue material detection.
 
 ### Backend (Server)
 
-- **Framework**: Express 5 on Node.js
-- **Entry Point**: `server/index.ts` creates HTTP server, registers routes, sets up Vite dev middleware or static serving
-- **Routes**: `server/routes.ts` — currently empty, ready for API endpoints (should be prefixed with `/api`)
-- **Storage**: `server/storage.ts` defines an `IStorage` interface with a `MemStorage` implementation using in-memory Maps. Currently only has user CRUD methods
-- **Dev Mode**: Vite dev server runs as Express middleware with HMR via WebSocket
-- **Production**: Client is built to `dist/public`, served as static files with SPA fallback
+The backend uses Express 5 on Node.js. It's currently set up with minimal routing, ready for API endpoint integration (prefixed with `/api`). Data storage is defined by an `IStorage` interface, with an in-memory `MemStorage` implementation for user management. In development, it uses Vite's dev server as Express middleware with HMR; in production, it serves static client files.
 
 ### Database
 
-- **ORM**: Drizzle ORM with PostgreSQL dialect
-- **Schema**: `shared/schema.ts` — currently only a `users` table (id, username, password)
-- **Migrations**: Drizzle Kit configured to output to `./migrations` directory
-- **Push Command**: `npm run db:push` to sync schema to database
-- **Connection**: Requires `DATABASE_URL` environment variable
+The application utilizes Drizzle ORM with a PostgreSQL dialect. The database schema, defined in `shared/schema.ts`, currently includes a `users` table. Drizzle Kit is configured for migrations, and the schema can be synced using `npm run db:push`. A `DATABASE_URL` environment variable is required for connection.
 
 ### Build System
 
-- **Client Build**: Vite bundles React app to `dist/public`
-- **Server Build**: esbuild bundles server code to `dist/index.cjs` with selective dependency bundling (allowlist pattern to reduce cold start times)
-- **Build Script**: `script/build.ts` orchestrates both builds
-- **Path Aliases**: `@/` → `client/src/`, `@shared/` → `shared/`, `@assets/` → `attached_assets/`
+Vite handles the client-side build, bundling the React app to `dist/public`. esbuild is used for the server-side build, compiling server code to `dist/index.cjs` with selective dependency bundling. A `script/build.ts` orchestrates both processes. Path aliases are configured for convenient module imports.
 
 ### Shared Code
 
-- `shared/schema.ts` contains Drizzle table definitions and Zod validation schemas, shared between client and server
-- Types are inferred from the schema using `drizzle-zod`
+`shared/schema.ts` centralizes Drizzle table definitions and Zod validation schemas, ensuring type consistency and validation across both frontend and backend.
 
 ## External Dependencies
 
 ### Core Infrastructure
-- **PostgreSQL** — Database (via `DATABASE_URL` env var), used through Drizzle ORM
-- **connect-pg-simple** — PostgreSQL session store (available but not yet wired up)
+-   **PostgreSQL**: Primary database for persistent storage via Drizzle ORM.
+-   **connect-pg-simple**: Planned for PostgreSQL session store.
 
 ### Frontend Libraries
-- **Radix UI** — Full suite of accessible UI primitives (dialog, dropdown, tabs, etc.)
-- **TanStack React Query** — Async state management (configured, minimal usage currently)
-- **Wouter** — Client-side routing
-- **date-fns** — Date formatting (with Russian locale)
-- **Recharts** — Chart components (via shadcn chart component)
-- **embla-carousel-react** — Carousel functionality
-- **react-day-picker** — Calendar/date picker
-- **cmdk** — Command palette
-- **vaul** — Drawer component
-- **react-resizable-panels** — Resizable panel layouts
-- **react-hook-form** + **@hookform/resolvers** — Form management with Zod validation
+-   **Radix UI**: Foundational accessible UI primitives.
+-   **TanStack React Query**: For asynchronous state management and data fetching.
+-   **Wouter**: Lightweight client-side router.
+-   **date-fns**: Date manipulation and formatting (with Russian locale).
+-   **Recharts**: Charting library (via shadcn/ui).
+-   **react-hook-form** & **@hookform/resolvers**: Form management with Zod validation.
 
 ### Build & Dev Tools
-- **Vite** — Dev server and client bundler with HMR
-- **esbuild** — Server bundler for production
-- **Tailwind CSS v4** — Utility-first CSS (via `@tailwindcss/vite` plugin)
-- **TypeScript** — Type checking across all code
-- **Drizzle Kit** — Database migration tooling
-
-### Replit-Specific
-- **@replit/vite-plugin-runtime-error-modal** — Runtime error overlay in development
-- **@replit/vite-plugin-cartographer** — Dev tooling (dev only)
-- **@replit/vite-plugin-dev-banner** — Dev banner (dev only)
-- **vite-plugin-meta-images** — Custom plugin for OpenGraph meta tag management
+-   **Vite**: Client-side development server and bundler.
+-   **esbuild**: Server-side bundler for production.
+-   **Tailwind CSS v4**: Utility-first CSS framework.
+-   **TypeScript**: Ensures type safety across the codebase.
+-   **Drizzle Kit**: Database migration tooling.

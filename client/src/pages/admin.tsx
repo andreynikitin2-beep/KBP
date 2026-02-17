@@ -20,6 +20,7 @@ import {
   SlidersHorizontal,
   Table2,
   Trash2,
+  UserCheck,
   UserPlus,
   Users,
   X,
@@ -46,7 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import type { Criticality, Role } from "@/lib/mockData";
+import type { Criticality, NewHireProfile, Role } from "@/lib/mockData";
 import type { RbacDefaults, ReviewPeriod } from "@/lib/kbStore";
 import { computeKpis, isOverdue } from "@/lib/kbLogic";
 
@@ -311,6 +312,147 @@ function PoliciesTab() {
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function NewHiresTab() {
+  const { toast } = useToast();
+  const {
+    newHiresEnabled, setNewHiresEnabled,
+    newHireProfiles, newHireAssignments,
+    detectNewHires, assignMaterialsToNewHire, assignMaterialsToAllNewHires, updateNewHireStatus,
+    users, materials,
+  } = useKB();
+
+  const handleDetect = async () => {
+    const res = await detectNewHires();
+    toast({ title: "Поиск завершён", description: `Обнаружено новых сотрудников: ${res.added}` });
+  };
+
+  const handleAssignAll = async () => {
+    const res = await assignMaterialsToAllNewHires();
+    toast({ title: "Задания выданы", description: `Назначено заданий: ${res.assigned}` });
+  };
+
+  const handleAssignOne = async (userId: string) => {
+    const res = await assignMaterialsToNewHire(userId);
+    toast({ title: "Задания выданы", description: `Назначено заданий: ${res.assigned}` });
+  };
+
+  const handleComplete = (profileId: string) => {
+    updateNewHireStatus(profileId, "Завершено");
+    toast({ title: "Завершено", description: "Статус сотрудника обновлён" });
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "Новый") return <Badge className="bg-blue-600 text-white text-[10px]">{status}</Badge>;
+    if (status === "Задания выданы") return <Badge className="bg-yellow-500 text-white text-[10px]">{status}</Badge>;
+    if (status === "Завершено") return <Badge className="bg-green-600 text-white text-[10px]">{status}</Badge>;
+    return <Badge variant="secondary" className="text-[10px]">{status}</Badge>;
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="newhires-enabled" className="text-sm font-semibold cursor-pointer">
+              Включить модуль адаптации новых сотрудников
+            </Label>
+          </div>
+          <Switch
+            id="newhires-enabled"
+            data-testid="switch-newhires-enabled"
+            checked={newHiresEnabled}
+            onCheckedChange={setNewHiresEnabled}
+          />
+        </div>
+      </Card>
+
+      {newHiresEnabled && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <Button data-testid="btn-detect-newhires" variant="outline" className="rounded-xl" onClick={handleDetect}>
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              Обнаружить новых
+            </Button>
+            <Button data-testid="btn-assign-all-newhires" variant="outline" className="rounded-xl" onClick={handleAssignAll}>
+              <Send className="mr-1.5 h-3.5 w-3.5" />
+              Выдать задания всем новым
+            </Button>
+          </div>
+
+          {newHireProfiles.length > 0 ? (
+            <Card className="p-4 overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="pb-2 pr-4">Сотрудник</th>
+                    <th className="pb-2 pr-4">Источник</th>
+                    <th className="pb-2 pr-4">Статус</th>
+                    <th className="pb-2 pr-4">Прогресс</th>
+                    <th className="pb-2">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {newHireProfiles.map((profile) => {
+                    const user = users.find((u) => u.id === profile.userId);
+                    const userAssignments = newHireAssignments.filter((a) => a.userId === profile.userId);
+                    const acknowledged = userAssignments.filter((a) => a.acknowledgedAt).length;
+                    const total = userAssignments.length;
+                    const allAcknowledged = total > 0 && acknowledged === total;
+
+                    return (
+                      <tr key={profile.id} className="border-b last:border-0" data-testid={`row-newhire-${profile.id}`}>
+                        <td className="py-2 pr-4">{user?.displayName ?? "—"}</td>
+                        <td className="py-2 pr-4">
+                          <Badge variant="secondary" className="text-[10px]">{profile.source}</Badge>
+                        </td>
+                        <td className="py-2 pr-4">{statusBadge(profile.status)}</td>
+                        <td className="py-2 pr-4">{acknowledged} / {total}</td>
+                        <td className="py-2">
+                          <div className="flex gap-1">
+                            {profile.status === "Новый" && (
+                              <Button
+                                data-testid={`btn-assign-newhire-${profile.id}`}
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl text-xs"
+                                onClick={() => handleAssignOne(profile.userId)}
+                              >
+                                Выдать задания
+                              </Button>
+                            )}
+                            {profile.status === "Задания выданы" && allAcknowledged && (
+                              <Button
+                                data-testid={`btn-complete-newhire-${profile.id}`}
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl text-xs"
+                                onClick={() => handleComplete(profile.id)}
+                              >
+                                Завершить
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          ) : (
+            <Card className="p-6">
+              <div className="text-sm text-muted-foreground text-center" data-testid="empty-newhires">
+                Нет новых сотрудников. Нажмите «Обнаружить новых» для поиска.
+              </div>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -648,7 +790,7 @@ export default function Admin() {
           <Separator />
           <CardContent className="p-4">
             <Tabs defaultValue="policies" className="w-full">
-              <TabsList className="grid w-full grid-cols-6">
+              <TabsList className="grid w-full grid-cols-7">
                 <TabsTrigger data-testid="tab-admin-policies" value="policies">
                   Политики
                 </TabsTrigger>
@@ -666,6 +808,9 @@ export default function Admin() {
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-mail" value="mail">
                   Email‑журнал
+                </TabsTrigger>
+                <TabsTrigger data-testid="tab-admin-newhires" value="newhires">
+                  Новые сотрудники
                 </TabsTrigger>
               </TabsList>
 
@@ -1730,6 +1875,11 @@ export default function Admin() {
                   </Card>
 
                 </div>
+              </TabsContent>
+
+              {/* ── Новые сотрудники ── */}
+              <TabsContent value="newhires" className="mt-4">
+                <NewHiresTab />
               </TabsContent>
             </Tabs>
           </CardContent>
