@@ -151,6 +151,7 @@ export default function MaterialView() {
   const [editVisibilityGroupIds, setEditVisibilityGroupIds] = useState<string[]>(["g-base"]);
   const [editTags, setEditTags] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
+  const [editNewHireRequired, setEditNewHireRequired] = useState(false);
 
   const [editContentKind, setEditContentKind] = useState<"file" | "page">("file");
   const [editPageHtml, setEditPageHtml] = useState("");
@@ -169,6 +170,7 @@ export default function MaterialView() {
       setEditVisibilityGroupIds(current.passport.visibilityGroupIds);
       setEditTags(current.passport.tags.join(", "));
       setEditDepartment(current.passport.department || "");
+      setEditNewHireRequired(!!current.passport.newHireRequired);
       setEditContentKind(current.content.kind);
       setEditPageHtml(current.content.page?.html || "");
       setEditFileName(current.content.file?.name || "");
@@ -209,6 +211,7 @@ export default function MaterialView() {
           visibilityGroupIds: editVisibilityGroupIds,
           tags: editTags.split(",").map(t => t.trim()).filter(Boolean),
           department: editDepartment || undefined,
+          newHireRequired: editNewHireRequired || undefined,
           reviewPeriodDays: periodRow?.days,
           nextReviewAt: computedNextReview.toISOString(),
         },
@@ -258,6 +261,7 @@ export default function MaterialView() {
     legalEntity: current?.passport.legalEntity || "",
     department: editDepartment || undefined,
     visibilityGroupIds: editVisibilityGroupIds,
+    newHireRequired: editNewHireRequired || undefined,
     reviewPeriodDays: current?.passport.reviewPeriodDays,
     nextReviewAt: current?.passport.nextReviewAt,
     lastReviewedAt: current?.passport.lastReviewedAt,
@@ -975,6 +979,20 @@ export default function MaterialView() {
                                 <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
                               </label>
                             ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                              data-testid="checkbox-edit-new-hire-required"
+                              checked={editNewHireRequired}
+                              onCheckedChange={(checked) => setEditNewHireRequired(!!checked)}
+                            />
+                            <span className="text-sm font-medium">Требуется ознакомление для новых сотрудников</span>
+                          </label>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Материал будет автоматически назначен новым сотрудникам при адаптации.
                           </div>
                         </div>
 
