@@ -4,7 +4,8 @@ import { storage } from "./storage";
 
 const TIMESTAMP_FIELDS = [
   "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
-  "slaReactedAt", "slaUpdatedAt", "lastSyncAt", "deactivatedAt", "syncedAt"
+  "slaReactedAt", "slaUpdatedAt", "lastSyncAt", "deactivatedAt", "syncedAt",
+  "addedAt", "assignedAt", "acknowledgedAt"
 ];
 
 function coerceDates(data: any): any {
@@ -546,6 +547,99 @@ export async function registerRoutes(
       const deleted = await storage.deleteEffectiveVisGroupMap(req.params.materialId);
       if (!deleted) return res.status(404).json({ error: "Effective vis group map not found" });
       res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // NEW HIRES CONFIG
+  app.get("/api/new-hires/config", async (_req, res) => {
+    try {
+      const config = await storage.getNewHiresConfig();
+      res.json(config || { enabled: false });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.put("/api/new-hires/config", async (req, res) => {
+    try {
+      const config = await storage.upsertNewHiresConfig(req.body);
+      res.json(config);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // NEW HIRE PROFILES
+  app.get("/api/new-hires/profiles", async (_req, res) => {
+    try {
+      const profiles = await storage.getNewHireProfiles();
+      res.json(profiles);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.post("/api/new-hires/profiles", async (req, res) => {
+    try {
+      const profile = await storage.createNewHireProfile(coerceDates(req.body));
+      res.json(profile);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.patch("/api/new-hires/profiles/:id", async (req, res) => {
+    try {
+      const profile = await storage.updateNewHireProfile(req.params.id, coerceDates(req.body));
+      if (!profile) return res.status(404).json({ error: "New hire profile not found" });
+      res.json(profile);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // NEW HIRE ASSIGNMENTS
+  app.get("/api/new-hires/assignments", async (_req, res) => {
+    try {
+      const assignments = await storage.getNewHireAssignments();
+      res.json(assignments);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get("/api/new-hires/assignments/user/:userId", async (req, res) => {
+    try {
+      const assignments = await storage.getNewHireAssignmentsByUser(req.params.userId);
+      res.json(assignments);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.post("/api/new-hires/assignments", async (req, res) => {
+    try {
+      const data = coerceDates(req.body);
+      const existing = await storage.getNewHireAssignmentsByUser(data.userId);
+      const dup = existing.find((a: any) => a.materialId === data.materialId);
+      if (dup) return res.json(dup);
+      const assignment = await storage.createNewHireAssignment(data);
+      res.json(assignment);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.patch("/api/new-hires/assignments/:id/acknowledge", async (req, res) => {
+    try {
+      const assignment = await storage.updateNewHireAssignment(req.params.id, {
+        acknowledgedAt: new Date(),
+        acknowledgedVersionId: req.body.acknowledgedVersionId,
+      });
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+      res.json(assignment);
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }

@@ -59,11 +59,33 @@ export type Passport = {
   legalEntity: string;
   department?: string;
   requiredTraining?: boolean;
+  newHireRequired?: boolean;
   relatedLinks?: { label: string; url: string }[];
   lastReviewedAt?: string;
   nextReviewAt?: string;
   reviewPeriodDays?: number;
   visibilityGroupIds: string[];
+};
+
+export type NewHireStatus = "Новый" | "Задания выданы" | "Завершено";
+
+export type NewHireProfile = {
+  id: string;
+  userId: string;
+  source: "LOCAL" | "AD";
+  status: NewHireStatus;
+  addedAt: string;
+};
+
+export type NewHireAssignment = {
+  id: string;
+  userId: string;
+  materialId: string;
+  assignedAt: string;
+  assignedBy: string;
+  batchId: string;
+  acknowledgedAt?: string;
+  acknowledgedVersionId?: string;
 };
 
 export type MaterialVersion = {
@@ -364,6 +386,7 @@ export const materials: MaterialVersion[] = [
       nextReviewAt: iso(days(-5)),
       reviewPeriodDays: 90,
       visibilityGroupIds: ["g-base"],
+      newHireRequired: true,
       relatedLinks: [
         { label: "Заявка в ServiceDesk", url: "https://example.local/servicedesk" },
       ],
@@ -579,6 +602,7 @@ export const materials: MaterialVersion[] = [
       nextReviewAt: iso(days(15)),
       reviewPeriodDays: 30,
       visibilityGroupIds: ["g-base"],
+      newHireRequired: true,
     },
     content: {
       kind: "file",

@@ -72,6 +72,7 @@ export const materialVersions = pgTable("material_versions", {
   nextReviewAt: timestamp("next_review_at"),
   reviewPeriodDays: integer("review_period_days"),
   visibilityGroupIds: text("visibility_group_ids").array().notNull(),
+  newHireRequired: boolean("new_hire_required").default(false).notNull(),
   contentKind: text("content_kind").notNull(),
   contentFile: jsonb("content_file"),
   contentPage: jsonb("content_page"),
@@ -265,6 +266,46 @@ export const adSyncLog = pgTable("ad_sync_log", {
 export const insertAdSyncLogSchema = createInsertSchema(adSyncLog).omit({ id: true, syncedAt: true });
 export type InsertAdSyncLog = z.infer<typeof insertAdSyncLogSchema>;
 export type AdSyncLog = typeof adSyncLog.$inferSelect;
+
+export const newHiresConfig = pgTable("new_hires_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  enabled: boolean("enabled").default(false).notNull(),
+});
+
+export const insertNewHiresConfigSchema = createInsertSchema(newHiresConfig).omit({ id: true });
+export type InsertNewHiresConfig = z.infer<typeof insertNewHiresConfigSchema>;
+export type NewHiresConfig = typeof newHiresConfig.$inferSelect;
+
+export const newHireProfiles = pgTable("new_hire_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  source: text("source").notNull(),
+  status: text("status").notNull(),
+  addedAt: timestamp("added_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("new_hire_profiles_user_idx").on(table.userId),
+]);
+
+export const insertNewHireProfileSchema = createInsertSchema(newHireProfiles).omit({ id: true, addedAt: true });
+export type InsertNewHireProfile = z.infer<typeof insertNewHireProfileSchema>;
+export type NewHireProfile = typeof newHireProfiles.$inferSelect;
+
+export const newHireAssignments = pgTable("new_hire_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  materialId: varchar("material_id").notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  assignedBy: varchar("assigned_by").notNull(),
+  batchId: varchar("batch_id").notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedVersionId: varchar("acknowledged_version_id"),
+}, (table) => [
+  uniqueIndex("new_hire_assignments_user_material_idx").on(table.userId, table.materialId),
+]);
+
+export const insertNewHireAssignmentSchema = createInsertSchema(newHireAssignments).omit({ id: true, assignedAt: true, acknowledgedAt: true, acknowledgedVersionId: true });
+export type InsertNewHireAssignment = z.infer<typeof insertNewHireAssignmentSchema>;
+export type NewHireAssignment = typeof newHireAssignments.$inferSelect;
 
 export const effectiveVisGroupMap = pgTable("effective_vis_group_map", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -8,6 +8,8 @@ import type {
   HelpfulRating,
   EmailConfig,
   EmailTemplate,
+  NewHireProfile,
+  NewHireAssignment,
 } from "./mockData";
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -76,6 +78,7 @@ function dbMaterialToFrontend(
       legalEntity: dbMat.legalEntity,
       department: dbMat.department,
       requiredTraining: dbMat.requiredTraining,
+      newHireRequired: dbMat.newHireRequired,
       relatedLinks: dbMat.relatedLinks,
       lastReviewedAt: dbMat.lastReviewedAt,
       nextReviewAt: dbMat.nextReviewAt,
@@ -114,6 +117,7 @@ function frontendMaterialToDb(mat: MaterialVersion): any {
     legalEntity: passport.legalEntity,
     department: passport.department,
     requiredTraining: passport.requiredTraining,
+    newHireRequired: passport.newHireRequired,
     relatedLinks: passport.relatedLinks,
     lastReviewedAt: passport.lastReviewedAt,
     nextReviewAt: passport.nextReviewAt,
@@ -443,5 +447,41 @@ export const api = {
 
   async upsertEffectiveVisGroup(materialId: string, groupIds: string[]): Promise<void> {
     await putJson(`/api/effective-vis-groups/${materialId}`, { visibilityGroupIds: groupIds });
+  },
+
+  async getNewHiresConfig(): Promise<{ enabled: boolean }> {
+    return fetchJson<{ enabled: boolean }>("/api/new-hires/config");
+  },
+
+  async updateNewHiresConfig(data: { enabled: boolean }): Promise<{ enabled: boolean }> {
+    return putJson<{ enabled: boolean }>("/api/new-hires/config", data);
+  },
+
+  async getNewHireProfiles(): Promise<NewHireProfile[]> {
+    return fetchJson<NewHireProfile[]>("/api/new-hires/profiles");
+  },
+
+  async createNewHireProfile(data: { userId: string; source: string; status: string }): Promise<NewHireProfile> {
+    return postJson<NewHireProfile>("/api/new-hires/profiles", data);
+  },
+
+  async updateNewHireProfile(id: string, data: { status?: string }): Promise<NewHireProfile> {
+    return patchJson<NewHireProfile>(`/api/new-hires/profiles/${id}`, data);
+  },
+
+  async getNewHireAssignments(): Promise<NewHireAssignment[]> {
+    return fetchJson<NewHireAssignment[]>("/api/new-hires/assignments");
+  },
+
+  async getNewHireAssignmentsByUser(userId: string): Promise<NewHireAssignment[]> {
+    return fetchJson<NewHireAssignment[]>(`/api/new-hires/assignments/user/${userId}`);
+  },
+
+  async createNewHireAssignment(data: { userId: string; materialId: string; assignedBy: string; batchId: string }): Promise<NewHireAssignment> {
+    return postJson<NewHireAssignment>("/api/new-hires/assignments", data);
+  },
+
+  async acknowledgeAssignment(assignmentId: string, versionId: string): Promise<NewHireAssignment> {
+    return patchJson<NewHireAssignment>(`/api/new-hires/assignments/${assignmentId}/acknowledge`, { acknowledgedVersionId: versionId });
   },
 };

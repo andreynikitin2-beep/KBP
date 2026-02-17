@@ -83,6 +83,21 @@ export interface IStorage {
   getEffectiveVisGroupMap(): Promise<schema.EffectiveVisGroupMap[]>;
   upsertEffectiveVisGroupMap(materialId: string, visibilityGroupIds: string[]): Promise<schema.EffectiveVisGroupMap>;
   deleteEffectiveVisGroupMap(materialId: string): Promise<boolean>;
+
+  getNewHiresConfig(): Promise<schema.NewHiresConfig | undefined>;
+  upsertNewHiresConfig(data: schema.InsertNewHiresConfig): Promise<schema.NewHiresConfig>;
+
+  getNewHireProfiles(): Promise<schema.NewHireProfile[]>;
+  getNewHireProfile(id: string): Promise<schema.NewHireProfile | undefined>;
+  getNewHireProfileByUserId(userId: string): Promise<schema.NewHireProfile | undefined>;
+  createNewHireProfile(data: schema.InsertNewHireProfile): Promise<schema.NewHireProfile>;
+  updateNewHireProfile(id: string, data: Partial<schema.InsertNewHireProfile>): Promise<schema.NewHireProfile | undefined>;
+
+  getNewHireAssignments(): Promise<schema.NewHireAssignment[]>;
+  getNewHireAssignmentsByUser(userId: string): Promise<schema.NewHireAssignment[]>;
+  getNewHireAssignment(id: string): Promise<schema.NewHireAssignment | undefined>;
+  createNewHireAssignment(data: schema.InsertNewHireAssignment): Promise<schema.NewHireAssignment>;
+  updateNewHireAssignment(id: string, data: Partial<{ acknowledgedAt: Date; acknowledgedVersionId: string }>): Promise<schema.NewHireAssignment | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -411,6 +426,68 @@ export class DatabaseStorage implements IStorage {
   async deleteEffectiveVisGroupMap(materialId: string): Promise<boolean> {
     const result = await db.delete(schema.effectiveVisGroupMap).where(eq(schema.effectiveVisGroupMap.materialId, materialId));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async getNewHiresConfig(): Promise<schema.NewHiresConfig | undefined> {
+    const [config] = await db.select().from(schema.newHiresConfig);
+    return config;
+  }
+
+  async upsertNewHiresConfig(data: schema.InsertNewHiresConfig): Promise<schema.NewHiresConfig> {
+    const existing = await this.getNewHiresConfig();
+    if (existing) {
+      const [updated] = await db.update(schema.newHiresConfig).set(data).where(eq(schema.newHiresConfig.id, existing.id)).returning();
+      return updated;
+    }
+    const [created] = await db.insert(schema.newHiresConfig).values(data).returning();
+    return created;
+  }
+
+  async getNewHireProfiles(): Promise<schema.NewHireProfile[]> {
+    return db.select().from(schema.newHireProfiles);
+  }
+
+  async getNewHireProfile(id: string): Promise<schema.NewHireProfile | undefined> {
+    const [profile] = await db.select().from(schema.newHireProfiles).where(eq(schema.newHireProfiles.id, id));
+    return profile;
+  }
+
+  async getNewHireProfileByUserId(userId: string): Promise<schema.NewHireProfile | undefined> {
+    const [profile] = await db.select().from(schema.newHireProfiles).where(eq(schema.newHireProfiles.userId, userId));
+    return profile;
+  }
+
+  async createNewHireProfile(data: schema.InsertNewHireProfile): Promise<schema.NewHireProfile> {
+    const [profile] = await db.insert(schema.newHireProfiles).values(data).returning();
+    return profile;
+  }
+
+  async updateNewHireProfile(id: string, data: Partial<schema.InsertNewHireProfile>): Promise<schema.NewHireProfile | undefined> {
+    const [profile] = await db.update(schema.newHireProfiles).set(data).where(eq(schema.newHireProfiles.id, id)).returning();
+    return profile;
+  }
+
+  async getNewHireAssignments(): Promise<schema.NewHireAssignment[]> {
+    return db.select().from(schema.newHireAssignments);
+  }
+
+  async getNewHireAssignmentsByUser(userId: string): Promise<schema.NewHireAssignment[]> {
+    return db.select().from(schema.newHireAssignments).where(eq(schema.newHireAssignments.userId, userId));
+  }
+
+  async getNewHireAssignment(id: string): Promise<schema.NewHireAssignment | undefined> {
+    const [assignment] = await db.select().from(schema.newHireAssignments).where(eq(schema.newHireAssignments.id, id));
+    return assignment;
+  }
+
+  async createNewHireAssignment(data: schema.InsertNewHireAssignment): Promise<schema.NewHireAssignment> {
+    const [assignment] = await db.insert(schema.newHireAssignments).values(data).returning();
+    return assignment;
+  }
+
+  async updateNewHireAssignment(id: string, data: Partial<{ acknowledgedAt: Date; acknowledgedVersionId: string }>): Promise<schema.NewHireAssignment | undefined> {
+    const [assignment] = await db.update(schema.newHireAssignments).set(data).where(eq(schema.newHireAssignments.id, id)).returning();
+    return assignment;
   }
 }
 
