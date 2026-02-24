@@ -5,6 +5,7 @@ import * as schema from "@shared/schema";
 export interface IStorage {
   getUsers(): Promise<schema.User[]>;
   getUser(id: string): Promise<schema.User | undefined>;
+  getUserByUsername(username: string): Promise<schema.User | undefined>;
   createUser(data: schema.InsertUser): Promise<schema.User>;
   updateUser(id: string, data: Partial<schema.InsertUser>): Promise<schema.User | undefined>;
 
@@ -107,6 +108,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUser(id: string): Promise<schema.User | undefined> {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<schema.User | undefined> {
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username));
     return user;
   }
 

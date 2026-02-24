@@ -557,6 +557,7 @@ export default function Admin() {
   const [newEmail, setNewEmail] = useState("");
   const [newDept, setNewDept] = useState("");
   const [newEntity, setNewEntity] = useState("");
+  const [newPassword, setNewPassword] = useState("1");
   const [newRoles, setNewRoles] = useState<Role[]>(["Читатель"]);
 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -732,6 +733,7 @@ export default function Admin() {
       department: newDept.trim(),
       legalEntity: newEntity.trim(),
       roles: newRoles.length ? newRoles : ["Читатель"],
+      password: newPassword || "1",
     });
     if (res.ok) {
       toast({ title: "Пользователь создан", description: `${res.user?.displayName} добавлен` });
@@ -740,6 +742,7 @@ export default function Admin() {
       setNewEmail("");
       setNewDept("");
       setNewEntity("");
+      setNewPassword("1");
       setNewRoles(["Читатель"]);
     } else {
       toast({ title: "Ошибка", description: res.message });
@@ -1158,6 +1161,10 @@ export default function Admin() {
                             <div>
                               <Label htmlFor="new-user-entity">Юридическое лицо</Label>
                               <Input data-testid="input-new-user-entity" id="new-user-entity" value={newEntity} onChange={(e) => setNewEntity(e.target.value)} placeholder="ООО «…»" className="mt-1" />
+                            </div>
+                            <div>
+                              <Label htmlFor="new-user-password">Пароль</Label>
+                              <Input data-testid="input-new-user-password" id="new-user-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Пароль для входа" className="mt-1" />
                             </div>
                             <div>
                               <Label>Роли</Label>

@@ -11,6 +11,8 @@ import Admin from "@/pages/admin";
 import Subscriptions from "@/pages/subscriptions";
 import MyMaterials from "@/pages/my-materials";
 import MyOnboarding from "@/pages/my-onboarding";
+import LoginPage from "@/pages/login";
+import { useKB } from "@/lib/kbStore";
 
 import { queryClient } from "./lib/queryClient";
 
@@ -33,12 +35,22 @@ function Router() {
   );
 }
 
+function AuthGate() {
+  const { isAuthenticated, setMeId } = useKB();
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={(userId) => setMeId(userId)} />;
+  }
+
+  return <Router />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <AuthGate />
       </TooltipProvider>
     </QueryClientProvider>
   );

@@ -57,7 +57,9 @@ export type PolicyConfig = {
 
 type Store = {
   me: User;
+  isAuthenticated: boolean;
   setMeId: (id: string) => void;
+  logout: () => void;
 
   users: User[];
   materials: MaterialVersion[];
@@ -86,7 +88,7 @@ type Store = {
 
   updateAdConfig: (data: Partial<PolicyConfig["adIntegration"]>) => { ok: boolean; message?: string };
   syncADUsers: () => { ok: boolean; deactivated: string[]; message: string };
-  createLocalUser: (data: { displayName: string; email: string; department: string; legalEntity: string; roles: User["roles"] }) => { ok: boolean; user?: User; message?: string };
+  createLocalUser: (data: { displayName: string; email: string; department: string; legalEntity: string; roles: User["roles"]; password?: string }) => { ok: boolean; user?: User; message?: string };
   updateUser: (userId: string, data: { displayName?: string; email?: string; department?: string; legalEntity?: string; roles?: User["roles"] }) => { ok: boolean; message?: string };
   deactivateUser: (userId: string) => { ok: boolean; message?: string };
   reactivateUser: (userId: string) => { ok: boolean; message?: string };
@@ -188,7 +190,7 @@ function persistNotification(notif: NotificationLog) {
 
 export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
-  const [meId, setMeIdRaw] = useState('');
+  const [meId, setMeIdRaw] = useState(() => localStorage.getItem('kb_auth_user') || '');
   const [users, setUsers] = useState<User[]>([]);
   const [materials, setMaterials] = useState<MaterialVersion[]>([]);
   const [rfcs, setRfcs] = useState<RFC[]>([]);
@@ -219,10 +221,18 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const setMeId = (id: string) => {
     setMeIdRaw(id);
     if (id) {
+      localStorage.setItem('kb_auth_user', id);
       api.getUserSubscriptions(id).then(subs => {
         setSubscriptionMap(prev => ({ ...prev, [id]: subs }));
       }).catch(console.error);
+    } else {
+      localStorage.removeItem('kb_auth_user');
     }
+  };
+
+  const logout = () => {
+    setMeIdRaw('');
+    localStorage.removeItem('kb_auth_user');
   };
 
   useEffect(() => {
@@ -259,7 +269,6 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         ]);
 
         setUsers(usersData);
-        setMeIdRaw(usersData[0]?.id || '');
         setMaterials(materialsData);
         setRfcs(rfcsData);
         setNotifications(notificationsData);
@@ -401,7 +410,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
     return {
       me,
+      isAuthenticated: !!meId,
       setMeId,
+      logout,
       users,
       materials,
       visibleMaterials,
@@ -856,7 +867,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         api.createUser({
           ...newUser,
           username: data.email,
-          password: 'changeme',
+          password: data.password || '1',
         } as any).catch(console.error);
 
         return { ok: true, user: newUser };

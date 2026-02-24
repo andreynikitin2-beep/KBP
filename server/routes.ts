@@ -24,6 +24,44 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/api/auth/users-list", async (_req, res) => {
+    try {
+      const users = await storage.getUsers();
+      res.json(users.map(u => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.displayName,
+        source: u.source,
+        department: u.department,
+        roles: u.roles,
+        isAvailable: u.isAvailable,
+        deactivatedAt: u.deactivatedAt,
+      })));
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { userId, password } = req.body;
+      if (!userId || !password) {
+        return res.status(400).json({ error: "Не указан пользователь или пароль" });
+      }
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(401).json({ error: "Пользователь не найден" });
+      }
+      if (user.password !== password) {
+        return res.status(401).json({ error: "Неверный пароль" });
+      }
+      const { password: _p, ...safeUser } = user;
+      res.json({ ok: true, user: safeUser });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   // USERS
   app.get("/api/users", async (_req, res) => {
     try {

@@ -12,6 +12,7 @@ import {
   LockKeyhole,
   Search,
   Settings2,
+  LogOut,
   Shield,
   Sparkles,
 } from "lucide-react";
@@ -48,8 +49,7 @@ function RolePills() {
 }
 
 function UserSwitch() {
-  const { me, users, setMeId } = useKB();
-  const [open, setOpen] = useState(false);
+  const { me, logout } = useKB();
 
   return (
     <div className="flex items-center gap-2 border-l pl-2 ml-1">
@@ -63,96 +63,14 @@ function UserSwitch() {
       </div>
       <Button
         variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-full bg-slate-800 text-white hover:bg-slate-700"
-        onClick={() => setOpen(true)}
+        size="sm"
+        className="text-xs text-muted-foreground hover:text-destructive"
+        onClick={logout}
+        data-testid="button-logout"
+        title="Выйти"
       >
-        <span className="text-[10px] font-bold">Я</span>
+        <LogOut className="h-4 w-4" />
       </Button>
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="w-[420px] sm:w-[460px]">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="font-serif text-xl">Демо-пользователи</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Переключайте роли, чтобы увидеть ограничения доступа.
-              </p>
-            </div>
-          </div>
-          <Separator className="my-4" />
-          <div className="space-y-3">
-            {users.map((u) => {
-              const active = u.id === me.id;
-              return (
-                <Card
-                  key={u.id}
-                  className={
-                    "p-3 transition hover:shadow-sm " +
-                    (active ? "border-primary/50 bg-accent/30" : "")
-                  }
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-semibold" data-testid={`text-demo-user-${u.id}`}>
-                        {u.displayName}
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {u.email}
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {u.roles.map((r) => (
-                          <Badge
-                            key={r}
-                            variant={active ? "default" : "secondary"}
-                            className="kb-chip"
-                          >
-                            {r}
-                          </Badge>
-                        ))}
-                      </div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {u.legalEntity} · {u.department}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <Badge
-                        variant={u.isAvailable ? "secondary" : "destructive"}
-                        className="kb-chip"
-                        data-testid={`status-availability-${u.id}`}
-                      >
-                        {u.isAvailable ? "Доступен" : "Недоступен"}
-                      </Badge>
-                      <Button
-                        data-testid={`button-use-user-${u.id}`}
-                        disabled={active}
-                        size="sm"
-                        onClick={() => {
-                          setMeId(u.id);
-                          setOpen(false);
-                        }}
-                      >
-                        {active ? "Вы выбраны" : "Войти"}
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-          <Separator className="my-4" />
-          <div className="rounded-xl border bg-muted/30 p-3">
-            <div className="flex items-start gap-2">
-              <Shield className="mt-0.5 h-4 w-4 text-muted-foreground" />
-              <div className="text-sm">
-                <div className="font-medium">Интеграция с AD (конфиг)</div>
-                <div className="mt-1 text-xs text-muted-foreground" data-testid="text-ad-hint">
-                  В демо отключено. Предусмотрены режимы SAML/OIDC/LDAP и маппинг атрибутов.
-                </div>
-              </div>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
