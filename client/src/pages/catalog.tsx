@@ -317,6 +317,19 @@ export default function Catalog() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                  {subAllowed && canCreateMaterial && (
+                                    <Link href={`/materials/new?section=${sub.id}`}>
+                                      <Button
+                                        data-testid={`button-create-in-${sub.id}`}
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        title="Создать материал"
+                                      >
+                                        <Plus className="h-3 w-3" />
+                                      </Button>
+                                    </Link>
+                                  )}
                                   {canManageSection(s) && (
                                     <>
                                       <Button
@@ -347,13 +360,6 @@ export default function Catalog() {
                                         <Trash2 className="h-3 w-3" />
                                       </Button>
                                     </>
-                                  )}
-                                  {subAllowed && canCreateMaterial && (
-                                    <Link href={`/materials/new?section=${sub.id}`}>
-                                      <Button data-testid={`button-create-in-${sub.id}`} size="sm" className="rounded-xl h-7 text-xs">
-                                        Создать
-                                      </Button>
-                                    </Link>
                                   )}
                                 </div>
                               </div>
