@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -49,7 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import type { Criticality, NewHireProfile, Role } from "@/lib/mockData";
 import type { RbacDefaults, ReviewPeriod } from "@/lib/kbStore";
-import { computeKpis, isOverdue } from "@/lib/kbLogic";
+import { computeKpis, isOverdue, canViewMaterial } from "@/lib/kbLogic";
 
 function csvEscape(v: string) {
   const s = String(v ?? "");
@@ -322,8 +322,10 @@ function NewHiresTab() {
     newHiresEnabled, setNewHiresEnabled,
     newHireProfiles, newHireAssignments,
     detectNewHires, assignMaterialsToNewHire, assignMaterialsToAllNewHires, updateNewHireStatus,
-    users, materials,
+    users, materials, visibilityGroups,
   } = useKB();
+
+  const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null);
 
   const handleDetect = async () => {
     const res = await detectNewHires();
@@ -403,42 +405,106 @@ function NewHiresTab() {
                     const acknowledged = userAssignments.filter((a) => a.acknowledgedAt).length;
                     const total = userAssignments.length;
                     const allAcknowledged = total > 0 && acknowledged === total;
+                    const isExpanded = expandedProfileId === profile.id;
+                    const canExpand = profile.status === "Задания выданы" || profile.status === "Завершено";
 
                     return (
-                      <tr key={profile.id} className="border-b last:border-0" data-testid={`row-newhire-${profile.id}`}>
-                        <td className="py-2 pr-4">{user?.displayName ?? "—"}</td>
-                        <td className="py-2 pr-4">
-                          <Badge variant="secondary" className="text-[10px]">{profile.source}</Badge>
-                        </td>
-                        <td className="py-2 pr-4">{statusBadge(profile.status)}</td>
-                        <td className="py-2 pr-4">{acknowledged} / {total}</td>
-                        <td className="py-2">
-                          <div className="flex gap-1">
-                            {profile.status === "Новый" && (
-                              <Button
-                                data-testid={`btn-assign-newhire-${profile.id}`}
-                                size="sm"
-                                variant="outline"
-                                className="rounded-xl text-xs"
-                                onClick={() => handleAssignOne(profile.userId)}
-                              >
-                                Выдать задания
-                              </Button>
-                            )}
-                            {profile.status === "Задания выданы" && allAcknowledged && (
-                              <Button
-                                data-testid={`btn-complete-newhire-${profile.id}`}
-                                size="sm"
-                                variant="outline"
-                                className="rounded-xl text-xs"
-                                onClick={() => handleComplete(profile.id)}
-                              >
-                                Завершить
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                      <React.Fragment key={profile.id}>
+                        <tr
+                          className={`border-b last:border-0 ${canExpand ? "cursor-pointer hover:bg-muted/30" : ""}`}
+                          data-testid={`row-newhire-${profile.id}`}
+                          onClick={() => canExpand && setExpandedProfileId(isExpanded ? null : profile.id)}
+                        >
+                          <td className="py-2 pr-4">{user?.displayName ?? "—"}</td>
+                          <td className="py-2 pr-4">
+                            <Badge variant="secondary" className="text-[10px]">{profile.source}</Badge>
+                          </td>
+                          <td className="py-2 pr-4">{statusBadge(profile.status)}</td>
+                          <td className="py-2 pr-4">{acknowledged} / {total}</td>
+                          <td className="py-2">
+                            <div className="flex gap-1">
+                              {profile.status === "Новый" && (
+                                <Button
+                                  data-testid={`btn-assign-newhire-${profile.id}`}
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl text-xs"
+                                  onClick={(e) => { e.stopPropagation(); handleAssignOne(profile.userId); }}
+                                >
+                                  Выдать задания
+                                </Button>
+                              )}
+                              {profile.status === "Задания выданы" && allAcknowledged && (
+                                <Button
+                                  data-testid={`btn-complete-newhire-${profile.id}`}
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl text-xs"
+                                  onClick={(e) => { e.stopPropagation(); handleComplete(profile.id); }}
+                                >
+                                  Завершить
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && canExpand && (
+                          <tr data-testid={`row-newhire-expanded-${profile.id}`}>
+                            <td colSpan={5} className="px-2 pb-3 pt-1">
+                              <div className="rounded-xl border bg-muted/10 p-3">
+                                <div className="mb-2 text-xs font-semibold text-muted-foreground">Назначенные материалы</div>
+                                <div className="grid gap-1.5">
+                                  {userAssignments.map((assignment) => {
+                                    const mat = materials.find(m => m.id === assignment.materialId);
+                                    const matTitle = mat?.passport.title || assignment.materialId;
+                                    const isAck = !!assignment.acknowledgedAt;
+                                    const assignedUser = user;
+                                    const hasAccess = assignedUser && mat
+                                      ? canViewMaterial(assignedUser, mat, visibilityGroups)
+                                      : false;
+
+                                    let bgClass: string;
+                                    let statusLabel: string;
+                                    if (isAck) {
+                                      bgClass = "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800";
+                                      statusLabel = "Ознакомлен";
+                                    } else if (hasAccess) {
+                                      bgClass = "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800";
+                                      statusLabel = "Не ознакомлен";
+                                    } else {
+                                      bgClass = "bg-gray-100 border-gray-200 dark:bg-gray-800/40 dark:border-gray-700";
+                                      statusLabel = "Нет доступа сейчас";
+                                    }
+
+                                    return (
+                                      <div
+                                        key={assignment.id}
+                                        className={`flex items-center justify-between rounded-xl border px-3 py-2 ${bgClass}`}
+                                        data-testid={`row-newhire-material-${assignment.id}`}
+                                      >
+                                        <div className="text-sm">{matTitle}</div>
+                                        <Badge
+                                          variant="secondary"
+                                          className={`text-[10px] ${
+                                            isAck
+                                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                              : hasAccess
+                                                ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                                : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                          }`}
+                                          data-testid={`badge-newhire-material-status-${assignment.id}`}
+                                        >
+                                          {statusLabel}
+                                        </Badge>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

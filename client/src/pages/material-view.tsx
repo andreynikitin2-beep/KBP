@@ -1651,6 +1651,73 @@ export default function MaterialView() {
                           })}
                         </div>
                       </Card>
+
+                      {(() => {
+                        const materialAssignments = newHireAssignments.filter(a => a.materialId === materialId);
+                        if (materialAssignments.length === 0) return null;
+                        return (
+                          <Card className="p-4" data-testid="card-newhire-audit">
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-sm font-semibold">Ознакомление новыми сотрудниками</div>
+                              <Badge variant="secondary" className="kb-chip" data-testid="badge-newhire-audit-count">
+                                {materialAssignments.length}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 grid gap-2" data-testid="list-newhire-audit">
+                              {materialAssignments.map((assignment) => {
+                                const assignedUser = users.find(u => u.id === assignment.userId);
+                                const userName = assignedUser?.displayName || assignment.userId;
+                                const isAcknowledged = !!assignment.acknowledgedAt;
+                                const hasAccess = assignedUser
+                                  ? canViewMaterial(assignedUser, dv, visibilityGroups)
+                                  : false;
+
+                                let bgClass: string;
+                                let statusText: string;
+                                if (isAcknowledged) {
+                                  bgClass = "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800";
+                                  statusText = "Ознакомлен";
+                                } else if (hasAccess) {
+                                  bgClass = "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800";
+                                  statusText = "Не ознакомлен";
+                                } else {
+                                  bgClass = "bg-gray-100 border-gray-200 dark:bg-gray-800/40 dark:border-gray-700";
+                                  statusText = "Нет доступа сейчас";
+                                }
+
+                                return (
+                                  <div
+                                    key={assignment.id}
+                                    className={`flex items-center justify-between rounded-2xl border px-3 py-2 ${bgClass}`}
+                                    data-testid={`row-newhire-audit-${assignment.id}`}
+                                  >
+                                    <div className="text-sm font-medium">{userName}</div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground">
+                                        {isAcknowledged ? fmt(assignment.acknowledgedAt!) : fmt(assignment.assignedAt)}
+                                      </span>
+                                      <Badge
+                                        variant="secondary"
+                                        className={`text-[10px] ${
+                                          isAcknowledged
+                                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                            : hasAccess
+                                              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                              : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                        }`}
+                                        data-testid={`badge-newhire-status-${assignment.id}`}
+                                      >
+                                        {statusText}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+                        );
+                      })()}
                     </div>
                   )}
                 </TabsContent>
