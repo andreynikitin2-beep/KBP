@@ -165,6 +165,8 @@ export default function Catalog() {
           <div className="grid gap-4">
             {sections
               .filter((s) => {
+                const sAllowed = allowed.has(s.id);
+                if (!isAdmin && !sAllowed) return false;
                 if (!qLower) return true;
                 if (matchesStr(s.title)) return true;
                 const subs = byParent.get(s.id) || [];
@@ -175,6 +177,8 @@ export default function Catalog() {
               .map((s) => {
                 const sAllowed = allowed.has(s.id);
                 const subs = (byParent.get(s.id) || []).filter((x) => {
+                  const subAllowedCheck = sAllowed && allowed.has(x.id);
+                  if (!isAdmin && !subAllowedCheck) return false;
                   if (!qLower) return true;
                   if (matchesStr(x.title) || matchesStr(s.title)) return true;
                   const mats = materialsBySection.get(x.id) || [];
