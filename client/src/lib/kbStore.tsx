@@ -119,7 +119,7 @@ type Store = {
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
   addSection: (title: string, sortOrder?: number) => { ok: boolean; node?: CatalogNode; message?: string };
-  renameSection: (nodeId: string, title: string) => { ok: boolean; message?: string };
+  renameSection: (nodeId: string, title: string, sortOrder?: number) => { ok: boolean; message?: string };
   deleteSection: (nodeId: string) => { ok: boolean; message?: string };
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
   renameSubsection: (nodeId: string, title: string) => { ok: boolean; message?: string };
@@ -1184,16 +1184,18 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true, node };
       },
 
-      renameSection: (nodeId: string, title: string) => {
+      renameSection: (nodeId: string, title: string, sortOrder?: number) => {
         const node = catalogNodes.find((n) => n.id === nodeId);
         if (!node) return { ok: false, message: "Раздел не найден" };
         if (node.type !== "section") return { ok: false, message: "Можно переименовать только раздел" };
         if (!title.trim()) return { ok: false, message: "Название не может быть пустым" };
+        const updates: Partial<CatalogNode> = { title: title.trim() };
+        if (sortOrder !== undefined) updates.sortOrder = sortOrder;
         setCatalogNodes((prev) =>
-          prev.map((n) => (n.id === nodeId ? { ...n, title: title.trim() } : n)),
+          prev.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
         );
 
-        api.updateCatalogNode(nodeId, { title: title.trim() }).catch(console.error);
+        api.updateCatalogNode(nodeId, updates as any).catch(console.error);
 
         return { ok: true };
       },

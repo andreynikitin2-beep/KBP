@@ -48,7 +48,7 @@ export default function Catalog() {
   const [addSectionDialog, setAddSectionDialog] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionSortOrder, setNewSectionSortOrder] = useState(0);
-  const [renameSectionDialog, setRenameSectionDialog] = useState<{ id: string; title: string } | null>(null);
+  const [renameSectionDialog, setRenameSectionDialog] = useState<{ id: string; title: string; sortOrder: number } | null>(null);
   const [sortBy, setSortBy] = useState<"alpha" | "date" | "popularity" | "criticality" | "status" | "review">("alpha");
 
   const critOrder: Record<string, number> = { "Критическая": 0, "Высокая": 1, "Средняя": 2, "Низкая": 3 };
@@ -250,7 +250,7 @@ export default function Catalog() {
                                     size="icon"
                                     className="h-7 w-7"
                                     title="Переименовать раздел"
-                                    onClick={() => setRenameSectionDialog({ id: s.id, title: s.title })}
+                                    onClick={() => setRenameSectionDialog({ id: s.id, title: s.title, sortOrder: s.sortOrder ?? 0 })}
                                   >
                                     <Edit2 className="h-3.5 w-3.5" />
                                   </Button>
@@ -348,7 +348,7 @@ export default function Catalog() {
                                       </Button>
                                     </>
                                   )}
-                                  {!count && subAllowed && canCreateMaterial && (
+                                  {subAllowed && canCreateMaterial && (
                                     <Link href={`/materials/new?section=${sub.id}`}>
                                       <Button data-testid={`button-create-in-${sub.id}`} size="sm" className="rounded-xl h-7 text-xs">
                                         Создать
@@ -631,17 +631,29 @@ export default function Catalog() {
       <Dialog open={!!renameSectionDialog} onOpenChange={(open) => !open && setRenameSectionDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Переименовать раздел</DialogTitle>
+            <DialogTitle>Редактировать раздел</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div>
-              <Label>Новое название</Label>
+              <Label>Название</Label>
               <Input
                 data-testid="input-rename-section"
                 value={renameSectionDialog?.title || ""}
                 onChange={(e) => setRenameSectionDialog((prev) => prev ? { ...prev, title: e.target.value } : null)}
                 className="mt-1"
               />
+            </div>
+            <div>
+              <Label>Порядковый номер</Label>
+              <Input
+                data-testid="input-rename-section-sort-order"
+                type="number"
+                min={0}
+                value={renameSectionDialog?.sortOrder ?? 0}
+                onChange={(e) => setRenameSectionDialog((prev) => prev ? { ...prev, sortOrder: Number(e.target.value) || 0 } : null)}
+                className="mt-1"
+              />
+              <div className="text-xs text-muted-foreground mt-1">Разделы выводятся в порядке возрастания номера</div>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setRenameSectionDialog(null)}>Отмена</Button>
@@ -650,9 +662,9 @@ export default function Catalog() {
                 disabled={!renameSectionDialog?.title.trim()}
                 onClick={() => {
                   if (renameSectionDialog) {
-                    const res = renameSection(renameSectionDialog.id, renameSectionDialog.title);
+                    const res = renameSection(renameSectionDialog.id, renameSectionDialog.title, renameSectionDialog.sortOrder);
                     toast({
-                      title: res.ok ? "Переименовано" : "Ошибка",
+                      title: res.ok ? "Сохранено" : "Ошибка",
                       description: res.ok ? renameSectionDialog.title : res.message,
                       variant: res.ok ? "default" : "destructive",
                     });
