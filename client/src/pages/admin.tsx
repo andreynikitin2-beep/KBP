@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
   Activity,
@@ -26,6 +26,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -318,14 +319,20 @@ function PoliciesTab() {
 
 function NewHiresTab() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const {
     newHiresEnabled, setNewHiresEnabled,
     newHireProfiles, newHireAssignments,
     detectNewHires, assignMaterialsToNewHire, assignMaterialsToAllNewHires, updateNewHireStatus,
-    users, materials, visibilityGroups,
+    users, materials, visibilityGroups, getAllVersions,
   } = useKB();
 
   const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null);
+
+  const fmtDate = (iso?: string) => {
+    if (!iso) return "—";
+    return format(new Date(iso), "dd.MM.yyyy HH:mm", { locale: ru });
+  };
 
   const handleDetect = async () => {
     const res = await detectNewHires();
@@ -463,6 +470,11 @@ function NewHiresTab() {
                                       ? canViewMaterial(assignedUser, mat, visibilityGroups)
                                       : false;
 
+                                    const ackVersion = assignment.acknowledgedVersionId
+                                      ? getAllVersions(assignment.materialId).find(v => v.id === assignment.acknowledgedVersionId)
+                                      : null;
+                                    const ackVersionLabel = ackVersion ? ackVersion.version : null;
+
                                     let bgClass: string;
                                     let statusLabel: string;
                                     if (isAck) {
@@ -479,23 +491,33 @@ function NewHiresTab() {
                                     return (
                                       <div
                                         key={assignment.id}
-                                        className={`flex items-center justify-between rounded-xl border px-3 py-2 ${bgClass}`}
+                                        className={`rounded-xl border px-3 py-2.5 cursor-pointer hover:opacity-80 transition-opacity ${bgClass}`}
                                         data-testid={`row-newhire-material-${assignment.id}`}
+                                        onClick={() => navigate(`/materials/${assignment.materialId}`)}
                                       >
-                                        <div className="text-sm">{matTitle}</div>
-                                        <Badge
-                                          variant="secondary"
-                                          className={`text-[10px] ${
-                                            isAck
-                                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                                              : hasAccess
-                                                ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                                                : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
-                                          }`}
-                                          data-testid={`badge-newhire-material-status-${assignment.id}`}
-                                        >
-                                          {statusLabel}
-                                        </Badge>
+                                        <div className="flex items-center justify-between">
+                                          <div className="text-sm font-medium">{matTitle}</div>
+                                          <Badge
+                                            variant="secondary"
+                                            className={`text-[10px] ${
+                                              isAck
+                                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                                : hasAccess
+                                                  ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                                                  : "bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                            }`}
+                                            data-testid={`badge-newhire-material-status-${assignment.id}`}
+                                          >
+                                            {statusLabel}
+                                          </Badge>
+                                        </div>
+                                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                          {ackVersionLabel && (
+                                            <span data-testid={`text-ack-version-${assignment.id}`}>Версия: {ackVersionLabel}</span>
+                                          )}
+                                          <span>Назначен: {fmtDate(assignment.assignedAt)}</span>
+                                          <span>Ознакомлен: {isAck ? fmtDate(assignment.acknowledgedAt) : "—"}</span>
+                                        </div>
                                       </div>
                                     );
                                   })}

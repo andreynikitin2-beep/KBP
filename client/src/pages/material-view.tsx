@@ -1673,6 +1673,10 @@ export default function MaterialView() {
                                   ? canViewMaterial(assignedUser, dv, visibilityGroups)
                                   : false;
 
+                                const ackVersion = assignment.acknowledgedVersionId
+                                  ? getAllVersions(materialId).find(v => v.id === assignment.acknowledgedVersionId)
+                                  : null;
+
                                 let bgClass: string;
                                 let statusText: string;
                                 if (isAcknowledged) {
@@ -1689,14 +1693,11 @@ export default function MaterialView() {
                                 return (
                                   <div
                                     key={assignment.id}
-                                    className={`flex items-center justify-between rounded-2xl border px-3 py-2 ${bgClass}`}
+                                    className={`rounded-2xl border px-3 py-2.5 ${bgClass}`}
                                     data-testid={`row-newhire-audit-${assignment.id}`}
                                   >
-                                    <div className="text-sm font-medium">{userName}</div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-muted-foreground">
-                                        {isAcknowledged ? fmt(assignment.acknowledgedAt!) : fmt(assignment.assignedAt)}
-                                      </span>
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-sm font-medium">{userName}</div>
                                       <Badge
                                         variant="secondary"
                                         className={`text-[10px] ${
@@ -1710,6 +1711,11 @@ export default function MaterialView() {
                                       >
                                         {statusText}
                                       </Badge>
+                                    </div>
+                                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                      {ackVersion && <span>Версия: {ackVersion.version}</span>}
+                                      <span>Назначен: {fmt(assignment.assignedAt)}</span>
+                                      <span>Ознакомлен: {isAcknowledged ? fmt(assignment.acknowledgedAt!) : "—"}</span>
                                     </div>
                                   </div>
                                 );
