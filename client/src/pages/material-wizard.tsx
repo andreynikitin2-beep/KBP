@@ -30,10 +30,15 @@ export default function MaterialWizard() {
   const { toast } = useToast();
   const { me, users, materials, setMaterials, policy, catalogNodes, visibilityGroups } = useKB();
 
+  const initialSectionId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("section") || "";
+  }, []);
+
   const [title, setTitle] = useState("");
   const [purpose, setPurpose] = useState("");
   const [criticality, setCriticality] = useState<Criticality>("Средняя");
-  const [sectionId, setSectionId] = useState("");
+  const [sectionId, setSectionId] = useState(initialSectionId);
   const [ownerId, setOwnerId] = useState(me.id);
   const [deputyId, setDeputyId] = useState<string | undefined>(undefined);
   const [visibilityGroupIds, setVisibilityGroupIds] = useState<string[]>(["g-base"]);

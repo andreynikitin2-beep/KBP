@@ -31,6 +31,7 @@ export const catalogNodes = pgTable("catalog_nodes", {
   allowedRoles: text("allowed_roles").array(),
   ownerIds: text("owner_ids").array(),
   defaultVisibilityGroupIds: text("default_visibility_group_ids").array(),
+  sortOrder: integer("sort_order").default(0),
 });
 
 export const insertCatalogNodeSchema = createInsertSchema(catalogNodes).omit({ id: true });

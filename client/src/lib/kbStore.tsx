@@ -118,7 +118,7 @@ type Store = {
 
   catalogNodes: CatalogNode[];
   setSectionOwners: (sectionId: string, ownerIds: string[]) => { ok: boolean; message?: string };
-  addSection: (title: string) => { ok: boolean; node?: CatalogNode; message?: string };
+  addSection: (title: string, sortOrder?: number) => { ok: boolean; node?: CatalogNode; message?: string };
   renameSection: (nodeId: string, title: string) => { ok: boolean; message?: string };
   deleteSection: (nodeId: string) => { ok: boolean; message?: string };
   addSubsection: (parentId: string, title: string) => { ok: boolean; node?: CatalogNode; message?: string };
@@ -1171,13 +1171,13 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       },
 
-      addSection: (title: string) => {
+      addSection: (title: string, sortOrder?: number) => {
         if (!title.trim()) return { ok: false, message: "Название не может быть пустым" };
         const id = `sec-${Date.now()}`;
-        const node: CatalogNode = { id, title: title.trim(), type: "section", ownerIds: [] };
+        const node: CatalogNode = { id, title: title.trim(), type: "section", ownerIds: [], sortOrder: sortOrder ?? 0 };
         setCatalogNodes((prev) => [...prev, node]);
 
-        api.createCatalogNode({ title: title.trim(), type: "section", ownerIds: [] }).then(created => {
+        api.createCatalogNode({ title: title.trim(), type: "section", ownerIds: [], sortOrder: sortOrder ?? 0 } as any).then(created => {
           setCatalogNodes(prev => prev.map(n => n.id === id ? { ...n, id: created.id } : n));
         }).catch(console.error);
 

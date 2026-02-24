@@ -47,8 +47,9 @@ export default function Catalog() {
   const [renameDialog, setRenameDialog] = useState<{ id: string; title: string } | null>(null);
   const [addSectionDialog, setAddSectionDialog] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [newSectionSortOrder, setNewSectionSortOrder] = useState(0);
   const [renameSectionDialog, setRenameSectionDialog] = useState<{ id: string; title: string } | null>(null);
-  const [sortBy, setSortBy] = useState<"date" | "popularity" | "criticality" | "status" | "review">("date");
+  const [sortBy, setSortBy] = useState<"alpha" | "date" | "popularity" | "criticality" | "status" | "review">("alpha");
 
   const critOrder: Record<string, number> = { "Критическая": 0, "Высокая": 1, "Средняя": 2, "Низкая": 3 };
   const statusOrder: Record<string, number> = { "Опубликовано": 0, "На пересмотре": 1, "На согласовании": 2, "Черновик": 3, "Архив": 4 };
@@ -56,6 +57,7 @@ export default function Catalog() {
   const sortMats = (list: typeof materials) => {
     const arr = [...list];
     switch (sortBy) {
+      case "alpha": return arr.sort((a, b) => (a.passport.title || "").localeCompare(b.passport.title || "", "ru"));
       case "date": return arr.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
       case "popularity": return arr.sort((a, b) => b.stats.views - a.stats.views);
       case "criticality": return arr.sort((a, b) => (critOrder[a.passport.criticality] ?? 9) - (critOrder[b.passport.criticality] ?? 9));
@@ -72,7 +74,11 @@ export default function Catalog() {
   const isAdmin = me.roles.includes("Администратор");
   const canCreateMaterial = me.roles.some(r => r === "Автор" || r === "Владелец" || r === "Заместитель владельца" || r === "Администратор");
 
-  const sections = useMemo(() => catalogNodes.filter((n) => n.type === "section"), [catalogNodes]);
+  const sections = useMemo(() =>
+    catalogNodes
+      .filter((n) => n.type === "section")
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+    [catalogNodes]);
 
   const allowed = useMemo(() => {
     const set = new Set(catalogNodes.filter((n) => withinScope(me, n)).map((n) => n.id));
@@ -132,6 +138,7 @@ export default function Catalog() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="alpha">По алфавиту</SelectItem>
               <SelectItem value="date">По дате</SelectItem>
               <SelectItem value="popularity">По популярности</SelectItem>
               <SelectItem value="criticality">По критичности</SelectItem>
@@ -342,7 +349,7 @@ export default function Catalog() {
                                     </>
                                   )}
                                   {!count && subAllowed && canCreateMaterial && (
-                                    <Link href="/materials/new">
+                                    <Link href={`/materials/new?section=${sub.id}`}>
                                       <Button data-testid={`button-create-in-${sub.id}`} size="sm" className="rounded-xl h-7 text-xs">
                                         Создать
                                       </Button>
@@ -570,7 +577,7 @@ export default function Catalog() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={addSectionDialog} onOpenChange={(open) => !open && setAddSectionDialog(false)}>
+      <Dialog open={addSectionDialog} onOpenChange={(open) => { if (!open) { setAddSectionDialog(false); setNewSectionSortOrder(0); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Новый раздел</DialogTitle>
@@ -586,19 +593,32 @@ export default function Catalog() {
                 className="mt-1"
               />
             </div>
+            <div>
+              <Label>Порядковый номер</Label>
+              <Input
+                data-testid="input-new-section-sort-order"
+                type="number"
+                min={0}
+                value={newSectionSortOrder}
+                onChange={(e) => setNewSectionSortOrder(Number(e.target.value) || 0)}
+                placeholder="0"
+                className="mt-1"
+              />
+              <div className="text-xs text-muted-foreground mt-1">Разделы выводятся в порядке возрастания номера</div>
+            </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAddSectionDialog(false)}>Отмена</Button>
               <Button
                 data-testid="button-create-section"
                 disabled={!newSectionTitle.trim()}
                 onClick={() => {
-                  const res = addSection(newSectionTitle);
+                  const res = addSection(newSectionTitle, newSectionSortOrder);
                   toast({
                     title: res.ok ? "Раздел создан" : "Ошибка",
                     description: res.ok ? newSectionTitle : res.message,
                     variant: res.ok ? "default" : "destructive",
                   });
-                  if (res.ok) setAddSectionDialog(false);
+                  if (res.ok) { setAddSectionDialog(false); setNewSectionSortOrder(0); }
                 }}
               >
                 Создать

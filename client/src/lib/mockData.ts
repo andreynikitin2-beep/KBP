@@ -45,6 +45,7 @@ export type CatalogNode = {
   allowedRoles?: Role[];
   ownerIds?: string[];
   defaultVisibilityGroupIds?: string[];
+  sortOrder?: number | null;
 };
 
 export type Passport = {
@@ -281,6 +282,7 @@ export const catalog: CatalogNode[] = [
     title: "Кадры и организационные процедуры",
     type: "section",
     ownerIds: ["u-owner"],
+    sortOrder: 1,
   },
   {
     id: "sub-onb",
@@ -302,6 +304,7 @@ export const catalog: CatalogNode[] = [
     type: "section",
     allowedRoles: ["Автор", "Владелец", "Заместитель владельца", "Администратор", "Читатель"],
     ownerIds: ["u-author-owner"],
+    sortOrder: 2,
   },
   {
     id: "sub-vpn",
@@ -321,6 +324,7 @@ export const catalog: CatalogNode[] = [
     title: "Качество и регламенты",
     type: "section",
     ownerIds: ["u-owner", "u-deputy"],
+    sortOrder: 3,
   },
   {
     id: "sub-audit",
@@ -334,6 +338,7 @@ export const catalog: CatalogNode[] = [
     type: "section",
     allowedRoles: ["Владелец", "Администратор", "Автор"],
     ownerIds: ["u-author-owner"],
+    sortOrder: 4,
   },
   {
     id: "sub-incidents",
