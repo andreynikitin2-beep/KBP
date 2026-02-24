@@ -1086,34 +1086,6 @@ export default function MaterialView() {
                             </div>
                           )}
                         </Card>
-                        {(isAdmin || me.id === dv?.passport.ownerId || me.id === dv?.passport.deputyId) && (
-                          <Card className="p-4 md:col-span-2">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="text-sm font-medium">Требуется ознакомление для новых сотрудников</div>
-                                <div className="mt-0.5 text-xs text-muted-foreground">
-                                  Материал будет автоматически назначен новым сотрудникам при адаптации
-                                </div>
-                              </div>
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <Checkbox
-                                  data-testid="checkbox-toggle-new-hire-required"
-                                  checked={!!dv?.passport.newHireRequired}
-                                  onCheckedChange={(checked) => {
-                                    if (!dv) return;
-                                    setMaterials(prev => prev.map(m =>
-                                      m.id === dv.id ? {
-                                        ...m,
-                                        passport: { ...m.passport, newHireRequired: !!checked || undefined }
-                                      } : m
-                                    ));
-                                  }}
-                                />
-                              </label>
-                            </div>
-                          </Card>
-                        )}
-
                         <Card className="p-4 md:col-span-2">
                           <div className="grid gap-3 md:grid-cols-3">
                             <div>
