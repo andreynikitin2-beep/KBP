@@ -33,6 +33,9 @@ export type ADIntegration = {
   enabled: boolean;
   mode: "demo" | "SAML" | "OIDC" | "LDAP";
   ssoUrl: string;
+  bindDn: string;
+  bindPassword: string;
+  baseDn: string;
   syncFrequencyMinutes: number;
   lastSyncAt: string | null;
   syncStatus: "success" | "error" | "in_progress" | "never";
@@ -151,6 +154,9 @@ const defaultAdIntegration: ADIntegration = {
   enabled: false,
   mode: "demo",
   ssoUrl: "",
+  bindDn: "",
+  bindPassword: "",
+  baseDn: "",
   syncFrequencyMinutes: 60,
   lastSyncAt: null,
   syncStatus: "never",
@@ -298,6 +304,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             enabled: adConfigData.enabled,
             mode: adConfigData.mode,
             ssoUrl: adConfigData.ssoUrl,
+            bindDn: adConfigData.bindDn || "",
+            bindPassword: adConfigData.bindPassword || "",
+            baseDn: adConfigData.baseDn || "",
             syncFrequencyMinutes: adConfigData.syncFrequencyMinutes,
             lastSyncAt: adConfigData.lastSyncAt,
             syncStatus: adConfigData.syncStatus,

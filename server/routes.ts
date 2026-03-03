@@ -535,7 +535,27 @@ export async function registerRoutes(
 
   app.put("/api/ad-config", async (req, res) => {
     try {
-      const config = await storage.upsertAdIntegrationConfig(req.body);
+      const body = req.body;
+      const dbData: any = {};
+      if (body.enabled !== undefined) dbData.enabled = body.enabled;
+      if (body.mode !== undefined) dbData.mode = body.mode;
+      if (body.ssoUrl !== undefined) dbData.ssoUrl = body.ssoUrl;
+      if (body.bindDn !== undefined) dbData.bindDn = body.bindDn;
+      if (body.bindPassword !== undefined) dbData.bindPassword = body.bindPassword;
+      if (body.baseDn !== undefined) dbData.baseDn = body.baseDn;
+      if (body.syncFrequencyMinutes !== undefined) dbData.syncFrequencyMinutes = body.syncFrequencyMinutes;
+      if (body.syncStatus !== undefined) dbData.syncStatus = body.syncStatus;
+      if (body.lastSyncAt !== undefined) dbData.lastSyncAt = body.lastSyncAt ? new Date(body.lastSyncAt) : null;
+      if (body.syncedUsersCount !== undefined) dbData.syncedUsersCount = body.syncedUsersCount;
+      if (body.deactivatedCount !== undefined) dbData.deactivatedCount = body.deactivatedCount;
+      if (body.mapping) {
+        if (body.mapping.roles !== undefined) dbData.mappingRoles = body.mapping.roles;
+        if (body.mapping.department !== undefined) dbData.mappingDepartment = body.mapping.department;
+        if (body.mapping.legalEntity !== undefined) dbData.mappingLegalEntity = body.mapping.legalEntity;
+        if (body.mapping.displayName !== undefined) dbData.mappingDisplayName = body.mapping.displayName;
+        if (body.mapping.email !== undefined) dbData.mappingEmail = body.mapping.email;
+      }
+      const config = await storage.upsertAdIntegrationConfig(dbData);
       res.json(config);
     } catch (e) {
       res.status(500).json({ error: String(e) });

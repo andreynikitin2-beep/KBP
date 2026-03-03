@@ -579,6 +579,9 @@ export default function Admin() {
   const [adEnabled, setAdEnabled] = useState(false);
   const [adMode, setAdMode] = useState<"demo" | "SAML" | "OIDC" | "LDAP">("SAML");
   const [adSsoUrl, setAdSsoUrl] = useState("");
+  const [adBindDn, setAdBindDn] = useState("");
+  const [adBindPassword, setAdBindPassword] = useState("");
+  const [adBaseDn, setAdBaseDn] = useState("");
   const [adSyncFreq, setAdSyncFreq] = useState(60);
   const [adMapDepartment, setAdMapDepartment] = useState("");
   const [adMapLegalEntity, setAdMapLegalEntity] = useState("");
@@ -631,6 +634,9 @@ export default function Admin() {
     setAdEnabled(ad.enabled);
     setAdMode(ad.mode);
     setAdSsoUrl(ad.ssoUrl);
+    setAdBindDn(ad.bindDn || "");
+    setAdBindPassword(ad.bindPassword || "");
+    setAdBaseDn(ad.baseDn || "");
     setAdSyncFreq(ad.syncFrequencyMinutes);
     setAdMapDepartment(ad.mapping.department || "");
     setAdMapLegalEntity(ad.mapping.legalEntity || "");
@@ -643,6 +649,9 @@ export default function Admin() {
       enabled: adEnabled,
       mode: adMode,
       ssoUrl: adSsoUrl.trim(),
+      bindDn: adBindDn.trim(),
+      bindPassword: adBindPassword,
+      baseDn: adBaseDn.trim(),
       syncFrequencyMinutes: adSyncFreq,
       mapping: {
         roles: ad.mapping.roles,
@@ -979,6 +988,47 @@ export default function Admin() {
                           />
                         </div>
 
+                        {adMode === "LDAP" && (
+                          <>
+                            <Separator />
+                            <div className="text-xs font-medium text-muted-foreground">Учётная запись для подключения (Bind)</div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="ad-bind-dn">Bind DN</Label>
+                              <Input
+                                id="ad-bind-dn"
+                                data-testid="input-ad-bind-dn"
+                                value={adBindDn}
+                                onChange={(e) => setAdBindDn(e.target.value)}
+                                placeholder="CN=ldap_service,OU=Service Accounts,DC=example,DC=com"
+                                className="rounded-xl font-mono text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="ad-bind-password">Bind Password</Label>
+                              <Input
+                                id="ad-bind-password"
+                                data-testid="input-ad-bind-password"
+                                type="password"
+                                value={adBindPassword}
+                                onChange={(e) => setAdBindPassword(e.target.value)}
+                                placeholder="Пароль сервисной учётной записи"
+                                className="rounded-xl text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor="ad-base-dn">Base DN (корень поиска)</Label>
+                              <Input
+                                id="ad-base-dn"
+                                data-testid="input-ad-base-dn"
+                                value={adBaseDn}
+                                onChange={(e) => setAdBaseDn(e.target.value)}
+                                placeholder="DC=example,DC=com"
+                                className="rounded-xl font-mono text-sm"
+                              />
+                            </div>
+                          </>
+                        )}
+
                         <div className="space-y-1.5">
                           <Label htmlFor="ad-sync-freq">Частота синхронизации (минуты)</Label>
                           <Input
@@ -1030,6 +1080,22 @@ export default function Admin() {
                           <span className="text-sm text-muted-foreground">{ad.mode === "LDAP" ? "LDAP URL" : "SSO URL"}</span>
                           <span className="text-xs font-mono truncate max-w-[240px]" data-testid="text-sso-url">{ad.ssoUrl || "—"}</span>
                         </div>
+                        {ad.mode === "LDAP" && (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Bind DN</span>
+                              <span className="text-xs font-mono truncate max-w-[240px]" data-testid="text-bind-dn">{ad.bindDn || "—"}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Bind Password</span>
+                              <span className="text-xs" data-testid="text-bind-password">{ad.bindPassword ? "••••••••" : "—"}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-muted-foreground">Base DN</span>
+                              <span className="text-xs font-mono truncate max-w-[240px]" data-testid="text-base-dn">{ad.baseDn || "—"}</span>
+                            </div>
+                          </>
+                        )}
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">Частота синхронизации</span>
                           <span className="text-xs">Каждые {ad.syncFrequencyMinutes} мин.</span>
