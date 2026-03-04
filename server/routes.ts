@@ -53,9 +53,31 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ error: "Пользователь не найден" });
       }
-      if (user.password !== password) {
-        return res.status(401).json({ error: "Неверный пароль" });
+
+      if (user.source === "ad") {
+        const adConfig = await storage.getAdIntegrationConfig();
+        if (adConfig && adConfig.enabled && adConfig.mode === "LDAP" && adConfig.ssoUrl && adConfig.baseDn) {
+          const { authenticateViaLdap } = await import("./ldapSync");
+          const ldapResult = await authenticateViaLdap(
+            adConfig.ssoUrl,
+            adConfig.baseDn,
+            user.adAccountName || user.username,
+            password,
+          );
+          if (!ldapResult.ok) {
+            return res.status(401).json({ error: ldapResult.message });
+          }
+        } else {
+          if (user.password && user.password !== password) {
+            return res.status(401).json({ error: "Неверный пароль" });
+          }
+        }
+      } else {
+        if (user.password !== password) {
+          return res.status(401).json({ error: "Неверный пароль" });
+        }
       }
+
       const { password: _p, ...safeUser } = user;
       res.json({ ok: true, user: safeUser });
     } catch (e) {

@@ -324,3 +324,68 @@ function searchLdapUsers(config: LdapConfig): Promise<LdapUserEntry[]> {
     });
   });
 }
+
+export function authenticateViaLdap(
+  ldapUrl: string,
+  baseDn: string,
+  username: string,
+  password: string,
+): Promise<{ ok: boolean; message: string }> {
+  return new Promise((resolve) => {
+    const tlsOptions = ldapUrl.startsWith("ldaps://") ? { rejectUnauthorized: false } : undefined;
+
+    const client = ldap.createClient({
+      url: ldapUrl,
+      tlsOptions,
+      connectTimeout: 10000,
+      timeout: 15000,
+    });
+
+    let resolved = false;
+    function done(result: { ok: boolean; message: string }) {
+      if (!resolved) {
+        resolved = true;
+        resolve(result);
+      }
+    }
+
+    client.on("error", (err: any) => {
+      done({ ok: false, message: `Не удалось подключиться к LDAP: ${err.message}` });
+    });
+
+    client.on("connectError", (err: any) => {
+      done({ ok: false, message: `Не удалось подключиться к LDAP: ${err.message}` });
+    });
+
+    const bindDn = username.includes("@") || username.includes("\\")
+      ? username
+      : `${username}@${extractDomain(baseDn)}`;
+
+    client.bind(bindDn, password, (err: any) => {
+      client.destroy();
+      if (err) {
+        if (err.code === 49 || err.name === "InvalidCredentialsError") {
+          done({ ok: false, message: "Неверный пароль или учётная запись" });
+        } else {
+          done({ ok: false, message: `Ошибка аутентификации LDAP: ${err.message}` });
+        }
+      } else {
+        done({ ok: true, message: "OK" });
+      }
+    });
+
+    setTimeout(() => {
+      done({ ok: false, message: "Превышено время ожидания подключения к LDAP" });
+      try { client.destroy(); } catch {}
+    }, 12000);
+  });
+}
+
+function extractDomain(baseDn: string): string {
+  const parts = baseDn
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.toLowerCase().startsWith("dc="))
+    .map((p) => p.substring(3));
+  return parts.join(".") || baseDn;
+}
