@@ -991,27 +991,27 @@ export default function Admin() {
                         {adMode === "LDAP" && (
                           <>
                             <Separator />
-                            <div className="text-xs font-medium text-muted-foreground">Учётная запись для подключения (Bind)</div>
+                            <div className="text-xs font-medium text-muted-foreground">Учётная запись AD для подключения</div>
                             <div className="space-y-1.5">
-                              <Label htmlFor="ad-bind-dn">Bind DN</Label>
+                              <Label htmlFor="ad-bind-dn">Логин учётной записи AD</Label>
                               <Input
                                 id="ad-bind-dn"
                                 data-testid="input-ad-bind-dn"
                                 value={adBindDn}
                                 onChange={(e) => setAdBindDn(e.target.value)}
-                                placeholder="CN=ldap_service,OU=Service Accounts,DC=example,DC=com"
-                                className="rounded-xl font-mono text-sm"
+                                placeholder="DOMAIN\svc_ldap или svc_ldap@domain.com"
+                                className="rounded-xl text-sm"
                               />
                             </div>
                             <div className="space-y-1.5">
-                              <Label htmlFor="ad-bind-password">Bind Password</Label>
+                              <Label htmlFor="ad-bind-password">Пароль</Label>
                               <Input
                                 id="ad-bind-password"
                                 data-testid="input-ad-bind-password"
                                 type="password"
                                 value={adBindPassword}
                                 onChange={(e) => setAdBindPassword(e.target.value)}
-                                placeholder="Пароль сервисной учётной записи"
+                                placeholder="Пароль учётной записи AD"
                                 className="rounded-xl text-sm"
                               />
                             </div>
@@ -1083,11 +1083,11 @@ export default function Admin() {
                         {ad.mode === "LDAP" && (
                           <>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Bind DN</span>
-                              <span className="text-xs font-mono truncate max-w-[240px]" data-testid="text-bind-dn">{ad.bindDn || "—"}</span>
+                              <span className="text-sm text-muted-foreground">Учётная запись AD</span>
+                              <span className="text-xs truncate max-w-[240px]" data-testid="text-bind-dn">{ad.bindDn || "—"}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Bind Password</span>
+                              <span className="text-sm text-muted-foreground">Пароль</span>
                               <span className="text-xs" data-testid="text-bind-password">{ad.bindPassword ? "••••••••" : "—"}</span>
                             </div>
                             <div className="flex items-center justify-between">
