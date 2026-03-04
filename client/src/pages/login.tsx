@@ -150,7 +150,7 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string) => vo
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full bg-[#e17633]"
                 disabled={loading || !selectedUserId || !password}
                 data-testid="button-login"
               >
