@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
+import { api } from "@/lib/api";
 import {
   Activity,
   AlertCircle,
@@ -719,16 +720,27 @@ export default function Admin() {
     }
   }
 
-  function handleSync() {
+  async function handleSync() {
     setSyncing(true);
-    setTimeout(() => {
-      const res = syncADUsers();
-      setSyncing(false);
+    try {
+      const res = await api.triggerLdapSync();
       toast({
         title: res.ok ? "Синхронизация завершена" : "Ошибка синхронизации",
         description: res.message,
+        variant: res.ok ? undefined : "destructive",
       });
-    }, 600);
+      if (res.ok) {
+        window.location.reload();
+      }
+    } catch (err: any) {
+      toast({
+        title: "Ошибка синхронизации",
+        description: err.message || "Не удалось выполнить синхронизацию",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncing(false);
+    }
   }
 
   function handleCreateUser() {

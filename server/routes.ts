@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { performLdapSync } from "./ldapSync";
 
 const TIMESTAMP_FIELDS = [
   "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
@@ -578,6 +579,16 @@ export async function registerRoutes(
       res.json(log);
     } catch (e) {
       res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // LDAP SYNC
+  app.post("/api/ad-sync", async (_req, res) => {
+    try {
+      const result = await performLdapSync();
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ ok: false, message: String(e) });
     }
   });
 
