@@ -373,17 +373,6 @@ export default function MaterialWizard() {
                           />
                         </div>
                       </div>
-                      <div className="mt-3">
-                        <Label htmlFor="extracted">Извлечённый текст (для поиска)</Label>
-                        <Textarea
-                          id="extracted"
-                          data-testid="textarea-extracted"
-                          value={extractedText}
-                          onChange={(e) => setExtractedText(e.target.value)}
-                          placeholder="Для DOCX извлекается автоматически. Для PDF — введите вручную."
-                          className="mt-1 min-h-[110px] rounded-xl"
-                        />
-                      </div>
                     </Card>
                   ) : (
                     <div>
@@ -440,6 +429,7 @@ export default function MaterialWizard() {
                         discussionVisibility: "Все",
                         stats: { views: 0, helpfulYes: 0, helpfulNo: 0 },
                         auditViews: [],
+                        auditDownloads: [],
                       };
 
                       setMaterials((p) => [version, ...p]);

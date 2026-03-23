@@ -106,6 +106,7 @@ type Store = {
   getMaterialRatings: (materialId: string) => { helpful: number; notHelpful: number; total: number };
 
   recordView: (materialId: string) => void;
+  recordDownload: (materialId: string) => void;
   viewDedupMinutes: number;
 
   subscriptions: string[];
@@ -1101,6 +1102,24 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setViewLog((prev) => [...prev, { userId: meId, materialId, at: now }]);
       },
 
+      recordDownload: (materialId: string) => {
+        const version = materials.find(
+          (m) => m.materialId === materialId && m.status !== "Архив",
+        ) || materials.find((m) => m.materialId === materialId);
+        if (version) {
+          setMaterials((prev) =>
+            prev.map((m) =>
+              m.id === version.id
+                ? {
+                    ...m,
+                    auditDownloads: [{ userId: meId, at: new Date().toISOString() }, ...(m.auditDownloads || [])].slice(0, 200),
+                  }
+                : m,
+            ),
+          );
+        }
+      },
+
       viewDedupMinutes: VIEW_DEDUP_MINUTES,
 
       subscriptions: mySubscriptions,
@@ -1148,6 +1167,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           status: "Черновик" as MaterialVersion["status"],
           stats: { views: 0, helpfulYes: 0, helpfulNo: 0 },
           auditViews: [],
+          auditDownloads: [],
         };
 
         setMaterials((prev) => {

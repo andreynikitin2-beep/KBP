@@ -56,7 +56,8 @@ async function deleteJson(url: string): Promise<void> {
 function dbMaterialToFrontend(
   dbMat: any,
   subscribers: string[],
-  auditViews: { userId: string; at: string }[]
+  auditViews: { userId: string; at: string }[],
+  auditDownloads: { userId: string; at: string }[] = []
 ): MaterialVersion {
   return {
     id: dbMat.id,
@@ -99,11 +100,12 @@ function dbMaterialToFrontend(
       helpfulNo: dbMat.helpfulNo,
     },
     auditViews,
+    auditDownloads,
   };
 }
 
 function frontendMaterialToDb(mat: MaterialVersion): any {
-  const { passport, content, stats, subscribers: _s, auditViews: _a, ...rest } = mat;
+  const { passport, content, stats, subscribers: _s, auditViews: _a, auditDownloads: _d, ...rest } = mat;
   return {
     ...rest,
     title: passport.title,

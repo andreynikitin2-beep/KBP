@@ -93,7 +93,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, newHireAssignments, acknowledgeAssignment, newHiresEnabled } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, newHireAssignments, acknowledgeAssignment, newHiresEnabled } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -1243,17 +1243,6 @@ export default function MaterialView() {
                               />
                             </div>
                           </div>
-                          <div className="mt-3">
-                            <Label htmlFor="edit-extracted">Извлечённый текст (для поиска)</Label>
-                            <Textarea
-                              id="edit-extracted"
-                              data-testid="textarea-edit-extracted"
-                              value={editExtractedText}
-                              onChange={e => setEditExtractedText(e.target.value)}
-                              placeholder="Для DOCX извлекается автоматически. Для PDF — введите вручную."
-                              className="mt-1 min-h-[110px] rounded-xl"
-                            />
-                          </div>
                         </Card>
                       ) : (
                         <div>
@@ -1296,7 +1285,7 @@ export default function MaterialView() {
                                       })()}
                                     </div>
                                   )}
-                                  <div className="text-xs text-muted-foreground">Полнотекстовый индекс: извлечённый текст</div>
+                                  <div className="text-xs text-muted-foreground">{dv.content.file?.type?.toUpperCase?.() ?? "Файл"}</div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1318,6 +1307,7 @@ export default function MaterialView() {
                                     a.download = downloadName;
                                     a.click();
                                     URL.revokeObjectURL(url);
+                                    recordDownload(dv.materialId);
                                     toast({ title: "Скачивание", description: `Файл: ${downloadName}` });
                                   }}
                                 >
@@ -1339,12 +1329,6 @@ export default function MaterialView() {
                             </div>
                           </Card>
 
-                          <Card className="p-4">
-                            <div className="text-xs font-medium text-muted-foreground">Извлечённый текст (MVP индекс)</div>
-                            <div className="mt-2 whitespace-pre-wrap text-sm" data-testid="text-extracted">
-                              {dv.content.file?.extractedText || "—"}
-                            </div>
-                          </Card>
                         </div>
                       ) : (
                         <PageViewer html={dv.content.page?.html || ""} materialId={dv.materialId} />
@@ -1653,6 +1637,9 @@ export default function MaterialView() {
                           </Badge>
                         </div>
                         <div className="mt-3 grid gap-2" data-testid="list-audit">
+                          {dv.auditViews.length === 0 && (
+                            <div className="text-sm text-muted-foreground">Просмотров не зафиксировано</div>
+                          )}
                           {dv.auditViews.slice(0, 20).map((v, idx) => {
                             const who = users.find((u) => u.id === v.userId)?.displayName || v.userId;
                             return (
@@ -1668,6 +1655,36 @@ export default function MaterialView() {
                           })}
                         </div>
                       </Card>
+
+                      {dv.content.kind === "file" && (
+                        <Card className="p-4">
+                          <div className="flex items-center gap-2">
+                            <FileDown className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-sm font-semibold">Аудит скачиваний</div>
+                            <Badge variant="secondary" className="kb-chip" data-testid="badge-download-audit-count">
+                              {(dv.auditDownloads || []).length}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 grid gap-2" data-testid="list-download-audit">
+                            {(dv.auditDownloads || []).length === 0 && (
+                              <div className="text-sm text-muted-foreground">Скачиваний не зафиксировано</div>
+                            )}
+                            {(dv.auditDownloads || []).slice(0, 20).map((d, idx) => {
+                              const who = users.find((u) => u.id === d.userId)?.displayName || d.userId;
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between rounded-2xl border bg-muted/20 px-3 py-2"
+                                  data-testid={`row-download-audit-${idx}`}
+                                >
+                                  <div className="text-sm">{who}</div>
+                                  <div className="text-xs text-muted-foreground">{fmt(d.at)}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      )}
 
                       {(() => {
                         const materialAssignments = newHireAssignments.filter(a => a.materialId === materialId);
