@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import mammoth from "mammoth";
 import { useLocation, useRoute } from "wouter";
 import {
   ArrowLeft,
@@ -158,6 +159,29 @@ export default function MaterialView() {
   const [editFileName, setEditFileName] = useState("");
   const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const detectedType = ext === "docx" ? "docx" : "pdf";
+    setEditFileType(detectedType);
+    setEditFileName(file.name);
+    if (detectedType === "docx") {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setEditExtractedText(result.value.slice(0, 2000));
+        toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
+      } catch {
+        toast({ title: "Файл загружен", description: file.name });
+      }
+    } else {
+      toast({ title: "Файл выбран", description: file.name });
+    }
+    e.target.value = "";
+  }
 
   useEffect(() => {
     if (current) {
@@ -1177,7 +1201,26 @@ export default function MaterialView() {
                             <FileText className="h-4 w-4 text-muted-foreground" />
                             <div className="text-sm font-semibold">Загрузка файла</div>
                           </div>
-                          <div className="grid gap-3 md:grid-cols-2">
+                          <input
+                            ref={editFileInputRef}
+                            type="file"
+                            accept=".pdf,.docx"
+                            className="hidden"
+                            onChange={handleEditFileSelect}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full rounded-xl border-dashed h-16 flex-col gap-1"
+                            data-testid="button-pick-edit-file"
+                            onClick={() => editFileInputRef.current?.click()}
+                          >
+                            <Upload className="h-5 w-5 text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">
+                              {editFileName ? editFileName : "Выбрать файл PDF или DOCX…"}
+                            </span>
+                          </Button>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <div>
                               <Label>Тип</Label>
                               <Select value={editFileType} onValueChange={v => setEditFileType(v as "pdf" | "docx")}>
@@ -1195,17 +1238,19 @@ export default function MaterialView() {
                                 data-testid="input-edit-file-name"
                                 value={editFileName}
                                 onChange={e => setEditFileName(e.target.value)}
+                                placeholder="Файл не выбран"
                                 className="mt-1 rounded-xl"
                               />
                             </div>
                           </div>
                           <div className="mt-3">
-                            <Label htmlFor="edit-extracted">Извлечённый текст</Label>
+                            <Label htmlFor="edit-extracted">Извлечённый текст (для поиска)</Label>
                             <Textarea
                               id="edit-extracted"
                               data-testid="textarea-edit-extracted"
                               value={editExtractedText}
                               onChange={e => setEditExtractedText(e.target.value)}
+                              placeholder="Для DOCX извлекается автоматически. Для PDF — введите вручную."
                               className="mt-1 min-h-[110px] rounded-xl"
                             />
                           </div>

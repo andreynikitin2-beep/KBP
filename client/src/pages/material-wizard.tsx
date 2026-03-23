@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import mammoth from "mammoth";
 import { useLocation } from "wouter";
 import { FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
@@ -46,9 +47,32 @@ export default function MaterialWizard() {
   const [tags, setTags] = useState("hr, отпуск");
   const [contentKind, setContentKind] = useState<"file" | "page">("file");
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
-  const [fileName, setFileName] = useState("Инструкция.pdf");
-  const [extractedText, setExtractedText] = useState("Краткий извлечённый текст для полнотекстового поиска…");
+  const [fileName, setFileName] = useState("");
+  const [extractedText, setExtractedText] = useState("");
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const detectedType = ext === "docx" ? "docx" : "pdf";
+    setFileType(detectedType);
+    setFileName(file.name);
+    if (detectedType === "docx") {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setExtractedText(result.value.slice(0, 2000));
+        toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
+      } catch {
+        toast({ title: "Файл загружен", description: file.name, variant: "default" });
+      }
+    } else {
+      toast({ title: "Файл выбран", description: file.name });
+    }
+    e.target.value = "";
+  }
 
   const sectionOptions = useMemo(() => {
     const subs = catalogNodes.filter((n) => n.type === "subsection");
@@ -301,10 +325,29 @@ export default function MaterialWizard() {
 
                   {contentKind === "file" ? (
                     <Card className="p-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 mb-3">
                         <FileText className="h-4 w-4 text-muted-foreground" />
-                        <div className="text-sm font-semibold">Загрузка файла (демо)</div>
+                        <div className="text-sm font-semibold">Загрузка файла</div>
                       </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.docx"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full rounded-xl border-dashed h-16 flex-col gap-1"
+                        data-testid="button-pick-file"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
+                          {fileName ? fileName : "Выбрать файл PDF или DOCX…"}
+                        </span>
+                      </Button>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div>
                           <Label>Тип</Label>
@@ -325,17 +368,19 @@ export default function MaterialWizard() {
                             data-testid="input-file-name"
                             value={fileName}
                             onChange={(e) => setFileName(e.target.value)}
+                            placeholder="Файл не выбран"
                             className="mt-1 rounded-xl"
                           />
                         </div>
                       </div>
                       <div className="mt-3">
-                        <Label htmlFor="extracted">Извлечённый текст (для индекса)</Label>
+                        <Label htmlFor="extracted">Извлечённый текст (для поиска)</Label>
                         <Textarea
                           id="extracted"
                           data-testid="textarea-extracted"
                           value={extractedText}
                           onChange={(e) => setExtractedText(e.target.value)}
+                          placeholder="Для DOCX извлекается автоматически. Для PDF — введите вручную."
                           className="mt-1 min-h-[110px] rounded-xl"
                         />
                       </div>
