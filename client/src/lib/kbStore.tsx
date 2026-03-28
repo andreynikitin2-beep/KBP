@@ -229,6 +229,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
     setMeIdRaw(id);
     if (id) {
       localStorage.setItem('kb_auth_user', id);
+      const now = new Date().toISOString();
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, lastLogin: now } : u));
+      api.updateUser(id, { lastLogin: now } as any).catch(console.error);
       api.getUserSubscriptions(id).then(subs => {
         setSubscriptionMap(prev => ({ ...prev, [id]: subs }));
       }).catch(console.error);

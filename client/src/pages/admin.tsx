@@ -6,6 +6,7 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  Clock,
   Cloud,
   CloudOff,
   Download,
@@ -552,6 +553,10 @@ export default function Admin() {
   const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, addSection, renameSection, deleteSection, addSubsection, renameSubsection, deleteSubsection, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
   const [q, setQ] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [userTypeFilter, setUserTypeFilter] = useState<"all" | "ad" | "local">("all");
+  const [userDeptFilter, setUserDeptFilter] = useState("all");
+  const [userEntityFilter, setUserEntityFilter] = useState("all");
+  const [userSortBy, setUserSortBy] = useState<"name" | "lastLogin" | "dept" | "entity">("name");
   const [syncing, setSyncing] = useState(false);
 
   const [dlgOpen, setDlgOpen] = useState(false);
@@ -620,15 +625,30 @@ export default function Admin() {
     return notifications.filter((n) => (n.subject + " " + n.to).toLowerCase().includes(query));
   }, [notifications, q]);
 
+  const allDepts = useMemo(() => Array.from(new Set(users.map(u => u.department).filter(Boolean))).sort(), [users]);
+  const allEntities = useMemo(() => Array.from(new Set(users.map(u => u.legalEntity).filter(Boolean))).sort(), [users]);
+
   const filteredUsers = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
-    if (!query) return users;
-    return users.filter((u) =>
-      (u.displayName + " " + u.email + " " + u.department + " " + u.legalEntity)
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [users, userSearch]);
+    let result = users.filter((u) => {
+      if (query && !(u.displayName + " " + u.email + " " + u.department + " " + u.legalEntity).toLowerCase().includes(query)) return false;
+      if (userTypeFilter !== "all" && u.source !== userTypeFilter) return false;
+      if (userDeptFilter !== "all" && u.department !== userDeptFilter) return false;
+      if (userEntityFilter !== "all" && u.legalEntity !== userEntityFilter) return false;
+      return true;
+    });
+    result = [...result].sort((a, b) => {
+      if (userSortBy === "lastLogin") {
+        const aTime = a.lastLogin ? new Date(a.lastLogin).getTime() : 0;
+        const bTime = b.lastLogin ? new Date(b.lastLogin).getTime() : 0;
+        return bTime - aTime;
+      }
+      if (userSortBy === "dept") return (a.department || "").localeCompare(b.department || "", "ru");
+      if (userSortBy === "entity") return (a.legalEntity || "").localeCompare(b.legalEntity || "", "ru");
+      return a.displayName.localeCompare(b.displayName, "ru");
+    });
+    return result;
+  }, [users, userSearch, userTypeFilter, userDeptFilter, userEntityFilter, userSortBy]);
 
   const activeUsers = useMemo(() => users.filter((u) => !u.deactivatedAt), [users]);
 
@@ -1242,69 +1262,127 @@ export default function Admin() {
               <TabsContent value="users" className="mt-4">
                 <div className="grid gap-4 md:grid-cols-[1fr_300px]">
                   <div>
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                      <Input
-                        data-testid="input-user-search"
-                        value={userSearch}
-                        onChange={(e) => setUserSearch(e.target.value)}
-                        placeholder="Поиск по имени, email, отделу…"
-                        className="rounded-2xl max-w-sm"
-                      />
-                      <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
-                        <DialogTrigger asChild>
-                          <Button data-testid="button-create-user" className="rounded-xl">
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Создать локального пользователя
+                    {/* ── Панель поиска и фильтров ── */}
+                    <div className="mb-4 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <Input
+                          data-testid="input-user-search"
+                          value={userSearch}
+                          onChange={(e) => setUserSearch(e.target.value)}
+                          placeholder="Поиск по имени, email, отделу…"
+                          className="rounded-2xl max-w-sm"
+                        />
+                        <Button data-testid="button-create-user" className="rounded-xl shrink-0" onClick={() => setDlgOpen(true)}>
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          Создать локального пользователя
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select value={userTypeFilter} onValueChange={(v) => setUserTypeFilter(v as any)}>
+                          <SelectTrigger data-testid="select-user-type-filter" className="h-8 rounded-xl text-xs w-[140px]">
+                            <SelectValue placeholder="Тип" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Все типы</SelectItem>
+                            <SelectItem value="ad">AD</SelectItem>
+                            <SelectItem value="local">Локальный</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={userDeptFilter} onValueChange={setUserDeptFilter}>
+                          <SelectTrigger data-testid="select-user-dept-filter" className="h-8 rounded-xl text-xs w-[180px]">
+                            <SelectValue placeholder="Подразделение" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Все подразделения</SelectItem>
+                            {allDepts.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Select value={userEntityFilter} onValueChange={setUserEntityFilter}>
+                          <SelectTrigger data-testid="select-user-entity-filter" className="h-8 rounded-xl text-xs w-[180px]">
+                            <SelectValue placeholder="Организация" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Все организации</SelectItem>
+                            {allEntities.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Select value={userSortBy} onValueChange={(v) => setUserSortBy(v as any)}>
+                          <SelectTrigger data-testid="select-user-sort" className="h-8 rounded-xl text-xs w-[185px]">
+                            <SelectValue placeholder="Сортировка" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="name">По имени</SelectItem>
+                            <SelectItem value="lastLogin">По последнему входу</SelectItem>
+                            <SelectItem value="dept">По подразделению</SelectItem>
+                            <SelectItem value="entity">По организации</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {(userTypeFilter !== "all" || userDeptFilter !== "all" || userEntityFilter !== "all") && (
+                          <Button
+                            data-testid="button-reset-user-filters"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs rounded-xl text-muted-foreground"
+                            onClick={() => { setUserTypeFilter("all"); setUserDeptFilter("all"); setUserEntityFilter("all"); }}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Сбросить
                           </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Новый локальный пользователь</DialogTitle>
-                          </DialogHeader>
-                          <div className="grid gap-3 mt-2">
-                            <div>
-                              <Label htmlFor="new-user-name">Имя</Label>
-                              <Input data-testid="input-new-user-name" id="new-user-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ФИО" className="mt-1" />
-                            </div>
-                            <div>
-                              <Label htmlFor="new-user-email">Email</Label>
-                              <Input data-testid="input-new-user-email" id="new-user-email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="user@company.local" className="mt-1" />
-                            </div>
-                            <div>
-                              <Label htmlFor="new-user-dept">Отдел</Label>
-                              <Input data-testid="input-new-user-dept" id="new-user-dept" value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="Отдел" className="mt-1" />
-                            </div>
-                            <div>
-                              <Label htmlFor="new-user-entity">Юридическое лицо</Label>
-                              <Input data-testid="input-new-user-entity" id="new-user-entity" value={newEntity} onChange={(e) => setNewEntity(e.target.value)} placeholder="ООО «…»" className="mt-1" />
-                            </div>
-                            <div>
-                              <Label htmlFor="new-user-password">Пароль</Label>
-                              <Input data-testid="input-new-user-password" id="new-user-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Пароль для входа" className="mt-1" />
-                            </div>
-                            <div>
-                              <Label>Роли</Label>
-                              <div className="mt-1 space-y-2">
-                                {ALL_ROLES.map((role) => (
-                                  <div key={role} className="flex items-center gap-2">
-                                    <Checkbox
-                                      data-testid={`checkbox-role-${role}`}
-                                      id={`role-${role}`}
-                                      checked={newRoles.includes(role)}
-                                      onCheckedChange={() => toggleRole(role)}
-                                    />
-                                    <Label htmlFor={`role-${role}`} className="text-sm font-normal">{role}</Label>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            <Button data-testid="button-submit-create-user" className="w-full rounded-xl mt-2" onClick={handleCreateUser}>
-                              Создать
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
+                        )}
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {filteredUsers.length} из {users.length}
+                        </span>
+                      </div>
                     </div>
+
+                    <Dialog open={dlgOpen} onOpenChange={setDlgOpen}>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Новый локальный пользователь</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-3 mt-2">
+                          <div>
+                            <Label htmlFor="new-user-name">Имя</Label>
+                            <Input data-testid="input-new-user-name" id="new-user-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ФИО" className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-user-email">Email</Label>
+                            <Input data-testid="input-new-user-email" id="new-user-email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="user@company.local" className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-user-dept">Отдел</Label>
+                            <Input data-testid="input-new-user-dept" id="new-user-dept" value={newDept} onChange={(e) => setNewDept(e.target.value)} placeholder="Отдел" className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-user-entity">Юридическое лицо</Label>
+                            <Input data-testid="input-new-user-entity" id="new-user-entity" value={newEntity} onChange={(e) => setNewEntity(e.target.value)} placeholder="ООО «…»" className="mt-1" />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-user-password">Пароль</Label>
+                            <Input data-testid="input-new-user-password" id="new-user-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Пароль для входа" className="mt-1" />
+                          </div>
+                          <div>
+                            <Label>Роли</Label>
+                            <div className="mt-1 space-y-2">
+                              {ALL_ROLES.map((role) => (
+                                <div key={role} className="flex items-center gap-2">
+                                  <Checkbox
+                                    data-testid={`checkbox-role-${role}`}
+                                    id={`role-${role}`}
+                                    checked={newRoles.includes(role)}
+                                    onCheckedChange={() => toggleRole(role)}
+                                  />
+                                  <Label htmlFor={`role-${role}`} className="text-sm font-normal">{role}</Label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <Button data-testid="button-submit-create-user" className="w-full rounded-xl mt-2" onClick={handleCreateUser}>
+                            Создать
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
 
                     <div className="grid gap-2" data-testid="list-users">
                       {filteredUsers.map((u) => (
@@ -1380,6 +1458,12 @@ export default function Admin() {
                                     Последняя синхронизация: {formatDistanceToNow(new Date(u.lastSyncAt), { addSuffix: true, locale: ru })}
                                   </div>
                                 )}
+                                <div className="mt-1 text-xs flex items-center gap-1" data-testid={`text-last-login-${u.id}`}>
+                                  <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                  {u.lastLogin
+                                    ? <span className="text-muted-foreground">Последний вход: <span className="font-medium text-foreground">{formatDistanceToNow(new Date(u.lastLogin), { addSuffix: true, locale: ru })}</span></span>
+                                    : <span className="text-muted-foreground/60 italic">Вход не зафиксирован</span>}
+                                </div>
                                 <div className="mt-2 flex flex-wrap gap-1">
                                   {u.roles.map((r) => (
                                     <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>

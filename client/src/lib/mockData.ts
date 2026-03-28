@@ -35,6 +35,7 @@ export type User = {
   adAccountName?: string;
   lastSyncAt?: string;
   deactivatedAt?: string;
+  lastLogin?: string;
 };
 
 export type CatalogNode = {
@@ -153,6 +154,7 @@ export const demoUsers: User[] = [
     source: "ad",
     adAccountName: "smirnova_i",
     lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastLogin: new Date(Date.now() - 1800_000).toISOString(),
   },
   {
     id: "u-author",
@@ -165,6 +167,7 @@ export const demoUsers: User[] = [
     source: "ad",
     adAccountName: "petrov_a",
     lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastLogin: new Date(Date.now() - 86400_000).toISOString(),
   },
   {
     id: "u-owner",
@@ -177,6 +180,7 @@ export const demoUsers: User[] = [
     source: "ad",
     adAccountName: "ivanova_m",
     lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastLogin: new Date(Date.now() - 86400_000 * 2).toISOString(),
   },
   {
     id: "u-deputy",
@@ -190,6 +194,7 @@ export const demoUsers: User[] = [
     adAccountName: "kuznetsov_s",
     lastSyncAt: new Date(Date.now() - 7200_000).toISOString(),
     deactivatedAt: new Date(Date.now() - 86400_000 * 5).toISOString(),
+    lastLogin: new Date(Date.now() - 86400_000 * 6).toISOString(),
   },
   {
     id: "u-kbadmin",
@@ -200,6 +205,7 @@ export const demoUsers: User[] = [
     department: "База знаний",
     isAvailable: true,
     source: "local",
+    lastLogin: new Date(Date.now() - 600_000).toISOString(),
   },
   {
     id: "u-author-owner",
@@ -212,6 +218,7 @@ export const demoUsers: User[] = [
     source: "ad",
     adAccountName: "volkov_d",
     lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastLogin: new Date(Date.now() - 86400_000 * 3).toISOString(),
   },
   {
     id: "u-reader-author",
@@ -224,6 +231,7 @@ export const demoUsers: User[] = [
     source: "ad",
     adAccountName: "kozlova_e",
     lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastLogin: new Date(Date.now() - 86400_000 * 10).toISOString(),
   },
   {
     id: "u-sec",
@@ -234,6 +242,7 @@ export const demoUsers: User[] = [
     department: "Безопасность",
     isAvailable: true,
     source: "local",
+    lastLogin: new Date(Date.now() - 86400_000 * 30).toISOString(),
   },
   {
     id: "u-aud",
@@ -246,6 +255,7 @@ export const demoUsers: User[] = [
     source: "ad",
     adAccountName: "mironova_o",
     lastSyncAt: new Date(Date.now() - 3600_000).toISOString(),
+    lastLogin: new Date(Date.now() - 86400_000 * 7).toISOString(),
   },
 ];
 
