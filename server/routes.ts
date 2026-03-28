@@ -486,6 +486,39 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/email/test", async (req, res) => {
+    try {
+      const { to } = req.body;
+      if (!to || typeof to !== "string") {
+        return res.status(400).json({ message: "Укажите адрес получателя" });
+      }
+      const config = await storage.getEmailConfig();
+      if (!config || !config.smtpHost) {
+        return res.status(400).json({ message: "SMTP-сервер не настроен" });
+      }
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        host: config.smtpHost,
+        port: config.smtpPort || 587,
+        secure: config.smtpUseTls && (config.smtpPort === 465),
+        requireTLS: config.smtpUseTls && (config.smtpPort !== 465),
+        auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPassword || "" } : undefined,
+        connectionTimeout: 8000,
+        greetingTimeout: 5000,
+      } as any);
+      await transporter.sendMail({
+        from: config.senderName ? `"${config.senderName}" <${config.senderAddress}>` : config.senderAddress,
+        to,
+        subject: "Тестовое письмо — Портал инструкций",
+        text: "Это тестовое письмо от Портала инструкций. Если вы получили это письмо, настройка почтовой рассылки работает корректно.",
+        html: "<p>Это тестовое письмо от <strong>Портала инструкций</strong>.</p><p>Если вы получили это письмо, настройка почтовой рассылки работает корректно.</p>",
+      });
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "Ошибка отправки письма" });
+    }
+  });
+
   // EMAIL TEMPLATES
   app.get("/api/email-templates", async (_req, res) => {
     try {

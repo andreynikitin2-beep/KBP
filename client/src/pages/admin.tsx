@@ -11,6 +11,7 @@ import {
   Download,
   Edit2,
   FileText,
+  Loader2,
   Mail,
   Plus,
   RefreshCw,
@@ -598,6 +599,9 @@ export default function Admin() {
   const [emSmtpPassword, setEmSmtpPassword] = useState("");
   const [emSmtpUseTls, setEmSmtpUseTls] = useState(true);
   const [emEnabled, setEmEnabled] = useState(true);
+  const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [testEmailSending, setTestEmailSending] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<"idle" | "ok" | "error">("idle");
 
   const [editingTplKey, setEditingTplKey] = useState<string | null>(null);
   const [tplSubject, setTplSubject] = useState("");
@@ -699,6 +703,40 @@ export default function Admin() {
     });
     toast({ title: "Сохранено", description: "Настройки почты обновлены" });
     setEmailEditing(false);
+  }
+
+  async function sendTestEmail() {
+    const addr = testEmailAddress.trim();
+    if (!addr || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+      toast({ title: "Ошибка", description: "Введите корректный email-адрес", variant: "destructive" });
+      return;
+    }
+    if (!emailConfig.smtpHost) {
+      toast({ title: "Ошибка", description: "SMTP-сервер не настроен", variant: "destructive" });
+      return;
+    }
+    setTestEmailSending(true);
+    setTestEmailResult("idle");
+    try {
+      const res = await fetch("/api/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: addr }),
+      });
+      if (res.ok) {
+        setTestEmailResult("ok");
+        toast({ title: "Тестовое письмо отправлено", description: `Письмо направлено на ${addr}` });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setTestEmailResult("error");
+        toast({ title: "Ошибка отправки", description: data.message || "Не удалось отправить письмо", variant: "destructive" });
+      }
+    } catch {
+      setTestEmailResult("error");
+      toast({ title: "Ошибка", description: "Нет связи с сервером", variant: "destructive" });
+    } finally {
+      setTestEmailSending(false);
+    }
   }
 
   function startEditTemplate(key: string) {
@@ -1924,6 +1962,54 @@ export default function Admin() {
                         </div>
                       </div>
                     )}
+
+                    {/* ── Test Email ── */}
+                    <div className="mt-4 border-t pt-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Send className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-semibold">Тестовое письмо</span>
+                        <span className="text-xs text-muted-foreground">— проверка работоспособности настроек</span>
+                      </div>
+                      <div className="flex gap-2 items-start">
+                        <div className="flex-1 space-y-1">
+                          <Input
+                            data-testid="input-test-email"
+                            type="email"
+                            placeholder="recipient@example.com"
+                            value={testEmailAddress}
+                            onChange={(e) => { setTestEmailAddress(e.target.value); setTestEmailResult("idle"); }}
+                            className="rounded-xl font-mono text-sm"
+                          />
+                          {testEmailResult === "ok" && (
+                            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400" data-testid="text-test-email-ok">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Письмо успешно отправлено
+                            </div>
+                          )}
+                          {testEmailResult === "error" && (
+                            <div className="flex items-center gap-1.5 text-xs text-destructive" data-testid="text-test-email-error">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              Ошибка отправки — проверьте SMTP-настройки
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          data-testid="button-send-test-email"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl shrink-0"
+                          disabled={testEmailSending || !testEmailAddress.trim()}
+                          onClick={sendTestEmail}
+                        >
+                          {testEmailSending ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Send className="mr-1.5 h-3.5 w-3.5" />
+                          )}
+                          {testEmailSending ? "Отправка…" : "Отправить"}
+                        </Button>
+                      </div>
+                    </div>
                   </Card>
 
                   {/* ── Email Templates ── */}
