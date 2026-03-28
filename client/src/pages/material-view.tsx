@@ -89,6 +89,11 @@ function fmt(iso?: string) {
   return format(new Date(iso), "d MMM yyyy, HH:mm", { locale: ru });
 }
 
+function fmtDate(iso?: string) {
+  if (!iso) return "—";
+  return format(new Date(iso), "d MMM yyyy", { locale: ru });
+}
+
 export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
@@ -1115,13 +1120,13 @@ export default function MaterialView() {
                             <div>
                               <div className="text-xs text-muted-foreground">Последний пересмотр</div>
                               <div className="mt-1 font-semibold" data-testid="text-last-review">
-                                {fmt(dv.passport.lastReviewedAt)}
+                                {fmtDate(dv.passport.lastReviewedAt)}
                               </div>
                             </div>
                             <div>
                               <div className="text-xs text-muted-foreground">Следующий пересмотр</div>
                               <div className="mt-1 font-semibold" data-testid="text-next-review">
-                                {fmt(dv.passport.nextReviewAt)}
+                                {fmtDate(dv.passport.nextReviewAt)}
                               </div>
                             </div>
                             <div>
