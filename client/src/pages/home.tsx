@@ -41,7 +41,8 @@ function MaterialCard({ id }: { id: string }) {
   const due = daysToNextReview(m);
 
   return (
-    <Card className="group relative overflow-hidden transition-all hover:shadow-md border-muted/60">
+    <Link href={`/materials/${m.materialId}`} className="block">
+    <Card className="group relative overflow-hidden kb-card-interactive border-muted/60">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
@@ -69,14 +70,15 @@ function MaterialCard({ id }: { id: string }) {
               ))}
             </div>
           </div>
-          <Link href={`/materials/${m.materialId}`}>
-            <Button size="icon" variant="ghost" className="rounded-full h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5" data-testid={`button-open-${m.materialId}`}>
+          <div className="shrink-0">
+            <div className="rounded-full h-8 w-8 flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:bg-primary/5 transition-colors">
               <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
+    </Link>
   );
 }
 
@@ -87,7 +89,7 @@ function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
 
   return (
     <Link href={`/materials/${m.materialId}`}>
-      <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group" data-testid={`row-material-${m.materialId}`}>
+      <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 cursor-pointer group kb-row-hover" data-testid={`row-material-${m.materialId}`}>
         <div className="h-8 w-8 rounded flex items-center justify-center bg-muted/80 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
           <FileText className="h-4 w-4" />
         </div>

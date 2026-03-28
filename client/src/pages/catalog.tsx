@@ -298,7 +298,7 @@ export default function Catalog() {
                             <div key={sub.id} data-testid={`row-subsection-${sub.id}`}>
                               <div
                                 className={
-                                  "flex items-center justify-between rounded-2xl border p-3 transition cursor-pointer " +
+                                  "flex items-center justify-between rounded-2xl border p-3 transition cursor-pointer kb-row-hover " +
                                   (subAllowed ? "hover:bg-accent/30" : "opacity-70")
                                 }
                                 onClick={() => subAllowed && count > 0 && toggle(sub.id)}
@@ -373,7 +373,7 @@ export default function Catalog() {
                                   {sortMats(qLower ? filteredMats : subMaterials).map((m) => (
                                     <Link key={m.id} href={`/materials/${m.materialId}`}>
                                       <div
-                                        className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer group border border-transparent hover:border-border"
+                                        className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted/50 cursor-pointer group border border-transparent hover:border-border kb-row-hover"
                                         data-testid={`material-row-${m.id}`}
                                       >
                                         <div className="min-w-0 flex-1">
