@@ -505,6 +505,7 @@ export async function registerRoutes(
         auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPassword || "" } : undefined,
         connectionTimeout: 8000,
         greetingTimeout: 5000,
+        tls: { rejectUnauthorized: false },
       } as any);
       await transporter.sendMail({
         from: config.senderName ? `"${config.senderName}" <${config.senderAddress}>` : config.senderAddress,
