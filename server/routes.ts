@@ -510,7 +510,7 @@ export async function registerRoutes(
       await transporter.sendMail({
         from: config.senderName ? `"${config.senderName}" <${config.senderAddress}>` : config.senderAddress,
         to,
-        subject: "Тестовое письмо — Портал инструкций",
+        subject: "Тестовое письмо — Центр знаний ЦОС",
         text: "Это тестовое письмо от Портала инструкций. Если вы получили это письмо, настройка почтовой рассылки работает корректно.",
         html: "<p>Это тестовое письмо от <strong>Портала инструкций</strong>.</p><p>Если вы получили это письмо, настройка почтовой рассылки работает корректно.</p>",
       });

@@ -969,7 +969,7 @@ export type EmailConfig = {
 
 export const emailConfigSeed: EmailConfig = {
   senderAddress: "kb-portal@progorod.veb.ru",
-  senderName: "Портал инструкций",
+  senderName: "Центр знаний ЦОС",
   smtpHost: "smtp.progorod.veb.ru",
   smtpPort: 587,
   smtpUser: "kb-portal",

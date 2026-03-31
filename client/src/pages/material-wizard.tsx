@@ -126,7 +126,7 @@ export default function MaterialWizard() {
     <AppShell
       title="Мастер создания материала"
       breadcrumbs={[
-        { label: "Портал инструкций", href: "/" },
+        { label: "Центр знаний ЦОС", href: "/" },
         { label: "Каталог", href: "/catalog" },
         { label: "Новый материал" },
       ]}

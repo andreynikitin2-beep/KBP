@@ -76,7 +76,7 @@ export default function MyMaterials() {
     <AppShell
       title="Мои материалы"
       breadcrumbs={[
-        { label: "Портал инструкций", href: "/" },
+        { label: "Центр знаний ЦОС", href: "/" },
         { label: "Мои материалы" },
       ]}
     >

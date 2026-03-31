@@ -916,7 +916,7 @@ export default function Admin() {
   return (
     <AppShell
       title="Администрирование"
-      breadcrumbs={[{ label: "Портал инструкций", href: "/" }, { label: "Администрирование" }]}
+      breadcrumbs={[{ label: "Центр знаний ЦОС", href: "/" }, { label: "Администрирование" }]}
       search={q}
       onSearch={setQ}
       actions={
@@ -1992,7 +1992,7 @@ export default function Admin() {
                           </div>
                           <div className="space-y-1.5">
                             <Label htmlFor="em-sender-name">Имя отправителя</Label>
-                            <Input id="em-sender-name" data-testid="input-email-sender-name" value={emSenderName} onChange={(e) => setEmSenderName(e.target.value)} placeholder="Портал инструкций" className="rounded-xl text-sm" />
+                            <Input id="em-sender-name" data-testid="input-email-sender-name" value={emSenderName} onChange={(e) => setEmSenderName(e.target.value)} placeholder="Центр знаний ЦОС" className="rounded-xl text-sm" />
                           </div>
                         </div>
                         <div className="space-y-4">

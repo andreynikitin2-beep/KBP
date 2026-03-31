@@ -315,7 +315,7 @@ async function main() {
   console.log("Seeding email config...");
   await db.insert(schema.emailConfig).values({
     senderAddress: "kb-portal@progorod.veb.ru",
-    senderName: "Портал инструкций",
+    senderName: "Центр знаний ЦОС",
     smtpHost: "smtp.progorod.veb.ru",
     smtpPort: 587,
     smtpUser: "kb-portal",

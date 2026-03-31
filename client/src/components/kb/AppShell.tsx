@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useMemo, useState } from "react";
 import {
-  BookOpen,
   Building2,
   ChevronRight,
   ClipboardCheck,
@@ -105,12 +104,15 @@ export function AppShell({
       <header className="sticky top-0 z-40 border-b bg-background/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg bg-[#0ea5e9] text-white shadow-sm">
-              <BookOpen className="h-4 w-4" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="Центр знаний ЦОС"
+              className="hidden sm:block h-9 w-9 object-contain shrink-0"
+              style={{ filter: "brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(580%) hue-rotate(170deg) brightness(88%) contrast(88%)" }}
+            />
             <div>
               <div className="font-bold text-sm tracking-tight" data-testid="text-app-title">
-                Портал инструкций
+                Центр знаний ЦОС
               </div>
               <div className="mt-0 hidden sm:block text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                 база знаний
@@ -251,13 +253,21 @@ export function AppShell({
 
       <footer className="border-t bg-background/50">
         <div className="mx-auto max-w-7xl px-4 py-6">
-          <div className="text-sm font-semibold">Портал инструкций</div>
+          <div className="flex items-center gap-2">
+            <img
+              src="/logo.png"
+              alt="Центр знаний ЦОС"
+              className="h-6 w-6 object-contain opacity-70"
+              style={{ filter: "brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(580%) hue-rotate(170deg) brightness(88%) contrast(88%)" }}
+            />
+            <div className="text-sm font-semibold">Центр знаний ЦОС</div>
+          </div>
           <div className="mt-2 text-xs text-muted-foreground">
             По всем вопросам использования системы или технической поддержки обращайтесь в службу технической поддержки по адресу{" "}
             <a href="mailto:hd@progorod.veb.ru" className="text-primary underline">hd@progorod.veb.ru</a>
           </div>
           <div className="mt-4 text-xs text-muted-foreground">
-            © {new Date().getFullYear()} Портал инструкций
+            © {new Date().getFullYear()} Центр знаний ЦОС
           </div>
         </div>
       </footer>

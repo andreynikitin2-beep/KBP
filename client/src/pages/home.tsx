@@ -222,7 +222,7 @@ export default function Home() {
   return (
     <AppShell
       title="Главная"
-      breadcrumbs={[{ label: "Портал инструкций", href: "/" }, { label: "Главная" }]}
+      breadcrumbs={[{ label: "Центр знаний ЦОС", href: "/" }, { label: "Главная" }]}
       search={q}
       onSearch={setQ}
       actions={

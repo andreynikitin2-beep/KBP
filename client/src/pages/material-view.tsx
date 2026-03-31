@@ -320,7 +320,7 @@ export default function MaterialView() {
 
   const breadcrumbs = useMemo(() => {
     const crumbs: { label: string; href?: string }[] = [
-      { label: "Портал инструкций", href: "/" },
+      { label: "Центр знаний ЦОС", href: "/" },
       { label: "Каталог", href: "/catalog" },
     ];
     sectionPath.forEach((node) => {
@@ -337,7 +337,7 @@ export default function MaterialView() {
       <AppShell
         title={current ? "Доступ ограничен" : "Материал не найден"}
         breadcrumbs={[
-          { label: "Портал инструкций", href: "/" },
+          { label: "Центр знаний ЦОС", href: "/" },
           { label: "Каталог", href: "/catalog" },
         ]}
       >

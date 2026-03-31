@@ -20,7 +20,7 @@ export default function Subscriptions() {
     <AppShell
       title="Мои подписки"
       breadcrumbs={[
-        { label: "Портал инструкций", href: "/" },
+        { label: "Центр знаний ЦОС", href: "/" },
         { label: "Мои подписки" },
       ]}
     >

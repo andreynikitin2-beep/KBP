@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle, LogIn, Building2, Shield, Search, ChevronDown, X } from "lucide-react";
+import { AlertCircle, LogIn, Building2, Search, ChevronDown, X } from "lucide-react";
 
 interface UserListItem {
   id: string;
@@ -159,11 +159,16 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string) => vo
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
-            <Shield className="h-8 w-8 text-primary" />
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#41566d]/10 mb-4 p-2">
+            <img
+              src="/logo.png"
+              alt="Центр знаний ЦОС"
+              className="w-full h-full object-contain"
+              style={{ filter: "brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(580%) hue-rotate(170deg) brightness(88%) contrast(88%)" }}
+            />
           </div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-login-title">
-            Портал инструкций
+            Центр знаний ЦОС
           </h1>
           <p className="text-muted-foreground mt-1">База знаний с контролем актуальности</p>
         </div>
