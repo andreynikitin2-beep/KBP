@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useMemo, useState } from "react";
 import {
+  BookOpen,
   Building2,
   ChevronRight,
   ClipboardCheck,
