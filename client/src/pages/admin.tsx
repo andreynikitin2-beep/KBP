@@ -625,6 +625,19 @@ export default function Admin() {
 
   const kpis = useMemo(() => computeKpis(scoped, users), [scoped, users]);
 
+  const catalogStats = useMemo(() => {
+    const sections = catalogNodes.filter((n) => n.type === "section").length;
+    const subsections = catalogNodes.filter((n) => n.type === "subsection").length;
+    const uniqueMaterials = new Set(materials.map((m) => m.materialId)).size;
+    const publishedMaterials = new Set(
+      materials.filter((m) => m.status === "Опубликовано").map((m) => m.materialId)
+    ).size;
+    const draftMaterials = new Set(
+      materials.filter((m) => m.status === "Черновик").map((m) => m.materialId)
+    ).size;
+    return { sections, subsections, uniqueMaterials, publishedMaterials, draftMaterials };
+  }, [catalogNodes, materials]);
+
   const helpfulnessSorted = useMemo(() => {
     const withVotes = scoped.filter((m) => (m.stats.helpfulYes + m.stats.helpfulNo) > 0);
     const byHelpful = [...withVotes].sort((a, b) => b.stats.helpfulYes - a.stats.helpfulYes);
@@ -1894,6 +1907,37 @@ export default function Admin() {
 
               {/* ── Отчёты ── */}
               <TabsContent value="reports" className="mt-4">
+
+                {/* Общая статистика */}
+                <Card className="mb-4 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Table2 className="h-4 w-4 text-muted-foreground" />
+                    <div className="text-sm font-semibold">Общая статистика базы знаний</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                    <div className="flex flex-col items-center justify-center rounded-2xl border bg-muted/20 p-4 text-center" data-testid="stat-sections">
+                      <div className="text-2xl font-bold">{catalogStats.sections}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Разделов</div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center rounded-2xl border bg-muted/20 p-4 text-center" data-testid="stat-subsections">
+                      <div className="text-2xl font-bold">{catalogStats.subsections}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Подразделов</div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center rounded-2xl border bg-primary/5 p-4 text-center" data-testid="stat-materials">
+                      <div className="text-2xl font-bold text-primary">{catalogStats.uniqueMaterials}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Материалов всего</div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center rounded-2xl border bg-green-50 p-4 text-center" data-testid="stat-published">
+                      <div className="text-2xl font-bold text-green-700">{catalogStats.publishedMaterials}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Опубликовано</div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center rounded-2xl border bg-muted/20 p-4 text-center" data-testid="stat-drafts">
+                      <div className="text-2xl font-bold text-muted-foreground">{catalogStats.draftMaterials}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Черновиков</div>
+                    </div>
+                  </div>
+                </Card>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <Card className="p-4">
                     <div className="flex items-center gap-2">
