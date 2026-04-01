@@ -22,6 +22,8 @@ import {
   Shield,
   SlidersHorizontal,
   Table2,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   UserCheck,
   UserPlus,
@@ -619,6 +621,17 @@ export default function Admin() {
   );
 
   const kpis = useMemo(() => computeKpis(scoped, users), [scoped, users]);
+
+  const helpfulnessTop = useMemo(() => {
+    const withVotes = scoped.filter((m) => (m.stats.helpfulYes + m.stats.helpfulNo) > 0);
+    const top3Helpful = [...withVotes]
+      .sort((a, b) => b.stats.helpfulYes - a.stats.helpfulYes)
+      .slice(0, 3);
+    const top3Useless = [...withVotes]
+      .sort((a, b) => b.stats.helpfulNo - a.stats.helpfulNo)
+      .slice(0, 3);
+    return { top3Helpful, top3Useless };
+  }, [scoped]);
 
   const notificationsFiltered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -1945,6 +1958,70 @@ export default function Admin() {
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">SLA по RFC и аудит действий — в полной версии бэкенда.</div>
                 </Card>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {/* Top 3 helpful */}
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ThumbsUp className="h-4 w-4 text-green-500" />
+                      <div className="text-sm font-semibold">Топ‑3 самых полезных материала</div>
+                    </div>
+                    {helpfulnessTop.top3Helpful.length === 0 ? (
+                      <div className="rounded-2xl border bg-muted/30 p-4 text-sm text-muted-foreground">Голоса ещё не выставлены.</div>
+                    ) : (
+                      <div className="grid gap-2" data-testid="list-top-helpful">
+                        {helpfulnessTop.top3Helpful.map((m, idx) => {
+                          const total = m.stats.helpfulYes + m.stats.helpfulNo;
+                          const pct = total > 0 ? Math.round((m.stats.helpfulYes / total) * 100) : 0;
+                          return (
+                            <div key={m.id} className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3" data-testid={`row-helpful-${m.id}`}>
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-bold text-green-700">
+                                {idx + 1}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium">{m.passport.title}</div>
+                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                  {m.stats.helpfulYes} <span className="text-green-600">👍</span> · {pct}% полезность
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+
+                  {/* Top 3 useless */}
+                  <Card className="p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ThumbsDown className="h-4 w-4 text-red-500" />
+                      <div className="text-sm font-semibold">Топ‑3 самых бесполезных материала</div>
+                    </div>
+                    {helpfulnessTop.top3Useless.length === 0 ? (
+                      <div className="rounded-2xl border bg-muted/30 p-4 text-sm text-muted-foreground">Голоса ещё не выставлены.</div>
+                    ) : (
+                      <div className="grid gap-2" data-testid="list-top-useless">
+                        {helpfulnessTop.top3Useless.map((m, idx) => {
+                          const total = m.stats.helpfulYes + m.stats.helpfulNo;
+                          const pct = total > 0 ? Math.round((m.stats.helpfulNo / total) * 100) : 0;
+                          return (
+                            <div key={m.id} className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3" data-testid={`row-useless-${m.id}`}>
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-700">
+                                {idx + 1}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-medium">{m.passport.title}</div>
+                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                  {m.stats.helpfulNo} <span className="text-red-500">👎</span> · {pct}% негативных оценок
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Card>
+                </div>
               </TabsContent>
 
               {/* ── Email-журнал ── */}
