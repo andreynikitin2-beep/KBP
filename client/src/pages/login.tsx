@@ -159,12 +159,12 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string) => vo
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#41566d]/10 mb-4 p-2">
+          <div className="inline-flex items-center justify-center w-28 h-28 rounded-2xl bg-[#41566d]/10 mb-4 p-3">
             <img
               src="/logo.png"
               alt="Центр знаний ЦОС"
               className="w-full h-full object-contain"
-              style={{ filter: "brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(580%) hue-rotate(170deg) brightness(88%) contrast(88%)" }}
+              style={{ filter: "brightness(0) saturate(100%) invert(27%) sepia(28%) saturate(500%) hue-rotate(175deg) brightness(80%) contrast(90%)" }}
             />
           </div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-login-title">

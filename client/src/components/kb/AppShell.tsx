@@ -108,8 +108,8 @@ export function AppShell({
             <img
               src="/logo.png"
               alt="Центр знаний ЦОС"
-              className="hidden sm:block h-9 w-9 object-contain shrink-0"
-              style={{ filter: "brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(580%) hue-rotate(170deg) brightness(88%) contrast(88%)" }}
+              className="hidden sm:block h-12 w-12 object-contain shrink-0"
+              style={{ filter: "brightness(0) saturate(100%) invert(27%) sepia(28%) saturate(500%) hue-rotate(175deg) brightness(80%) contrast(90%)" }}
             />
             <div>
               <div className="font-bold text-sm tracking-tight" data-testid="text-app-title">
@@ -258,8 +258,8 @@ export function AppShell({
             <img
               src="/logo.png"
               alt="Центр знаний ЦОС"
-              className="h-6 w-6 object-contain opacity-70"
-              style={{ filter: "brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(580%) hue-rotate(170deg) brightness(88%) contrast(88%)" }}
+              className="h-8 w-8 object-contain opacity-70"
+              style={{ filter: "brightness(0) saturate(100%) invert(27%) sepia(28%) saturate(500%) hue-rotate(175deg) brightness(80%) contrast(90%)" }}
             />
             <div className="text-sm font-semibold">Центр знаний ЦОС</div>
           </div>
