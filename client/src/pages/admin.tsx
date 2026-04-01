@@ -6,6 +6,7 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Cloud,
   CloudOff,
@@ -31,7 +32,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1989,17 +1990,20 @@ export default function Admin() {
                           const total = m.stats.helpfulYes + m.stats.helpfulNo;
                           const pct = total > 0 ? Math.round((m.stats.helpfulYes / total) * 100) : 0;
                           return (
-                            <div key={m.id} className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3" data-testid={`row-helpful-${m.id}`}>
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-bold text-green-700">
-                                {idx + 1}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium">{m.passport.title}</div>
-                                <div className="mt-0.5 text-xs text-muted-foreground">
-                                  {m.stats.helpfulYes} <span className="text-green-600">👍</span> · {pct}% полезность
+                            <Link key={m.id} href={`/materials/${m.id}`}>
+                              <div className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3 cursor-pointer transition-all hover:bg-green-50 hover:border-green-200 hover:shadow-sm" data-testid={`row-helpful-${m.id}`}>
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-bold text-green-700">
+                                  {idx + 1}
                                 </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-medium">{m.passport.title}</div>
+                                  <div className="mt-0.5 text-xs text-muted-foreground">
+                                    {m.stats.helpfulYes} <span className="text-green-600">👍</span> · {pct}% полезность
+                                  </div>
+                                </div>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                               </div>
-                            </div>
+                            </Link>
                           );
                         })}
                       </div>
@@ -2037,17 +2041,20 @@ export default function Admin() {
                           const total = m.stats.helpfulYes + m.stats.helpfulNo;
                           const pct = total > 0 ? Math.round((m.stats.helpfulNo / total) * 100) : 0;
                           return (
-                            <div key={m.id} className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3" data-testid={`row-useless-${m.id}`}>
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-700">
-                                {idx + 1}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium">{m.passport.title}</div>
-                                <div className="mt-0.5 text-xs text-muted-foreground">
-                                  {m.stats.helpfulNo} <span className="text-red-500">👎</span> · {pct}% негативных оценок
+                            <Link key={m.id} href={`/materials/${m.id}`}>
+                              <div className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3 cursor-pointer transition-all hover:bg-red-50 hover:border-red-200 hover:shadow-sm" data-testid={`row-useless-${m.id}`}>
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-700">
+                                  {idx + 1}
                                 </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-medium">{m.passport.title}</div>
+                                  <div className="mt-0.5 text-xs text-muted-foreground">
+                                    {m.stats.helpfulNo} <span className="text-red-500">👎</span> · {pct}% негативных оценок
+                                  </div>
+                                </div>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                               </div>
-                            </div>
+                            </Link>
                           );
                         })}
                       </div>
