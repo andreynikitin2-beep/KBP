@@ -552,6 +552,7 @@ export default function Admin() {
   const { toast } = useToast();
   const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, addSection, renameSection, deleteSection, addSubsection, renameSubsection, deleteSubsection, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
   const [q, setQ] = useState("");
+  const [notifLimit, setNotifLimit] = useState<number>(50);
   const [userSearch, setUserSearch] = useState("");
   const [userTypeFilter, setUserTypeFilter] = useState<"all" | "ad" | "local">("all");
   const [userDeptFilter, setUserDeptFilter] = useState("all");
@@ -2163,7 +2164,7 @@ export default function Admin() {
 
                   {/* ── Email Log ── */}
                   <Card className="p-4">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
                           <Mail className="h-4 w-4 text-muted-foreground" />
@@ -2174,19 +2175,32 @@ export default function Admin() {
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">Напоминания, просрочки, эскалации, публикации версий.</div>
                       </div>
-                      <div className="w-[320px] max-w-full">
-                        <Input
-                          data-testid="input-mail-search"
-                          value={q}
-                          onChange={(e) => setQ(e.target.value)}
-                          placeholder="Фильтр по теме или адресу…"
-                          className="rounded-2xl"
-                        />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Select value={String(notifLimit)} onValueChange={(v) => setNotifLimit(Number(v))}>
+                          <SelectTrigger className="w-[160px] rounded-xl" data-testid="select-notif-limit">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="10">Последние 10</SelectItem>
+                            <SelectItem value="50">Последние 50</SelectItem>
+                            <SelectItem value="100">Последние 100</SelectItem>
+                            <SelectItem value="300">Последние 300</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="w-[260px] max-w-full">
+                          <Input
+                            data-testid="input-mail-search"
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            placeholder="Фильтр по теме или адресу…"
+                            className="rounded-2xl"
+                          />
+                        </div>
                       </div>
                     </div>
                     <Separator className="my-3" />
                     <div className="grid gap-2" data-testid="list-mails">
-                      {notificationsFiltered.map((n) => (
+                      {notificationsFiltered.slice(0, notifLimit).map((n) => (
                         <div key={n.id} className="rounded-2xl border bg-muted/10 p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="min-w-0">
