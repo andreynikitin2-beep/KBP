@@ -135,11 +135,12 @@ function frontendMaterialToDb(mat: MaterialVersion): any {
 }
 
 function dbUserToFrontend(dbUser: any): User {
-  const { username: _u, password: _p, ...rest } = dbUser;
+  const { username: _u, password: _p, lastLoginAt: _lla, ...rest } = dbUser;
   return {
     ...rest,
     lastSyncAt: dbUser.lastSyncAt || undefined,
     deactivatedAt: dbUser.deactivatedAt || undefined,
+    lastLogin: dbUser.lastLoginAt ? new Date(dbUser.lastLoginAt).toISOString() : undefined,
   };
 }
 

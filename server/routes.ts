@@ -78,8 +78,9 @@ export async function registerRoutes(
         }
       }
 
+      await storage.updateUser(user.id, { lastLoginAt: new Date() });
       const { password: _p, ...safeUser } = user;
-      res.json({ ok: true, user: safeUser });
+      res.json({ ok: true, user: { ...safeUser, lastLoginAt: new Date().toISOString() } });
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }

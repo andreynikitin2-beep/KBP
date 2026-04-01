@@ -16,6 +16,7 @@ export const users = pgTable("users", {
   source: text("source").notNull(),
   adAccountName: text("ad_account_name"),
   lastSyncAt: timestamp("last_sync_at"),
+  lastLoginAt: timestamp("last_login_at"),
   deactivatedAt: timestamp("deactivated_at"),
 });
 
