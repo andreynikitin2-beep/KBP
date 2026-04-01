@@ -104,14 +104,14 @@ export function AppShell({
     <div className="min-h-screen kb-hero-grid kb-noise">
       <header className="sticky top-0 z-40 border-b bg-background/70 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <img
               src="/logo.png"
               alt="Центр знаний ЦОС"
-              className="hidden sm:block h-12 w-12 object-contain shrink-0"
+              className="hidden sm:block h-9 w-9 object-contain shrink-0"
               style={{ filter: "brightness(0) saturate(100%) invert(27%) sepia(28%) saturate(500%) hue-rotate(175deg) brightness(80%) contrast(90%)" }}
             />
-            <div>
+            <div className="whitespace-nowrap">
               <div className="font-bold text-sm tracking-tight" data-testid="text-app-title">
                 Центр знаний ЦОС
               </div>
@@ -157,12 +157,6 @@ export function AppShell({
                 />
               </div>
             ) : null}
-
-            {actions && (
-              <div className="hidden md:block">
-                {actions}
-              </div>
-            )}
 
             <UserSwitch />
 
