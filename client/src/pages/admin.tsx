@@ -574,6 +574,7 @@ export default function Admin() {
   const [newRoles, setNewRoles] = useState<Role[]>(["Читатель"]);
 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [editUserName, setEditUserName] = useState("");
   const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserDept, setEditUserDept] = useState("");
@@ -637,6 +638,19 @@ export default function Admin() {
     ).size;
     return { sections, subsections, uniqueMaterials, publishedMaterials, draftMaterials };
   }, [catalogNodes, materials]);
+
+  const expandedUserViews = useMemo(() => {
+    if (!expandedUserId) return [];
+    const views: { materialId: string; title: string; viewedAt: string }[] = [];
+    materials.forEach((m) => {
+      (m.auditViews || [])
+        .filter((v: { userId: string; at: string }) => v.userId === expandedUserId)
+        .forEach((v: { userId: string; at: string }) => {
+          views.push({ materialId: m.materialId, title: m.passport.title, viewedAt: v.at });
+        });
+    });
+    return views.sort((a, b) => new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime());
+  }, [expandedUserId, materials]);
 
   const helpfulnessSorted = useMemo(() => {
     const withVotes = scoped.filter((m) => (m.stats.helpfulYes + m.stats.helpfulNo) > 0);
@@ -1460,7 +1474,7 @@ export default function Admin() {
                                 </div>
                               </div>
                             </div>
-                          ) : (
+                          ) : (<>
                             <div className="flex flex-wrap items-start justify-between gap-2">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
@@ -1497,6 +1511,16 @@ export default function Admin() {
                                 </div>
                               </div>
                               <div className="flex gap-1">
+                                <Button
+                                  data-testid={`button-stats-user-${u.id}`}
+                                  size="sm"
+                                  variant={expandedUserId === u.id ? "secondary" : "outline"}
+                                  className="rounded-lg text-xs"
+                                  onClick={() => setExpandedUserId(expandedUserId === u.id ? null : u.id)}
+                                >
+                                  <Activity className="mr-1 h-3 w-3" />
+                                  Статистика
+                                </Button>
                                 <Button
                                   data-testid={`button-edit-user-${u.id}`}
                                   size="sm"
@@ -1536,7 +1560,46 @@ export default function Admin() {
                                 )}
                               </div>
                             </div>
-                          )}
+
+                            {expandedUserId === u.id && (
+                              <div className="mt-3 border-t pt-3 space-y-3">
+                                {/* Login info */}
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <Clock className="h-3.5 w-3.5 shrink-0" />
+                                  {u.lastLogin
+                                    ? <span>Последний вход: <span className="font-semibold text-foreground">{format(new Date(u.lastLogin), "d MMM yyyy, HH:mm", { locale: ru })}</span> ({formatDistanceToNow(new Date(u.lastLogin), { addSuffix: true, locale: ru })})</span>
+                                    : <span className="italic">Вход в систему не зафиксирован</span>}
+                                </div>
+
+                                {/* Material views */}
+                                <div>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span className="text-xs font-semibold">Просмотры материалов</span>
+                                    <Badge variant="secondary" className="kb-chip">{expandedUserViews.length}</Badge>
+                                  </div>
+                                  {expandedUserViews.length === 0 ? (
+                                    <div className="rounded-xl border bg-muted/20 p-3 text-xs text-muted-foreground italic">
+                                      Просмотры материалов не зафиксированы.
+                                    </div>
+                                  ) : (
+                                    <div className="grid gap-1.5 max-h-60 overflow-y-auto pr-1">
+                                      {expandedUserViews.map((v, idx) => (
+                                        <Link key={idx} href={`/materials/${v.materialId}`}>
+                                          <div className="flex items-center justify-between gap-2 rounded-xl border bg-muted/10 px-3 py-2 cursor-pointer transition-all hover:bg-accent/40 hover:border-primary/20" data-testid={`row-user-view-${u.id}-${idx}`}>
+                                            <span className="truncate text-xs font-medium">{v.title}</span>
+                                            <span className="shrink-0 text-[10px] text-muted-foreground whitespace-nowrap">
+                                              {format(new Date(v.viewedAt), "d MMM yyyy, HH:mm", { locale: ru })}
+                                            </span>
+                                          </div>
+                                        </Link>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </>)}
                         </Card>
                       ))}
                       {filteredUsers.length === 0 && (
