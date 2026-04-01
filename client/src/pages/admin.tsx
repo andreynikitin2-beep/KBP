@@ -1990,7 +1990,7 @@ export default function Admin() {
                           const total = m.stats.helpfulYes + m.stats.helpfulNo;
                           const pct = total > 0 ? Math.round((m.stats.helpfulYes / total) * 100) : 0;
                           return (
-                            <Link key={m.id} href={`/materials/${m.id}`}>
+                            <Link key={m.id} href={`/materials/${m.materialId}`}>
                               <div className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3 cursor-pointer transition-all hover:bg-green-50 hover:border-green-200 hover:shadow-sm" data-testid={`row-helpful-${m.id}`}>
                                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-bold text-green-700">
                                   {idx + 1}
@@ -2041,7 +2041,7 @@ export default function Admin() {
                           const total = m.stats.helpfulYes + m.stats.helpfulNo;
                           const pct = total > 0 ? Math.round((m.stats.helpfulNo / total) * 100) : 0;
                           return (
-                            <Link key={m.id} href={`/materials/${m.id}`}>
+                            <Link key={m.id} href={`/materials/${m.materialId}`}>
                               <div className="flex items-center gap-3 rounded-2xl border bg-muted/10 p-3 cursor-pointer transition-all hover:bg-red-50 hover:border-red-200 hover:shadow-sm" data-testid={`row-useless-${m.id}`}>
                                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-700">
                                   {idx + 1}
