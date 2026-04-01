@@ -555,6 +555,8 @@ export default function Admin() {
   const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, addSection, renameSection, deleteSection, addSubsection, renameSubsection, deleteSubsection, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
   const [q, setQ] = useState("");
   const [notifLimit, setNotifLimit] = useState<number>(50);
+  const [helpfulTopN, setHelpfulTopN] = useState<number>(3);
+  const [uselessTopN, setUselessTopN] = useState<number>(3);
   const [userSearch, setUserSearch] = useState("");
   const [userTypeFilter, setUserTypeFilter] = useState<"all" | "ad" | "local">("all");
   const [userDeptFilter, setUserDeptFilter] = useState("all");
@@ -622,15 +624,11 @@ export default function Admin() {
 
   const kpis = useMemo(() => computeKpis(scoped, users), [scoped, users]);
 
-  const helpfulnessTop = useMemo(() => {
+  const helpfulnessSorted = useMemo(() => {
     const withVotes = scoped.filter((m) => (m.stats.helpfulYes + m.stats.helpfulNo) > 0);
-    const top3Helpful = [...withVotes]
-      .sort((a, b) => b.stats.helpfulYes - a.stats.helpfulYes)
-      .slice(0, 3);
-    const top3Useless = [...withVotes]
-      .sort((a, b) => b.stats.helpfulNo - a.stats.helpfulNo)
-      .slice(0, 3);
-    return { top3Helpful, top3Useless };
+    const byHelpful = [...withVotes].sort((a, b) => b.stats.helpfulYes - a.stats.helpfulYes);
+    const byUseless = [...withVotes].sort((a, b) => b.stats.helpfulNo - a.stats.helpfulNo);
+    return { byHelpful, byUseless };
   }, [scoped]);
 
   const notificationsFiltered = useMemo(() => {
@@ -1960,17 +1958,34 @@ export default function Admin() {
                 </Card>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  {/* Top 3 helpful */}
+                  {/* Top N helpful */}
                   <Card className="p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <ThumbsUp className="h-4 w-4 text-green-500" />
-                      <div className="text-sm font-semibold">Топ‑3 самых полезных материала</div>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <ThumbsUp className="h-4 w-4 text-green-500 shrink-0" />
+                        <div className="text-sm font-semibold">Топ полезных материалов</div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs text-muted-foreground">Показать топ</span>
+                        <Input
+                          data-testid="input-helpful-top-n"
+                          type="number"
+                          min={1}
+                          max={helpfulnessSorted.byHelpful.length || 99}
+                          value={helpfulTopN}
+                          onChange={(e) => {
+                            const v = Math.max(1, parseInt(e.target.value) || 1);
+                            setHelpfulTopN(v);
+                          }}
+                          className="w-16 h-7 rounded-lg text-center text-sm px-1"
+                        />
+                      </div>
                     </div>
-                    {helpfulnessTop.top3Helpful.length === 0 ? (
+                    {helpfulnessSorted.byHelpful.length === 0 ? (
                       <div className="rounded-2xl border bg-muted/30 p-4 text-sm text-muted-foreground">Голоса ещё не выставлены.</div>
                     ) : (
                       <div className="grid gap-2" data-testid="list-top-helpful">
-                        {helpfulnessTop.top3Helpful.map((m, idx) => {
+                        {helpfulnessSorted.byHelpful.slice(0, helpfulTopN).map((m, idx) => {
                           const total = m.stats.helpfulYes + m.stats.helpfulNo;
                           const pct = total > 0 ? Math.round((m.stats.helpfulYes / total) * 100) : 0;
                           return (
@@ -1991,17 +2006,34 @@ export default function Admin() {
                     )}
                   </Card>
 
-                  {/* Top 3 useless */}
+                  {/* Top N useless */}
                   <Card className="p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <ThumbsDown className="h-4 w-4 text-red-500" />
-                      <div className="text-sm font-semibold">Топ‑3 самых бесполезных материала</div>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <ThumbsDown className="h-4 w-4 text-red-500 shrink-0" />
+                        <div className="text-sm font-semibold">Топ бесполезных материалов</div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs text-muted-foreground">Показать топ</span>
+                        <Input
+                          data-testid="input-useless-top-n"
+                          type="number"
+                          min={1}
+                          max={helpfulnessSorted.byUseless.length || 99}
+                          value={uselessTopN}
+                          onChange={(e) => {
+                            const v = Math.max(1, parseInt(e.target.value) || 1);
+                            setUselessTopN(v);
+                          }}
+                          className="w-16 h-7 rounded-lg text-center text-sm px-1"
+                        />
+                      </div>
                     </div>
-                    {helpfulnessTop.top3Useless.length === 0 ? (
+                    {helpfulnessSorted.byUseless.length === 0 ? (
                       <div className="rounded-2xl border bg-muted/30 p-4 text-sm text-muted-foreground">Голоса ещё не выставлены.</div>
                     ) : (
                       <div className="grid gap-2" data-testid="list-top-useless">
-                        {helpfulnessTop.top3Useless.map((m, idx) => {
+                        {helpfulnessSorted.byUseless.slice(0, uselessTopN).map((m, idx) => {
                           const total = m.stats.helpfulYes + m.stats.helpfulNo;
                           const pct = total > 0 ? Math.round((m.stats.helpfulNo / total) * 100) : 0;
                           return (
