@@ -600,6 +600,7 @@ export default function Admin() {
   const [adBindPassword, setAdBindPassword] = useState("");
   const [adBaseDn, setAdBaseDn] = useState("");
   const [adSyncFreq, setAdSyncFreq] = useState(60);
+  const [adSyncMode, setAdSyncMode] = useState<"manual" | "auto">("auto");
   const [adMapDepartment, setAdMapDepartment] = useState("");
   const [adMapLegalEntity, setAdMapLegalEntity] = useState("");
   const [adMapDisplayName, setAdMapDisplayName] = useState("");
@@ -705,7 +706,8 @@ export default function Admin() {
     setAdBindDn(ad.bindDn || "");
     setAdBindPassword(ad.bindPassword || "");
     setAdBaseDn(ad.baseDn || "");
-    setAdSyncFreq(ad.syncFrequencyMinutes);
+    setAdSyncMode(ad.syncFrequencyMinutes === 0 ? "manual" : "auto");
+    setAdSyncFreq(ad.syncFrequencyMinutes === 0 ? 60 : ad.syncFrequencyMinutes);
     setAdMapDepartment(ad.mapping.department || "");
     setAdMapLegalEntity(ad.mapping.legalEntity || "");
     setAdMapDisplayName(ad.mapping.displayName || "");
@@ -720,7 +722,7 @@ export default function Admin() {
       bindDn: adBindDn.trim(),
       bindPassword: adBindPassword,
       baseDn: adBaseDn.trim(),
-      syncFrequencyMinutes: adSyncFreq,
+      syncFrequencyMinutes: adSyncMode === "manual" ? 0 : adSyncFreq,
       mapping: {
         roles: ad.mapping.roles,
         department: adMapDepartment.trim() || null as any,
@@ -1163,18 +1165,55 @@ export default function Admin() {
                           </>
                         )}
 
-                        <div className="space-y-1.5">
-                          <Label htmlFor="ad-sync-freq">Частота синхронизации (минуты)</Label>
-                          <Input
-                            id="ad-sync-freq"
-                            data-testid="input-ad-sync-freq"
-                            type="number"
-                            min={5}
-                            max={1440}
-                            value={adSyncFreq}
-                            onChange={(e) => setAdSyncFreq(Number(e.target.value))}
-                            className="rounded-xl w-32"
-                          />
+                        <div className="space-y-3">
+                          <Label>Режим синхронизации</Label>
+                          <div className="flex flex-col gap-2">
+                            <label className="flex items-center gap-3 cursor-pointer rounded-xl border px-3 py-2.5 transition-colors hover:bg-muted/40 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+                              <input
+                                type="radio"
+                                name="adSyncMode"
+                                data-testid="radio-sync-manual"
+                                value="manual"
+                                checked={adSyncMode === "manual"}
+                                onChange={() => setAdSyncMode("manual")}
+                                className="accent-primary"
+                              />
+                              <div>
+                                <div className="text-sm font-medium">Только вручную</div>
+                                <div className="text-xs text-muted-foreground">Синхронизация запускается только по кнопке «Синхронизировать сейчас»</div>
+                              </div>
+                            </label>
+                            <label className="flex items-start gap-3 cursor-pointer rounded-xl border px-3 py-2.5 transition-colors hover:bg-muted/40 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+                              <input
+                                type="radio"
+                                name="adSyncMode"
+                                data-testid="radio-sync-auto"
+                                value="auto"
+                                checked={adSyncMode === "auto"}
+                                onChange={() => setAdSyncMode("auto")}
+                                className="accent-primary mt-0.5"
+                              />
+                              <div className="flex-1">
+                                <div className="text-sm font-medium">Автоматически</div>
+                                <div className="text-xs text-muted-foreground mb-2">Синхронизация запускается по расписанию</div>
+                                {adSyncMode === "auto" && (
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      id="ad-sync-freq"
+                                      data-testid="input-ad-sync-freq"
+                                      type="number"
+                                      min={5}
+                                      max={1440}
+                                      value={adSyncFreq}
+                                      onChange={(e) => setAdSyncFreq(Number(e.target.value))}
+                                      className="rounded-xl w-24 h-8 text-sm"
+                                    />
+                                    <span className="text-xs text-muted-foreground">минут между синхронизациями</span>
+                                  </div>
+                                )}
+                              </div>
+                            </label>
+                          </div>
                         </div>
 
                         <Separator />
@@ -1231,8 +1270,10 @@ export default function Admin() {
                           </>
                         )}
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Частота синхронизации</span>
-                          <span className="text-xs">Каждые {ad.syncFrequencyMinutes} мин.</span>
+                          <span className="text-sm text-muted-foreground">Режим синхронизации</span>
+                          {ad.syncFrequencyMinutes === 0
+                            ? <Badge variant="outline" className="text-[10px]">Только вручную</Badge>
+                            : <span className="text-xs">Каждые {ad.syncFrequencyMinutes} мин.</span>}
                         </div>
 
                         <Separator />
