@@ -443,6 +443,10 @@ export const api = {
     return postJson<any>("/api/ad-sync", {});
   },
 
+  async triggerLdapSyncUser(accountName: string): Promise<any> {
+    return postJson<any>("/api/ad-sync/user", { accountName });
+  },
+
   async getEffectiveVisGroups(): Promise<Record<string, string[]>> {
     const items = await fetchJson<any[]>("/api/effective-vis-groups");
     const map: Record<string, string[]> = {};

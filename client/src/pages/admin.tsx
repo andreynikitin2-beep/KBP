@@ -564,6 +564,9 @@ export default function Admin() {
   const [userEntityFilter, setUserEntityFilter] = useState("all");
   const [userSortBy, setUserSortBy] = useState<"name" | "lastLogin" | "dept" | "entity">("name");
   const [syncing, setSyncing] = useState(false);
+  const [syncingUser, setSyncingUser] = useState(false);
+  const [syncUserAccount, setSyncUserAccount] = useState("");
+  const [syncUserResult, setSyncUserResult] = useState<{ ok: boolean; message: string; action?: string; user?: Record<string, string> } | null>(null);
 
   const [dlgOpen, setDlgOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -838,6 +841,27 @@ export default function Admin() {
       });
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleSyncUser() {
+    if (!syncUserAccount.trim()) return;
+    setSyncingUser(true);
+    setSyncUserResult(null);
+    try {
+      const res = await api.triggerLdapSyncUser(syncUserAccount.trim());
+      setSyncUserResult(res);
+      if (res.ok) {
+        toast({ title: "Готово", description: res.message });
+      } else {
+        toast({ title: "Не удалось", description: res.message, variant: "destructive" });
+      }
+    } catch (err: any) {
+      const result = { ok: false, message: err.message || "Ошибка запроса" };
+      setSyncUserResult(result);
+      toast({ title: "Ошибка", description: result.message, variant: "destructive" });
+    } finally {
+      setSyncingUser(false);
     }
   }
 
@@ -1269,6 +1293,62 @@ export default function Admin() {
                         </div>
                       )}
                     </Card>
+
+                    {ad.mode === "LDAP" && (
+                      <Card className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <div className="text-sm font-semibold">Синхронизация отдельного аккаунта</div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Укажите sAMAccountName для точечного обновления или создания пользователя из LDAP.
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            data-testid="input-sync-user-account"
+                            className="h-8 text-sm font-mono"
+                            placeholder="Например: ivanova_m"
+                            value={syncUserAccount}
+                            onChange={(e) => { setSyncUserAccount(e.target.value); setSyncUserResult(null); }}
+                            onKeyDown={(e) => e.key === "Enter" && handleSyncUser()}
+                            disabled={syncingUser || !ad.enabled}
+                          />
+                          <Button
+                            data-testid="button-sync-user"
+                            size="sm"
+                            className="rounded-xl shrink-0"
+                            disabled={syncingUser || !ad.enabled || !syncUserAccount.trim()}
+                            onClick={handleSyncUser}
+                          >
+                            {syncingUser
+                              ? <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              : <UserCheck className="mr-2 h-3.5 w-3.5" />}
+                            Синхронизировать
+                          </Button>
+                        </div>
+                        {syncUserResult && (
+                          <div className={`rounded-xl border px-3 py-2.5 text-sm ${syncUserResult.ok ? "bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800" : "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"}`}>
+                            <div className="flex items-center gap-2">
+                              {syncUserResult.ok
+                                ? <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                                : <XCircle className="h-4 w-4 text-red-500 shrink-0" />}
+                              <span className="font-medium">{syncUserResult.message}</span>
+                            </div>
+                            {syncUserResult.ok && syncUserResult.user && (
+                              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground pl-6">
+                                {syncUserResult.user.displayName && <span>Имя: <span className="text-foreground font-medium">{syncUserResult.user.displayName}</span></span>}
+                                {syncUserResult.user.email && <span>Email: <span className="text-foreground font-medium">{syncUserResult.user.email}</span></span>}
+                                {syncUserResult.user.department && <span>Отдел: <span className="text-foreground font-medium">{syncUserResult.user.department}</span></span>}
+                                {syncUserResult.user.legalEntity && <span>Юр. лицо: <span className="text-foreground font-medium">{syncUserResult.user.legalEntity}</span></span>}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!ad.enabled && (
+                          <div className="text-xs text-muted-foreground">Включите интеграцию AD/SSO для выполнения синхронизации.</div>
+                        )}
+                      </Card>
+                    )}
 
                     <Card className="p-4">
                       <div className="text-sm font-semibold mb-3">Журнал синхронизации</div>

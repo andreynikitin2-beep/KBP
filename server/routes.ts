@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { performLdapSync } from "./ldapSync";
+import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 
 const TIMESTAMP_FIELDS = [
   "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
@@ -643,6 +643,19 @@ export async function registerRoutes(
   app.post("/api/ad-sync", async (_req, res) => {
     try {
       const result = await performLdapSync();
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ ok: false, message: String(e) });
+    }
+  });
+
+  app.post("/api/ad-sync/user", async (req, res) => {
+    try {
+      const { accountName } = req.body;
+      if (!accountName || typeof accountName !== "string" || !accountName.trim()) {
+        return res.status(400).json({ ok: false, message: "Не указано имя аккаунта" });
+      }
+      const result = await syncSingleLdapUser(accountName.trim());
       res.json(result);
     } catch (e) {
       res.status(500).json({ ok: false, message: String(e) });

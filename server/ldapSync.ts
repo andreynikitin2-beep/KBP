@@ -254,7 +254,7 @@ export async function performLdapSync(): Promise<{
   }
 }
 
-function searchLdapUsers(config: LdapConfig): Promise<LdapUserEntry[]> {
+function searchLdapUsers(config: LdapConfig, accountName?: string): Promise<LdapUserEntry[]> {
   return new Promise((resolve, reject) => {
     const tlsOptions = config.url.startsWith("ldaps://") ? { rejectUnauthorized: false } : undefined;
 
@@ -280,8 +280,12 @@ function searchLdapUsers(config: LdapConfig): Promise<LdapUserEntry[]> {
         return;
       }
 
+      const baseFilter = accountName
+        ? `(&(objectClass=user)(objectCategory=person)(sAMAccountName=${accountName.replace(/[*()\\\0]/g, "\\$&")}))`
+        : "(&(objectClass=user)(objectCategory=person))";
+
       const searchOpts: ldap.SearchOptions = {
-        filter: "(&(objectClass=user)(objectCategory=person))",
+        filter: baseFilter,
         scope: "sub",
         attributes: [
           "sAMAccountName", "uid", "cn",
@@ -323,6 +327,112 @@ function searchLdapUsers(config: LdapConfig): Promise<LdapUserEntry[]> {
       });
     });
   });
+}
+
+export async function syncSingleLdapUser(accountName: string): Promise<{
+  ok: boolean;
+  message: string;
+  action?: "updated" | "created" | "not_found";
+  user?: Record<string, string>;
+}> {
+  const adConfig = await storage.getAdIntegrationConfig();
+  if (!adConfig) return { ok: false, message: "Конфигурация AD не найдена" };
+  if (!adConfig.enabled) return { ok: false, message: "Интеграция AD/SSO выключена" };
+  if (adConfig.mode !== "LDAP") return { ok: false, message: "Режим интеграции не LDAP — функция доступна только в режиме LDAP" };
+  if (!adConfig.ssoUrl || !adConfig.bindDn || !adConfig.bindPassword || !adConfig.baseDn) {
+    return { ok: false, message: "Не заполнены обязательные поля LDAP: URL, учётная запись, пароль или Base DN" };
+  }
+
+  const config: LdapConfig = {
+    url: adConfig.ssoUrl,
+    bindDn: adConfig.bindDn!,
+    bindPassword: adConfig.bindPassword!,
+    baseDn: adConfig.baseDn!,
+    mappingDisplayName: adConfig.mappingDisplayName || "displayName",
+    mappingEmail: adConfig.mappingEmail || "mail",
+    mappingDepartment: adConfig.mappingDepartment || "department",
+    mappingLegalEntity: adConfig.mappingLegalEntity || "company",
+    mappingRoles: adConfig.mappingRoles,
+  };
+
+  try {
+    const ldapUsers = await searchLdapUsers(config, accountName.trim());
+
+    if (ldapUsers.length === 0) {
+      return { ok: false, message: `Аккаунт «${accountName}» не найден в LDAP`, action: "not_found" };
+    }
+
+    const ldapUser = ldapUsers[0];
+    const now = new Date();
+    const existingUsers = await storage.getUsers();
+
+    const byAccount = existingUsers.find(u => u.adAccountName?.toLowerCase() === ldapUser.sAMAccountName.toLowerCase());
+    const byUsername = existingUsers.find(u => u.username.toLowerCase() === ldapUser.sAMAccountName.toLowerCase());
+    const target = byAccount || byUsername;
+
+    if (target) {
+      await storage.updateUser(target.id, {
+        source: "ad",
+        adAccountName: ldapUser.sAMAccountName,
+        displayName: ldapUser.displayName || target.displayName,
+        email: ldapUser.email || target.email,
+        department: ldapUser.department || target.department,
+        legalEntity: ldapUser.legalEntity || target.legalEntity,
+        lastSyncAt: now,
+        deactivatedAt: null,
+        isAvailable: true,
+      });
+      await storage.createAdSyncLog({
+        syncedAt: now, status: "success",
+        usersTotal: 1, usersUpdated: 1, usersDeactivated: 0,
+        message: `Точечная синхронизация: обновлён аккаунт ${ldapUser.sAMAccountName}`,
+      });
+      return {
+        ok: true,
+        message: `Аккаунт «${ldapUser.sAMAccountName}» успешно обновлён`,
+        action: "updated",
+        user: {
+          displayName: ldapUser.displayName,
+          email: ldapUser.email,
+          department: ldapUser.department,
+          legalEntity: ldapUser.legalEntity,
+        },
+      };
+    } else {
+      await storage.createUser({
+        username: ldapUser.sAMAccountName,
+        password: "",
+        displayName: ldapUser.displayName || ldapUser.sAMAccountName,
+        email: ldapUser.email || `${ldapUser.sAMAccountName}@unknown`,
+        roles: ["Читатель"],
+        legalEntity: ldapUser.legalEntity || "—",
+        department: ldapUser.department || "—",
+        isAvailable: true,
+        source: "ad",
+        adAccountName: ldapUser.sAMAccountName,
+        lastSyncAt: now,
+        deactivatedAt: null,
+      });
+      await storage.createAdSyncLog({
+        syncedAt: now, status: "success",
+        usersTotal: 1, usersUpdated: 0, usersDeactivated: 0,
+        message: `Точечная синхронизация: создан аккаунт ${ldapUser.sAMAccountName}`,
+      });
+      return {
+        ok: true,
+        message: `Аккаунт «${ldapUser.sAMAccountName}» создан в системе`,
+        action: "created",
+        user: {
+          displayName: ldapUser.displayName,
+          email: ldapUser.email,
+          department: ldapUser.department,
+          legalEntity: ldapUser.legalEntity,
+        },
+      };
+    }
+  } catch (err: any) {
+    return { ok: false, message: `Ошибка LDAP: ${err.message || String(err)}` };
+  }
 }
 
 export function authenticateViaLdap(
