@@ -217,7 +217,7 @@ export async function registerRoutes(
   app.get("/api/material-versions", async (_req, res) => {
     try {
       const versions = await storage.getMaterialVersions();
-      res.json(versions);
+      res.json(versions.map(({ contentFileData: _cfd, ...rest }: any) => rest));
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
@@ -227,7 +227,29 @@ export async function registerRoutes(
     try {
       const version = await storage.getMaterialVersion(req.params.id);
       if (!version) return res.status(404).json({ error: "Material version not found" });
-      res.json(version);
+      const { contentFileData: _cfd, ...rest } = version as any;
+      res.json(rest);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get("/api/material-versions/:id/file", async (req, res) => {
+    try {
+      const version = await storage.getMaterialVersion(req.params.id);
+      if (!version || !(version as any).contentFileData) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      const fileInfo = version.contentFile as any;
+      const mimeType = fileInfo?.type === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      const fileName = fileInfo?.name || "file";
+      const buffer = Buffer.from((version as any).contentFileData, "base64");
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+      res.setHeader("Content-Length", buffer.length);
+      res.send(buffer);
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }

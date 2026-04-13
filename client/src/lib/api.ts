@@ -126,7 +126,10 @@ function frontendMaterialToDb(mat: MaterialVersion): any {
     reviewPeriodDays: passport.reviewPeriodDays,
     visibilityGroupIds: passport.visibilityGroupIds,
     contentKind: content.kind,
-    contentFile: content.file,
+    contentFile: content.kind === "file" && content.file
+      ? (({ dataBase64: _d, ...rest }) => rest)(content.file as any)
+      : content.file,
+    contentFileData: (content.file as any)?.dataBase64 || null,
     contentPage: content.page,
     views: stats.views,
     helpfulYes: stats.helpfulYes,
