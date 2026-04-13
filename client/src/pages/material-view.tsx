@@ -1305,7 +1305,17 @@ export default function MaterialView() {
                                     const downloadName = isViewingOldVersion
                                       ? `${baseName} версия №${dv.version} НЕАКТУАЛЬНАЯ${ext}`
                                       : originalName;
-                                    const blob = new Blob([dv.content.file?.extractedText || ""], { type: "application/octet-stream" });
+                                    const fileObj = dv.content.file;
+                                    let blob: Blob;
+                                    if (fileObj?.dataBase64) {
+                                      const binary = atob(fileObj.dataBase64);
+                                      const bytes = new Uint8Array(binary.length);
+                                      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                                      const mimeType = fileObj.type === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                                      blob = new Blob([bytes], { type: mimeType });
+                                    } else {
+                                      blob = new Blob([fileObj?.extractedText || ""], { type: "text/plain" });
+                                    }
                                     const url = URL.createObjectURL(blob);
                                     const a = document.createElement("a");
                                     a.href = url;
