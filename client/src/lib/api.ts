@@ -89,7 +89,9 @@ function dbMaterialToFrontend(
     },
     content: {
       kind: dbMat.contentKind,
-      file: dbMat.contentFile,
+      file: dbMat.contentFile
+        ? { ...dbMat.contentFile, hasPdf: !!(dbMat.contentFile as any).hasPdf }
+        : dbMat.contentFile,
       page: dbMat.contentPage,
     },
     subscribers,
@@ -129,9 +131,10 @@ function frontendMaterialToDb(mat: MaterialVersion): any {
     visibilityGroupIds: passport.visibilityGroupIds,
     contentKind: content.kind,
     contentFile: content.kind === "file" && content.file
-      ? (({ dataBase64: _d, ...rest }) => rest)(content.file as any)
+      ? (({ dataBase64: _d, pdfBase64: _p, ...rest }) => rest)(content.file as any)
       : content.file,
     contentFileData: (content.file as any)?.dataBase64 || null,
+    contentFilePdfData: (content.file as any)?.pdfBase64 || null,
     contentPage: content.page,
     views: stats.views,
     helpfulYes: stats.helpfulYes,

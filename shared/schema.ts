@@ -78,6 +78,7 @@ export const materialVersions = pgTable("material_versions", {
   contentKind: text("content_kind").notNull(),
   contentFile: jsonb("content_file"),
   contentFileData: text("content_file_data"),
+  contentFilePdfData: text("content_file_pdf_data"),
   contentPage: jsonb("content_page"),
   discussionsEnabled: boolean("discussions_enabled").default(true).notNull(),
   discussionVisibility: text("discussion_visibility").default("Все").notNull(),
