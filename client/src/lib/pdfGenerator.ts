@@ -11,7 +11,20 @@ async function getPdfMake() {
   ]);
   const pdfMake = pdfMakeModule.default;
   const vfs = pdfFontsModule.default;
-  pdfMake.vfs = vfs;
+
+  // pdfmake 0.3.x uses virtualfs instead of vfs
+  pdfMake.virtualfs = vfs;
+
+  // Explicitly declare Roboto font files (included in vfs_fonts)
+  pdfMake.fonts = {
+    Roboto: {
+      normal: "Roboto-Regular.ttf",
+      bold: "Roboto-Medium.ttf",
+      italics: "Roboto-Italic.ttf",
+      bolditalics: "Roboto-MediumItalic.ttf",
+    },
+  };
+
   pdfMakeInstance = pdfMake;
   return pdfMake;
 }
@@ -23,12 +36,7 @@ export async function generatePdfFromText(text: string, title: string): Promise<
   const content: any[] = [];
 
   if (title) {
-    content.push({
-      text: title,
-      fontSize: 16,
-      bold: true,
-      margin: [0, 0, 0, 14],
-    });
+    content.push({ text: title, fontSize: 16, bold: true, margin: [0, 0, 0, 14] });
   }
 
   for (const line of lines) {
@@ -42,19 +50,14 @@ export async function generatePdfFromText(text: string, title: string): Promise<
 
   const docDefinition: any = {
     content,
-    defaultStyle: {
-      font: "Roboto",
-      fontSize: 11,
-      lineHeight: 1.4,
-    },
+    defaultStyle: { font: "Roboto", fontSize: 11, lineHeight: 1.4 },
     pageMargins: [56, 56, 56, 56],
     info: { title },
   };
 
   return new Promise((resolve, reject) => {
     try {
-      const pdfDoc = pdfMake.createPdf(docDefinition);
-      pdfDoc.getBase64((base64: string) => resolve(base64));
+      pdfMake.createPdf(docDefinition).getBase64((base64: string) => resolve(base64));
     } catch (e) {
       reject(e);
     }
