@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { generatePdfFromText } from "@/lib/pdfGenerator";
 import { FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
@@ -51,7 +50,6 @@ export default function MaterialWizard() {
   const [fileName, setFileName] = useState("");
   const [extractedText, setExtractedText] = useState("");
   const [fileDataBase64, setFileDataBase64] = useState("");
-  const [pdfDataBase64, setPdfDataBase64] = useState("");
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -74,7 +72,6 @@ export default function MaterialWizard() {
         reader.readAsDataURL(f);
       });
 
-    setPdfDataBase64("");
     try {
       const b64 = await toBase64(file);
       setFileDataBase64(b64);
@@ -82,12 +79,8 @@ export default function MaterialWizard() {
         try {
           const arrayBuffer = await file.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer });
-          const text = result.value;
-          setExtractedText(text);
-          toast({ title: "Файл загружен", description: `${file.name} — конвертация в PDF…` });
-          const pdfB64 = await generatePdfFromText(text, file.name.replace(/\.[^.]+$/, ""));
-          setPdfDataBase64(pdfB64);
-          toast({ title: "Готово", description: `${file.name} — PDF-версия создана` });
+          setExtractedText(result.value);
+          toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
         } catch {
           toast({ title: "Файл загружен", description: file.name, variant: "default" });
         }
@@ -444,13 +437,7 @@ export default function MaterialWizard() {
                           contentKind === "file"
                             ? {
                                 kind: "file",
-                                file: {
-                                  name: fileName,
-                                  type: fileType,
-                                  extractedText,
-                                  dataBase64: fileDataBase64,
-                                  ...(pdfDataBase64 ? { hasPdf: true, pdfBase64: pdfDataBase64 } : {}),
-                                },
+                                file: { name: fileName, type: fileType, extractedText, dataBase64: fileDataBase64 },
                               }
                             : {
                                 kind: "page",
@@ -462,7 +449,6 @@ export default function MaterialWizard() {
                         stats: { views: 0, helpfulYes: 0, helpfulNo: 0 },
                         auditViews: [],
                         auditDownloads: [],
-                        auditPreviews: [],
                       };
 
                       setMaterials((p) => [version, ...p]);

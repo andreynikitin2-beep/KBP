@@ -101,7 +101,7 @@ export type MaterialVersion = {
   passport: Passport;
   content: {
     kind: "file" | "page";
-    file?: { name: string; type: "pdf" | "docx"; extractedText?: string; dataBase64?: string; hasPdf?: boolean; pdfBase64?: string };
+    file?: { name: string; type: "pdf" | "docx"; extractedText?: string; dataBase64?: string };
     page?: { html: string };
   };
   subscribers: string[];
@@ -109,7 +109,7 @@ export type MaterialVersion = {
   discussionVisibility: "Все" | "Только сотрудники раздела" | "Только владелец/заместитель";
   stats: { views: number; helpfulYes: number; helpfulNo: number };
   auditViews: { userId: string; at: string }[];
-  auditDownloads: { userId: string; at: string; fileKind?: "original" | "pdf" }[];
+  auditDownloads: { userId: string; at: string }[];
   auditPreviews: { userId: string; at: string }[];
 };
 

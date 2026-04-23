@@ -106,7 +106,7 @@ type Store = {
   getMaterialRatings: (materialId: string) => { helpful: number; notHelpful: number; total: number };
 
   recordView: (materialId: string) => void;
-  recordDownload: (materialId: string, fileKind?: "original" | "pdf") => void;
+  recordDownload: (materialId: string) => void;
   recordPreview: (materialId: string) => void;
   viewDedupMinutes: number;
 
@@ -1105,7 +1105,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setViewLog((prev) => [...prev, { userId: meId, materialId, at: now }]);
       },
 
-      recordDownload: (materialId: string, fileKind?: "original" | "pdf") => {
+      recordDownload: (materialId: string) => {
         const version = materials.find(
           (m) => m.materialId === materialId && m.status !== "Архив",
         ) || materials.find((m) => m.materialId === materialId);
@@ -1115,7 +1115,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
               m.id === version.id
                 ? {
                     ...m,
-                    auditDownloads: [{ userId: meId, at: new Date().toISOString(), fileKind: fileKind ?? "original" }, ...(m.auditDownloads || [])].slice(0, 200),
+                    auditDownloads: [{ userId: meId, at: new Date().toISOString() }, ...(m.auditDownloads || [])].slice(0, 200),
                   }
                 : m,
             ),

@@ -217,7 +217,7 @@ export async function registerRoutes(
   app.get("/api/material-versions", async (_req, res) => {
     try {
       const versions = await storage.getMaterialVersions();
-      res.json(versions.map(({ contentFileData: _cfd, contentFilePdfData: _cfpd, ...rest }: any) => rest));
+      res.json(versions.map(({ contentFileData: _cfd, ...rest }: any) => rest));
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
@@ -227,7 +227,7 @@ export async function registerRoutes(
     try {
       const version = await storage.getMaterialVersion(req.params.id);
       if (!version) return res.status(404).json({ error: "Material version not found" });
-      const { contentFileData: _cfd, contentFilePdfData: _cfpd, ...rest } = version as any;
+      const { contentFileData: _cfd, ...rest } = version as any;
       res.json(rest);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -253,33 +253,6 @@ export async function registerRoutes(
         isInline
           ? `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`
           : `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
-      );
-      res.setHeader("Content-Length", buffer.length);
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.send(buffer);
-    } catch (e) {
-      res.status(500).json({ error: String(e) });
-    }
-  });
-
-  app.get("/api/material-versions/:id/file-pdf", async (req, res) => {
-    try {
-      const version = await storage.getMaterialVersion(req.params.id);
-      if (!version || !(version as any).contentFilePdfData) {
-        return res.status(404).json({ error: "PDF version not found" });
-      }
-      const fileInfo = version.contentFile as any;
-      const origName = fileInfo?.name || "file";
-      const baseName = origName.includes(".") ? origName.slice(0, origName.lastIndexOf(".")) : origName;
-      const pdfName = `${baseName}.pdf`;
-      const buffer = Buffer.from((version as any).contentFilePdfData, "base64");
-      const isInline = req.query.inline === "true";
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        isInline
-          ? `inline; filename*=UTF-8''${encodeURIComponent(pdfName)}`
-          : `attachment; filename*=UTF-8''${encodeURIComponent(pdfName)}`
       );
       res.setHeader("Content-Length", buffer.length);
       res.setHeader("X-Content-Type-Options", "nosniff");

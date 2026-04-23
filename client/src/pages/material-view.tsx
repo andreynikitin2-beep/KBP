@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
-import { generatePdfFromText } from "@/lib/pdfGenerator";
 import { useLocation, useRoute } from "wouter";
 import {
   ArrowLeft,
@@ -170,8 +169,6 @@ export default function MaterialView() {
   const [editFileName, setEditFileName] = useState("");
   const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
-  const [editFileDataBase64, setEditFileDataBase64] = useState("");
-  const [editPdfDataBase64, setEditPdfDataBase64] = useState("");
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -181,36 +178,17 @@ export default function MaterialView() {
     const detectedType = ext === "docx" ? "docx" : "pdf";
     setEditFileType(detectedType);
     setEditFileName(file.name);
-    setEditFileDataBase64("");
-    setEditPdfDataBase64("");
-    const toBase64 = (f: File): Promise<string> =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => { const r = reader.result as string; resolve(r.split(",")[1] ?? ""); };
-        reader.onerror = reject;
-        reader.readAsDataURL(f);
-      });
-    try {
-      const b64 = await toBase64(file);
-      setEditFileDataBase64(b64);
-      if (detectedType === "docx") {
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const result = await mammoth.extractRawText({ arrayBuffer });
-          const text = result.value;
-          setEditExtractedText(text);
-          toast({ title: "Файл загружен", description: `${file.name} — конвертация в PDF…` });
-          const pdfB64 = await generatePdfFromText(text, file.name.replace(/\.[^.]+$/, ""));
-          setEditPdfDataBase64(pdfB64);
-          toast({ title: "Готово", description: `${file.name} — PDF-версия создана` });
-        } catch {
-          toast({ title: "Файл загружен", description: file.name });
-        }
-      } else {
-        toast({ title: "Файл выбран", description: file.name });
+    if (detectedType === "docx") {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setEditExtractedText(result.value);
+        toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
+      } catch {
+        toast({ title: "Файл загружен", description: file.name });
       }
-    } catch {
-      toast({ title: "Ошибка чтения файла", description: file.name, variant: "destructive" });
+    } else {
+      toast({ title: "Файл выбран", description: file.name });
     }
     e.target.value = "";
   }
@@ -272,16 +250,7 @@ export default function MaterialView() {
           nextReviewAt: computedNextReview.toISOString(),
         },
         content: editContentKind === "file"
-          ? {
-              kind: "file" as const,
-              file: {
-                name: editFileName,
-                type: editFileType,
-                extractedText: editExtractedText,
-                ...(editFileDataBase64 ? { dataBase64: editFileDataBase64 } : {}),
-                ...(editPdfDataBase64 ? { hasPdf: true, pdfBase64: editPdfDataBase64 } : (current?.content.file?.hasPdf ? { hasPdf: true } : {})),
-              },
-            }
+          ? { kind: "file" as const, file: { name: editFileName, type: editFileType, extractedText: editExtractedText } }
           : { kind: "page" as const, page: { html: editPageHtml } },
       } : m
     ));
@@ -298,16 +267,7 @@ export default function MaterialView() {
       reviewPeriodDays: periodRow?.days,
       nextReviewAt: computedNextReview.toISOString(),
       contentKind: editContentKind,
-      contentFile: editContentKind === "file"
-        ? {
-            name: editFileName,
-            type: editFileType,
-            extractedText: editExtractedText,
-            hasPdf: editPdfDataBase64 ? true : (current?.content.file?.hasPdf ?? false),
-          }
-        : null,
-      ...(editFileDataBase64 ? { contentFileData: editFileDataBase64 } : {}),
-      ...(editPdfDataBase64 ? { contentFilePdfData: editPdfDataBase64 } : {}),
+      contentFile: editContentKind === "file" ? { name: editFileName, type: editFileType, extractedText: editExtractedText } : null,
       contentPage: editContentKind === "page" ? { html: editPageHtml } : null,
     }).catch(console.error);
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
@@ -1338,39 +1298,42 @@ export default function MaterialView() {
                                   <div className="text-xs text-muted-foreground">{dv.content.file?.type?.toUpperCase?.() ?? "Файл"}</div>
                                 </div>
                               </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                {/* Предпросмотр — только если тип PDF или есть PDF-версия */}
-                                {(dv.content.file?.type === "pdf" || dv.content.file?.hasPdf) && (
-                                  <Button
-                                    data-testid="button-preview"
-                                    variant="outline"
-                                    className="rounded-xl"
-                                    disabled={previewLoading}
-                                    onClick={async () => {
-                                      setPreviewLoading(true);
-                                      try {
-                                        const url = dv.content.file?.type === "pdf"
-                                          ? `/api/material-versions/${dv.id}/file?inline=true`
-                                          : `/api/material-versions/${dv.id}/file-pdf?inline=true`;
-                                        const resp = await fetch(url);
-                                        if (!resp.ok) throw new Error("Ошибка загрузки файла");
-                                        const blob = await resp.blob();
-                                        if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
-                                        setPreviewBlobUrl(URL.createObjectURL(blob));
-                                        setPreviewOpen(true);
-                                        recordPreview(dv.materialId);
-                                      } catch {
-                                        toast({ title: "Ошибка", description: "Не удалось загрузить файл для предпросмотра", variant: "destructive" });
-                                      } finally {
-                                        setPreviewLoading(false);
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  data-testid="button-preview"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  disabled={previewLoading}
+                                  onClick={async () => {
+                                    setPreviewLoading(true);
+                                    try {
+                                      const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
+                                      if (!resp.ok) throw new Error("Ошибка загрузки файла");
+                                      const blob = await resp.blob();
+                                      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+                                      const url = URL.createObjectURL(blob);
+                                      setPreviewBlobUrl(url);
+                                      if (dv.content.file?.type === "docx") {
+                                        try {
+                                          const arrayBuffer = await blob.arrayBuffer();
+                                          const result = await mammoth.extractRawText({ arrayBuffer });
+                                          setPreviewDocxText(result.value);
+                                        } catch {
+                                          setPreviewDocxText(dv.content.file?.extractedText || null);
+                                        }
                                       }
-                                    }}
-                                  >
-                                    {previewLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
-                                    Предпросмотр PDF
-                                  </Button>
-                                )}
-                                {/* Скачать оригинал */}
+                                      setPreviewOpen(true);
+                                      recordPreview(dv.materialId);
+                                    } catch {
+                                      toast({ title: "Ошибка", description: "Не удалось загрузить файл для предпросмотра", variant: "destructive" });
+                                    } finally {
+                                      setPreviewLoading(false);
+                                    }
+                                  }}
+                                >
+                                  {previewLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
+                                  Предпросмотр
+                                </Button>
                                 <Button
                                   data-testid="button-download"
                                   variant="secondary"
@@ -1386,37 +1349,13 @@ export default function MaterialView() {
                                     a.href = `/api/material-versions/${dv.id}/file`;
                                     a.download = downloadName;
                                     a.click();
-                                    recordDownload(dv.materialId, "original");
-                                    toast({ title: "Скачивание", description: `Оригинал: ${downloadName}` });
+                                    recordDownload(dv.materialId);
+                                    toast({ title: "Скачивание", description: `Файл: ${downloadName}` });
                                   }}
                                 >
                                   <FileDown className="mr-2 h-4 w-4" />
-                                  {dv.content.file?.hasPdf ? "Скачать оригинал" : "Скачать"}
+                                  Скачать
                                 </Button>
-                                {/* Скачать PDF-версию (только если есть конвертированный PDF) */}
-                                {dv.content.file?.hasPdf && (
-                                  <Button
-                                    data-testid="button-download-pdf"
-                                    variant="default"
-                                    className="rounded-xl"
-                                    onClick={() => {
-                                      const originalName = dv.content.file?.name || "file";
-                                      const baseName = originalName.includes(".") ? originalName.slice(0, originalName.lastIndexOf(".")) : originalName;
-                                      const pdfName = isViewingOldVersion
-                                        ? `${baseName} версия №${dv.version} НЕАКТУАЛЬНАЯ.pdf`
-                                        : `${baseName}.pdf`;
-                                      const a = document.createElement("a");
-                                      a.href = `/api/material-versions/${dv.id}/file-pdf`;
-                                      a.download = pdfName;
-                                      a.click();
-                                      recordDownload(dv.materialId, "pdf");
-                                      toast({ title: "Скачивание", description: `PDF: ${pdfName}` });
-                                    }}
-                                  >
-                                    <FileDown className="mr-2 h-4 w-4" />
-                                    Скачать PDF
-                                  </Button>
-                                )}
                               </div>
                             </div>
                           </Card>
@@ -1798,14 +1737,7 @@ export default function MaterialView() {
                                     className="flex items-center justify-between rounded-2xl border bg-muted/20 px-3 py-2"
                                     data-testid={`row-download-audit-${idx}`}
                                   >
-                                    <div className="flex items-center gap-2">
-                                      <div className="text-sm">{who}</div>
-                                      {d.fileKind && (
-                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${d.fileKind === "pdf" ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"}`}>
-                                          {d.fileKind === "pdf" ? "PDF" : "ОРИГИНАЛ"}
-                                        </span>
-                                      )}
-                                    </div>
+                                    <div className="text-sm">{who}</div>
                                     <div className="text-xs text-muted-foreground">{fmt(d.at)}</div>
                                   </div>
                                 );
@@ -1998,16 +1930,28 @@ export default function MaterialView() {
             </DialogTitle>
           </DialogHeader>
           <div style={{ flex: 1, minHeight: 0, padding: "12px" }}>
-            {previewBlobUrl ? (
+            {dv?.content.file?.type === "pdf" && previewBlobUrl ? (
               <iframe
                 data-testid="iframe-preview-pdf"
                 src={previewBlobUrl}
-                title={dv?.content.file?.name}
+                title={dv.content.file?.name}
                 style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
               />
+            ) : dv?.content.file?.type === "docx" ? (
+              <div style={{ height: "100%", overflowY: "auto" }} className="rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
+                <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <span className="inline-block rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">DOCX — извлечённый текст</span>
+                  <span>Полный рендеринг DOCX недоступен в браузере. Скачайте файл для просмотра форматирования.</span>
+                </div>
+                {previewDocxText ? (
+                  <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{previewDocxText}</pre>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Текст не извлечён. Скачайте файл для просмотра.</div>
+                )}
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-                Загрузка предпросмотра…
+                Предпросмотр недоступен для данного типа файла.
               </div>
             )}
           </div>
