@@ -1777,8 +1777,34 @@ export default function Admin() {
                               <Input data-testid="input-grp-title" id="grp-title" value={grpTitle} onChange={(e) => setGrpTitle(e.target.value)} placeholder="Название группы" className="mt-1" />
                             </div>
                             <div>
-                              <Label>Участники ({grpMembers.length} выбрано)</Label>
-                              <div className="relative mt-1 mb-1">
+                              <Label>Участники</Label>
+                              {grpMembers.length > 0 && (
+                                <div className="mt-1 mb-2 flex flex-wrap gap-1 rounded-lg border bg-muted/20 p-2 min-h-[36px]" data-testid="selected-grp-members">
+                                  {grpMembers.map((id) => {
+                                    const u = activeUsers.find((u) => u.id === id);
+                                    if (!u) return null;
+                                    return (
+                                      <span key={id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary" data-testid={`tag-grp-member-${id}`}>
+                                        {u.displayName}
+                                        <button
+                                          type="button"
+                                          data-testid={`remove-grp-member-${id}`}
+                                          onClick={() => setGrpMembers((prev) => prev.filter((x) => x !== id))}
+                                          className="ml-0.5 rounded-full hover:bg-primary/20 p-0.5 leading-none"
+                                        >
+                                          <X className="h-2.5 w-2.5" />
+                                        </button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {grpMembers.length === 0 && (
+                                <div className="mt-1 mb-2 rounded-lg border border-dashed bg-muted/10 p-2 text-xs text-muted-foreground">
+                                  Никто не выбран
+                                </div>
+                              )}
+                              <div className="relative mb-1">
                                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                                 <Input
                                   data-testid="input-grp-member-search"
@@ -1788,7 +1814,7 @@ export default function Admin() {
                                   className="pl-8 h-8 rounded-lg text-sm"
                                 />
                               </div>
-                              <div className="mt-1 max-h-44 overflow-y-auto space-y-1 border rounded-lg p-2">
+                              <div className="max-h-40 overflow-y-auto space-y-1 border rounded-lg p-2">
                                 {activeUsers.filter((u) =>
                                   grpMemberSearch.trim() === "" ||
                                   u.displayName.toLowerCase().includes(grpMemberSearch.toLowerCase()) ||
