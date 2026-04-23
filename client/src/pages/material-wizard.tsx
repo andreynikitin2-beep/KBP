@@ -20,10 +20,10 @@ import { getSectionPath, validatePassport } from "@/lib/kbLogic";
 import { api } from "@/lib/api";
 
 function nextVersionLike(prev?: string) {
-  if (!prev) return "0.1";
+  if (!prev) return "1.0";
   const [a, b] = prev.split(".").map((x) => Number(x));
   if (Number.isFinite(a) && Number.isFinite(b)) return `${a}.${b + 1}`;
-  return "0.1";
+  return "1.0";
 }
 
 export default function MaterialWizard() {

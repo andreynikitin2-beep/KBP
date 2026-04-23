@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   BadgeCheck,
   CalendarClock,
+  ChevronDown,
   CircleAlert,
   Eye,
   FileDown,
@@ -43,6 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import type { Criticality, MaterialVersion, VisibilityGroup, User } from "@/lib/mockData";
 import { api } from "@/lib/api";
@@ -293,6 +295,14 @@ export default function MaterialView() {
     if (current.passport.ownerId === me.id || current.passport.deputyId === me.id) return true;
     return false;
   }, [current, isAdmin, catalogNodes, me.id]);
+
+  const [nextMinorVersion, nextMajorVersion] = useMemo(() => {
+    if (!current) return ["1.1", "2.0"];
+    const parts = current.version.split(".");
+    const maj = parseInt(parts[0], 10) || 1;
+    const min = parseInt(parts[1], 10) || 0;
+    return [`${maj}.${min + 1}`, `${maj + 1}.0`];
+  }, [current]);
 
   const editPassportDraft: MaterialVersion["passport"] | null = isDraft ? {
     title: editTitle,
@@ -1434,22 +1444,48 @@ export default function MaterialView() {
                         </div>
                       </div>
                       {(current.status === "Опубликовано" || current.status === "На пересмотре") && (
-                        <Button
-                          data-testid="button-create-new-version"
-                          className="rounded-xl shrink-0"
-                          onClick={() => {
-                            const res = createNewVersion(current.materialId);
-                            if (res.ok) {
-                              toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
-                              setActiveTab("passport");
-                            } else {
-                              toast({ title: "Ошибка", description: res.message, variant: "destructive" });
-                            }
-                          }}
-                        >
-                          <FilePlus2 className="mr-2 h-4 w-4" />
-                          Создать новую версию
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button data-testid="button-create-new-version" className="rounded-xl shrink-0">
+                              <FilePlus2 className="mr-2 h-4 w-4" />
+                              Создать новую версию
+                              <ChevronDown className="ml-2 h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              data-testid="button-create-minor-version"
+                              onClick={() => {
+                                const res = createNewVersion(current.materialId, false);
+                                if (res.ok) {
+                                  toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
+                                  setActiveTab("passport");
+                                } else {
+                                  toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <FilePlus2 className="mr-2 h-4 w-4" />
+                              Минорная версия — {nextMinorVersion}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              data-testid="button-create-major-version"
+                              onClick={() => {
+                                const res = createNewVersion(current.materialId, true);
+                                if (res.ok) {
+                                  toast({ title: "Новая версия создана", description: `Версия ${res.version?.version} создана как черновик.` });
+                                  setActiveTab("passport");
+                                } else {
+                                  toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <GitBranch className="mr-2 h-4 w-4" />
+                              Мажорная версия — {nextMajorVersion}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </div>
                   </div>

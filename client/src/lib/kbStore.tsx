@@ -176,6 +176,18 @@ const defaultAdIntegration: ADIntegration = {
   syncLog: [],
 };
 
+function parseVersionNum(v: string): [number, number] {
+  const parts = v.split(".");
+  return [parseInt(parts[0], 10) || 0, parseInt(parts[1], 10) || 0];
+}
+
+function compareVersionDesc(a: string, b: string): number {
+  const [am, an] = parseVersionNum(a);
+  const [bm, bn] = parseVersionNum(b);
+  if (bm !== am) return bm - am;
+  return bn - an;
+}
+
 function computeNextReview(
   criticality: MaterialVersion["passport"]["criticality"],
   lastReviewedAtIso: string,
@@ -1167,7 +1179,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       createNewVersion: (materialId: string, majorBump?: boolean) => {
         const allVersions = materials
           .filter((m) => m.materialId === materialId)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          .sort((a, b) => compareVersionDesc(a.version, b.version));
         const current = allVersions[0];
         if (!current) return { ok: false, message: "Материал не найден" };
 
@@ -1214,7 +1226,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       getAllVersions: (materialId: string) => {
         return materials
           .filter((m) => m.materialId === materialId)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          .sort((a, b) => compareVersionDesc(a.version, b.version));
       },
 
       viewOldVersion: (versionId: string) => {
