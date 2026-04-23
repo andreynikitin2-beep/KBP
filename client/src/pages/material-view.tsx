@@ -1894,9 +1894,9 @@ export default function MaterialView() {
             {dv?.content.file?.type === "pdf" ? (
               <iframe
                 data-testid="iframe-preview-pdf"
-                src={`/api/material-versions/${dv.id}/file`}
+                src={`/api/material-versions/${dv.id}/file?inline=true`}
                 title={dv.content.file?.name}
-                className="w-full h-full rounded-xl border"
+                className="w-full h-full rounded-xl border bg-white"
                 style={{ minHeight: "400px" }}
               />
             ) : dv?.content.file?.type === "docx" ? (

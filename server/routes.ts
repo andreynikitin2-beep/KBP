@@ -246,9 +246,16 @@ export async function registerRoutes(
         : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       const fileName = fileInfo?.name || "file";
       const buffer = Buffer.from((version as any).contentFileData, "base64");
+      const isInline = req.query.inline === "true";
       res.setHeader("Content-Type", mimeType);
-      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
+      res.setHeader(
+        "Content-Disposition",
+        isInline
+          ? `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`
+          : `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      );
       res.setHeader("Content-Length", buffer.length);
+      res.setHeader("X-Content-Type-Options", "nosniff");
       res.send(buffer);
     } catch (e) {
       res.status(500).json({ error: String(e) });
