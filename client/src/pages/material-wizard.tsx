@@ -79,7 +79,7 @@ export default function MaterialWizard() {
         try {
           const arrayBuffer = await file.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer });
-          setExtractedText(result.value.slice(0, 2000));
+          setExtractedText(result.value);
           toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
         } catch {
           toast({ title: "Файл загружен", description: file.name, variant: "default" });

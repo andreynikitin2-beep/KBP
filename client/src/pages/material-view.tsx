@@ -130,6 +130,7 @@ export default function MaterialView() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewDocxText, setPreviewDocxText] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [returnComment, setReturnComment] = useState("");
   const [rfcTitle, setRfcTitle] = useState("");
@@ -181,7 +182,7 @@ export default function MaterialView() {
       try {
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.extractRawText({ arrayBuffer });
-        setEditExtractedText(result.value.slice(0, 2000));
+        setEditExtractedText(result.value);
         toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
       } catch {
         toast({ title: "Файл загружен", description: file.name });
@@ -1312,6 +1313,15 @@ export default function MaterialView() {
                                       if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
                                       const url = URL.createObjectURL(blob);
                                       setPreviewBlobUrl(url);
+                                      if (dv.content.file?.type === "docx") {
+                                        try {
+                                          const arrayBuffer = await blob.arrayBuffer();
+                                          const result = await mammoth.extractRawText({ arrayBuffer });
+                                          setPreviewDocxText(result.value);
+                                        } catch {
+                                          setPreviewDocxText(dv.content.file?.extractedText || null);
+                                        }
+                                      }
                                       setPreviewOpen(true);
                                       recordPreview(dv.materialId);
                                     } catch {
@@ -1903,9 +1913,9 @@ export default function MaterialView() {
         open={previewOpen}
         onOpenChange={(open) => {
           setPreviewOpen(open);
-          if (!open && previewBlobUrl) {
-            URL.revokeObjectURL(previewBlobUrl);
-            setPreviewBlobUrl(null);
+          if (!open) {
+            if (previewBlobUrl) { URL.revokeObjectURL(previewBlobUrl); setPreviewBlobUrl(null); }
+            setPreviewDocxText(null);
           }
         }}
       >
@@ -1933,8 +1943,8 @@ export default function MaterialView() {
                   <span className="inline-block rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">DOCX — извлечённый текст</span>
                   <span>Полный рендеринг DOCX недоступен в браузере. Скачайте файл для просмотра форматирования.</span>
                 </div>
-                {dv.content.file?.extractedText ? (
-                  <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{dv.content.file.extractedText}</pre>
+                {previewDocxText ? (
+                  <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{previewDocxText}</pre>
                 ) : (
                   <div className="text-sm text-muted-foreground">Текст не извлечён. Скачайте файл для просмотра.</div>
                 )}
