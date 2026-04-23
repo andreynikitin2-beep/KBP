@@ -42,6 +42,7 @@ export default function Catalog() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [ownerDialog, setOwnerDialog] = useState<CatalogNode | null>(null);
   const [selectedOwnerIds, setSelectedOwnerIds] = useState<string[]>([]);
+  const [ownerSearch, setOwnerSearch] = useState("");
   const [addSubDialog, setAddSubDialog] = useState<string | null>(null);
   const [newSubTitle, setNewSubTitle] = useState("");
   const [renameDialog, setRenameDialog] = useState<{ id: string; title: string } | null>(null);
@@ -458,15 +459,30 @@ export default function Catalog() {
         </div>
       </div>
 
-      <Dialog open={!!ownerDialog} onOpenChange={(open) => !open && setOwnerDialog(null)}>
+      <Dialog open={!!ownerDialog} onOpenChange={(open) => { if (!open) { setOwnerDialog(null); setOwnerSearch(""); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Владельцы раздела «{ownerDialog?.title}»</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-2">
             <div className="text-sm text-muted-foreground">Выберите пользователей, которые будут управлять подразделами.</div>
-            <div className="max-h-[300px] overflow-y-auto space-y-2">
-              {users.filter((u) => !u.deactivatedAt).map((u) => (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                data-testid="input-owner-search"
+                placeholder="Поиск сотрудника…"
+                value={ownerSearch}
+                onChange={(e) => setOwnerSearch(e.target.value)}
+                className="pl-8 rounded-xl h-9 text-sm"
+              />
+            </div>
+            <div className="max-h-[280px] overflow-y-auto space-y-1">
+              {users.filter((u) => !u.deactivatedAt && (
+                ownerSearch.trim() === "" ||
+                u.displayName.toLowerCase().includes(ownerSearch.toLowerCase()) ||
+                (u.department || "").toLowerCase().includes(ownerSearch.toLowerCase()) ||
+                u.roles.join(" ").toLowerCase().includes(ownerSearch.toLowerCase())
+              )).map((u) => (
                 <label key={u.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted/50 cursor-pointer">
                   <Checkbox
                     data-testid={`checkbox-owner-${u.id}`}
@@ -483,9 +499,18 @@ export default function Catalog() {
                   </div>
                 </label>
               ))}
+              {users.filter((u) => !u.deactivatedAt).length > 0 &&
+                users.filter((u) => !u.deactivatedAt && (
+                  ownerSearch.trim() === "" ||
+                  u.displayName.toLowerCase().includes(ownerSearch.toLowerCase()) ||
+                  (u.department || "").toLowerCase().includes(ownerSearch.toLowerCase()) ||
+                  u.roles.join(" ").toLowerCase().includes(ownerSearch.toLowerCase())
+                )).length === 0 && (
+                <div className="text-sm text-muted-foreground text-center py-4">Сотрудники не найдены</div>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setOwnerDialog(null)} data-testid="button-cancel-owners">
+              <Button variant="outline" onClick={() => { setOwnerDialog(null); setOwnerSearch(""); }} data-testid="button-cancel-owners">
                 Отмена
               </Button>
               <Button
