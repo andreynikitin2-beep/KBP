@@ -18,6 +18,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Send,
   Settings,
   Shield,
@@ -591,6 +592,7 @@ export default function Admin() {
   const [grpDlgOpen, setGrpDlgOpen] = useState(false);
   const [grpTitle, setGrpTitle] = useState("");
   const [grpMembers, setGrpMembers] = useState<string[]>([]);
+  const [grpMemberSearch, setGrpMemberSearch] = useState("");
 
   const [adEditing, setAdEditing] = useState(false);
   const [adEnabled, setAdEnabled] = useState(false);
@@ -974,6 +976,7 @@ export default function Admin() {
       setGrpDlgOpen(false);
       setGrpTitle("");
       setGrpMembers([]);
+      setGrpMemberSearch("");
     } else {
       toast({ title: "Ошибка", description: res.message, variant: "destructive" });
     }
@@ -1757,7 +1760,7 @@ export default function Admin() {
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-4">
                       <div className="text-sm font-semibold">Группы видимости</div>
-                      <Dialog open={grpDlgOpen} onOpenChange={setGrpDlgOpen}>
+                      <Dialog open={grpDlgOpen} onOpenChange={(open) => { setGrpDlgOpen(open); if (!open) setGrpMemberSearch(""); }}>
                         <DialogTrigger asChild>
                           <Button data-testid="button-create-group" className="rounded-xl" variant="outline">
                             <UserPlus className="mr-2 h-4 w-4" />
@@ -1775,8 +1778,22 @@ export default function Admin() {
                             </div>
                             <div>
                               <Label>Участники ({grpMembers.length} выбрано)</Label>
-                              <div className="mt-1 max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2">
-                                {activeUsers.map((u) => (
+                              <div className="relative mt-1 mb-1">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                                <Input
+                                  data-testid="input-grp-member-search"
+                                  placeholder="Поиск сотрудника…"
+                                  value={grpMemberSearch}
+                                  onChange={(e) => setGrpMemberSearch(e.target.value)}
+                                  className="pl-8 h-8 rounded-lg text-sm"
+                                />
+                              </div>
+                              <div className="mt-1 max-h-44 overflow-y-auto space-y-1 border rounded-lg p-2">
+                                {activeUsers.filter((u) =>
+                                  grpMemberSearch.trim() === "" ||
+                                  u.displayName.toLowerCase().includes(grpMemberSearch.toLowerCase()) ||
+                                  (u.department || "").toLowerCase().includes(grpMemberSearch.toLowerCase())
+                                ).map((u) => (
                                   <label key={u.id} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-muted/50">
                                     <Checkbox
                                       data-testid={`checkbox-grp-member-${u.id}`}
@@ -1790,6 +1807,13 @@ export default function Admin() {
                                     <span className="text-sm">{u.displayName}</span>
                                   </label>
                                 ))}
+                                {activeUsers.length > 0 && activeUsers.filter((u) =>
+                                  grpMemberSearch.trim() === "" ||
+                                  u.displayName.toLowerCase().includes(grpMemberSearch.toLowerCase()) ||
+                                  (u.department || "").toLowerCase().includes(grpMemberSearch.toLowerCase())
+                                ).length === 0 && (
+                                  <div className="text-xs text-muted-foreground text-center py-3">Сотрудники не найдены</div>
+                                )}
                               </div>
                             </div>
                             <Button data-testid="button-submit-create-group" className="w-full rounded-xl mt-2" onClick={handleCreateGroup}>
