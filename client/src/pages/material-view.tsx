@@ -98,7 +98,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, newHireAssignments, acknowledgeAssignment, newHiresEnabled } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -127,6 +127,7 @@ export default function MaterialView() {
   const isViewingOldVersion = displayVersion !== null && current !== null && displayVersion.id !== current.id;
 
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [returnComment, setReturnComment] = useState("");
   const [rfcTitle, setRfcTitle] = useState("");
   const [rfcText, setRfcText] = useState("");
@@ -1295,6 +1296,18 @@ export default function MaterialView() {
                               </div>
                               <div className="flex items-center gap-2">
                                 <Button
+                                  data-testid="button-preview"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={() => {
+                                    setPreviewOpen(true);
+                                    recordPreview(dv.materialId);
+                                  }}
+                                >
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  Предпросмотр
+                                </Button>
+                                <Button
                                   data-testid="button-download"
                                   variant="secondary"
                                   className="rounded-xl"
@@ -1315,17 +1328,6 @@ export default function MaterialView() {
                                 >
                                   <FileDown className="mr-2 h-4 w-4" />
                                   Скачать
-                                </Button>
-                                <Button
-                                  data-testid="button-deeplink-pdf"
-                                  variant="outline"
-                                  className="rounded-xl"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(`${location.origin}/materials/${dv.materialId}?page=3`);
-                                    toast({ title: "Ссылка скопирована", description: "Глубокая ссылка на PDF (страница 3)" });
-                                  }}
-                                >
-                                  Глубокая ссылка
                                 </Button>
                               </div>
                             </div>
@@ -1659,33 +1661,63 @@ export default function MaterialView() {
                       </Card>
 
                       {dv.content.kind === "file" && (
-                        <Card className="p-4">
-                          <div className="flex items-center gap-2">
-                            <FileDown className="h-4 w-4 text-muted-foreground" />
-                            <div className="text-sm font-semibold">Аудит скачиваний</div>
-                            <Badge variant="secondary" className="kb-chip" data-testid="badge-download-audit-count">
-                              {(dv.auditDownloads || []).length}
-                            </Badge>
-                          </div>
-                          <div className="mt-3 grid gap-2" data-testid="list-download-audit">
-                            {(dv.auditDownloads || []).length === 0 && (
-                              <div className="text-sm text-muted-foreground">Скачиваний не зафиксировано</div>
-                            )}
-                            {(dv.auditDownloads || []).slice(0, 20).map((d, idx) => {
-                              const who = users.find((u) => u.id === d.userId)?.displayName || d.userId;
-                              return (
-                                <div
-                                  key={idx}
-                                  className="flex items-center justify-between rounded-2xl border bg-muted/20 px-3 py-2"
-                                  data-testid={`row-download-audit-${idx}`}
-                                >
-                                  <div className="text-sm">{who}</div>
-                                  <div className="text-xs text-muted-foreground">{fmt(d.at)}</div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </Card>
+                        <>
+                          <Card className="p-4">
+                            <div className="flex items-center gap-2">
+                              <Eye className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-sm font-semibold">Аудит предпросмотров</div>
+                              <Badge variant="secondary" className="kb-chip" data-testid="badge-preview-audit-count">
+                                {(dv.auditPreviews || []).length}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 grid gap-2" data-testid="list-preview-audit">
+                              {(dv.auditPreviews || []).length === 0 && (
+                                <div className="text-sm text-muted-foreground">Предпросмотров не зафиксировано</div>
+                              )}
+                              {(dv.auditPreviews || []).slice(0, 20).map((p, idx) => {
+                                const who = users.find((u) => u.id === p.userId)?.displayName || p.userId;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center justify-between rounded-2xl border bg-muted/20 px-3 py-2"
+                                    data-testid={`row-preview-audit-${idx}`}
+                                  >
+                                    <div className="text-sm">{who}</div>
+                                    <div className="text-xs text-muted-foreground">{fmt(p.at)}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+
+                          <Card className="p-4">
+                            <div className="flex items-center gap-2">
+                              <FileDown className="h-4 w-4 text-muted-foreground" />
+                              <div className="text-sm font-semibold">Аудит скачиваний</div>
+                              <Badge variant="secondary" className="kb-chip" data-testid="badge-download-audit-count">
+                                {(dv.auditDownloads || []).length}
+                              </Badge>
+                            </div>
+                            <div className="mt-3 grid gap-2" data-testid="list-download-audit">
+                              {(dv.auditDownloads || []).length === 0 && (
+                                <div className="text-sm text-muted-foreground">Скачиваний не зафиксировано</div>
+                              )}
+                              {(dv.auditDownloads || []).slice(0, 20).map((d, idx) => {
+                                const who = users.find((u) => u.id === d.userId)?.displayName || d.userId;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="flex items-center justify-between rounded-2xl border bg-muted/20 px-3 py-2"
+                                    data-testid={`row-download-audit-${idx}`}
+                                  >
+                                    <div className="text-sm">{who}</div>
+                                    <div className="text-xs text-muted-foreground">{fmt(d.at)}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </Card>
+                        </>
                       )}
 
                       {(() => {
@@ -1849,6 +1881,44 @@ export default function MaterialView() {
           </Card>
         </div>
       </div>
+      {/* Диалог предпросмотра файла */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl w-full h-[85vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-4 pt-4 pb-2 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Eye className="h-4 w-4 text-muted-foreground" />
+              Предпросмотр: {dv?.content.file?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden px-4 pb-4">
+            {dv?.content.file?.type === "pdf" ? (
+              <iframe
+                data-testid="iframe-preview-pdf"
+                src={`/api/material-versions/${dv.id}/file`}
+                title={dv.content.file?.name}
+                className="w-full h-full rounded-xl border"
+                style={{ minHeight: "400px" }}
+              />
+            ) : dv?.content.file?.type === "docx" ? (
+              <div className="h-full overflow-y-auto rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
+                <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
+                  <span className="inline-block rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">DOCX — извлечённый текст</span>
+                  <span>Полный рендеринг DOCX недоступен в браузере. Скачайте файл для просмотра форматирования.</span>
+                </div>
+                {dv.content.file?.extractedText ? (
+                  <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{dv.content.file.extractedText}</pre>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Текст не извлечён. Скачайте файл для просмотра.</div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                Предпросмотр недоступен для данного типа файла.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

@@ -57,7 +57,8 @@ function dbMaterialToFrontend(
   dbMat: any,
   subscribers: string[],
   auditViews: { userId: string; at: string }[],
-  auditDownloads: { userId: string; at: string }[] = []
+  auditDownloads: { userId: string; at: string }[] = [],
+  auditPreviews: { userId: string; at: string }[] = []
 ): MaterialVersion {
   return {
     id: dbMat.id,
@@ -101,11 +102,12 @@ function dbMaterialToFrontend(
     },
     auditViews,
     auditDownloads,
+    auditPreviews,
   };
 }
 
 function frontendMaterialToDb(mat: MaterialVersion): any {
-  const { passport, content, stats, subscribers: _s, auditViews: _a, auditDownloads: _d, ...rest } = mat;
+  const { passport, content, stats, subscribers: _s, auditViews: _a, auditDownloads: _d, auditPreviews: _p, ...rest } = mat;
   return {
     ...rest,
     title: passport.title,

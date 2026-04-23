@@ -110,6 +110,7 @@ export type MaterialVersion = {
   stats: { views: number; helpfulYes: number; helpfulNo: number };
   auditViews: { userId: string; at: string }[];
   auditDownloads: { userId: string; at: string }[];
+  auditPreviews: { userId: string; at: string }[];
 };
 
 export type RFC = {
@@ -425,6 +426,7 @@ export const materials: MaterialVersion[] = [
       { userId: "u-reader", at: iso(days(-1)) },
     ],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-100-0",
@@ -460,6 +462,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 189, helpfulYes: 42, helpfulNo: 8 },
     auditViews: [],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-100-prev",
@@ -495,6 +498,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 245, helpfulYes: 58, helpfulNo: 10 },
     auditViews: [],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-101-1",
@@ -530,6 +534,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 48, helpfulYes: 9, helpfulNo: 1 },
     auditViews: [],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-102-2",
@@ -564,6 +569,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 7, helpfulYes: 2, helpfulNo: 0 },
     auditViews: [{ userId: "u-sec", at: iso(days(-1)) }],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-103-1",
@@ -600,6 +606,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 5, helpfulYes: 0, helpfulNo: 0 },
     auditViews: [],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-104-1",
@@ -640,6 +647,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 189, helpfulYes: 45, helpfulNo: 3 },
     auditViews: [{ userId: "u-sec", at: iso(days(-1)) }],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-105-1",
@@ -676,6 +684,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 12, helpfulYes: 3, helpfulNo: 0 },
     auditViews: [],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-106-1",
@@ -714,6 +723,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 87, helpfulYes: 22, helpfulNo: 1 },
     auditViews: [{ userId: "u-sec", at: iso(days(-3)) }],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-107-1",
@@ -749,6 +759,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 3, helpfulYes: 0, helpfulNo: 0 },
     auditViews: [],
     auditDownloads: [],
+    auditPreviews: [],
   },
   {
     id: "v-108-1",
@@ -786,6 +797,7 @@ export const materials: MaterialVersion[] = [
     stats: { views: 256, helpfulYes: 67, helpfulNo: 4 },
     auditViews: [{ userId: "u-aud", at: iso(days(-5)) }],
     auditDownloads: [],
+    auditPreviews: [],
   },
 ];
 

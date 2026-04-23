@@ -107,6 +107,7 @@ type Store = {
 
   recordView: (materialId: string) => void;
   recordDownload: (materialId: string) => void;
+  recordPreview: (materialId: string) => void;
   viewDedupMinutes: number;
 
   subscriptions: string[];
@@ -1122,6 +1123,24 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         }
       },
 
+      recordPreview: (materialId: string) => {
+        const version = materials.find(
+          (m) => m.materialId === materialId && m.status !== "Архив",
+        ) || materials.find((m) => m.materialId === materialId);
+        if (version) {
+          setMaterials((prev) =>
+            prev.map((m) =>
+              m.id === version.id
+                ? {
+                    ...m,
+                    auditPreviews: [{ userId: meId, at: new Date().toISOString() }, ...(m.auditPreviews || [])].slice(0, 200),
+                  }
+                : m,
+            ),
+          );
+        }
+      },
+
       viewDedupMinutes: VIEW_DEDUP_MINUTES,
 
       subscriptions: mySubscriptions,
@@ -1170,6 +1189,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           stats: { views: 0, helpfulYes: 0, helpfulNo: 0 },
           auditViews: [],
           auditDownloads: [],
+          auditPreviews: [],
         };
 
         setMaterials((prev) => {
