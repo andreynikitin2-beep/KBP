@@ -117,6 +117,8 @@ type Store = {
   createNewVersion: (materialId: string, majorBump?: boolean) => { ok: boolean; version?: MaterialVersion; message?: string };
   getAllVersions: (materialId: string) => MaterialVersion[];
   viewOldVersion: (versionId: string) => MaterialVersion | undefined;
+  archiveMaterial: (materialId: string) => { ok: boolean; message?: string };
+  restoreMaterial: (materialId: string) => { ok: boolean; message?: string };
 
   emailConfig: EmailConfig;
   emailTemplates: EmailTemplate[];
@@ -418,7 +420,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       }
     }
     const visibleMaterials = Array.from(latestByMaterial.values()).filter((m) =>
-      canViewMaterial(me, m, groups, effectiveVisGroupMap[m.materialId]),
+      m.status !== "Архив" && canViewMaterial(me, m, groups, effectiveVisGroupMap[m.materialId]),
     );
 
     return {
@@ -1217,6 +1219,27 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
       viewOldVersion: (versionId: string) => {
         return materials.find((m) => m.id === versionId);
+      },
+
+      archiveMaterial: (materialId: string) => {
+        const current = materials.find((m) => m.materialId === materialId && m.status !== "Архив");
+        if (!current) return { ok: false, message: "Материал уже в архиве или не найден" };
+        const now = new Date().toISOString();
+        setMaterials((prev) =>
+          prev.map((m) => m.id === current.id ? { ...m, status: "Архив" as MaterialVersion["status"], archivedBy: meId, archivedAt: now } : m)
+        );
+        api.updateMaterialVersionRaw(current.id, { status: "Архив", archivedBy: meId, archivedAt: now } as any).catch(console.error);
+        return { ok: true };
+      },
+
+      restoreMaterial: (materialId: string) => {
+        const archived = materials.find((m) => m.materialId === materialId && m.status === "Архив");
+        if (!archived) return { ok: false, message: "Архивный материал не найден" };
+        setMaterials((prev) =>
+          prev.map((m) => m.id === archived.id ? { ...m, status: "Опубликовано" as MaterialVersion["status"], archivedBy: undefined, archivedAt: undefined } : m)
+        );
+        api.updateMaterialVersionRaw(archived.id, { status: "Опубликовано", archivedBy: null, archivedAt: null } as any).catch(console.error);
+        return { ok: true };
       },
 
       setSectionOwners: (sectionId: string, ownerIds: string[]) => {

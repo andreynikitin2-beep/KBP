@@ -11,6 +11,7 @@ import Admin from "@/pages/admin";
 import Subscriptions from "@/pages/subscriptions";
 import MyMaterials from "@/pages/my-materials";
 import MyOnboarding from "@/pages/my-onboarding";
+import ArchivePage from "@/pages/archive";
 import LoginPage from "@/pages/login";
 import { useKB } from "@/lib/kbStore";
 
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/subscriptions" component={Subscriptions} />
       <Route path="/my-materials" component={MyMaterials} />
       <Route path="/my-onboarding" component={MyOnboarding} />
+      <Route path="/archive" component={ArchivePage} />
       <Route path="/materials/new" component={MaterialWizard} />
       <Route path="/materials/:id" component={MaterialView} />
       <Route path="/admin" component={Admin} />

@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useMemo, useState } from "react";
 import {
+  Archive,
   BookOpen,
   Building2,
   ChevronRight,
@@ -30,6 +31,7 @@ const allNav = [
   { href: "/catalog", label: "Каталог", icon: BookOpen, roles: null },
   { href: "/subscriptions", label: "Мои подписки", icon: Heart, roles: null },
   { href: "/my-materials", label: "Мои материалы", icon: ClipboardCheck, roles: ["Владелец", "Заместитель владельца"] as string[] },
+  { href: "/archive", label: "Архив", icon: Archive, roles: ["Администратор", "Владелец", "Заместитель владельца"] as string[] },
   { href: "/my-onboarding", label: "Адаптация", icon: GraduationCap, roles: null },
   { href: "/materials/new", label: "Создать", icon: FilePlus2, roles: ["Автор", "Владелец", "Заместитель владельца", "Администратор"] as string[] },
   { href: "/admin", label: "Администрирование", icon: Settings2, roles: ["Администратор"] as string[] },

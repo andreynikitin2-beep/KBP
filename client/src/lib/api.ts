@@ -103,6 +103,8 @@ function dbMaterialToFrontend(
     auditViews,
     auditDownloads,
     auditPreviews,
+    archivedBy: dbMat.archivedBy ?? undefined,
+    archivedAt: dbMat.archivedAt ? (typeof dbMat.archivedAt === "string" ? dbMat.archivedAt : new Date(dbMat.archivedAt).toISOString()) : undefined,
   };
 }
 

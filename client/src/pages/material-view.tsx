@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation, useRoute } from "wouter";
 import {
+  Archive,
   ArrowLeft,
   BadgeCheck,
   CalendarClock,
@@ -42,6 +43,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import type { Criticality, MaterialVersion, VisibilityGroup, User } from "@/lib/mockData";
 import { api } from "@/lib/api";
 
@@ -99,7 +101,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled } = useKB();
+  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled, archiveMaterial, restoreMaterial } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -282,6 +284,15 @@ export default function MaterialView() {
   const canConfirm = current ? canConfirmActuality(me, current) : false;
   const dueDays = current ? daysToNextReview(current) : null;
   const canRate = current ? canRateToday(current.materialId) : false;
+
+  const canArchiveCurrent = useMemo(() => {
+    if (!current || current.status === "Архив") return false;
+    if (isAdmin) return true;
+    const sectionNode = catalogNodes.find((n) => n.id === current.passport.sectionId);
+    if (sectionNode && (sectionNode.ownerIds ?? []).includes(me.id)) return true;
+    if (current.passport.ownerId === me.id || current.passport.deputyId === me.id) return true;
+    return false;
+  }, [current, isAdmin, catalogNodes, me.id]);
 
   const editPassportDraft: MaterialVersion["passport"] | null = isDraft ? {
     title: editTitle,
@@ -835,10 +846,50 @@ export default function MaterialView() {
                     {dueDays < 0 ? `Просрочено на ${Math.abs(dueDays)} дн.` : `Пересмотр через ${dueDays} дн.`}
                   </Badge>
                 ) : null}
+                {!isViewingOldVersion && canArchiveCurrent && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        data-testid="button-archive-material"
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto rounded-xl text-slate-600 border-slate-300 hover:bg-slate-100 hover:text-slate-800 gap-1.5"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                        В архив
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Переместить в архив?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Материал «{current.passport.title}» будет перемещён в архив. Он исчезнет из каталога и станет недоступен для всех сотрудников. Восстановить материал можно из раздела «Архив».
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-xl">Отмена</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="rounded-xl bg-slate-700 hover:bg-slate-800"
+                          onClick={() => {
+                            const res = archiveMaterial(current.materialId);
+                            if (res.ok) {
+                              toast({ title: "Перемещено в архив", description: `«${current.passport.title}» добавлен в архив` });
+                              setLocation("/archive");
+                            } else {
+                              toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                            }
+                          }}
+                        >
+                          В архив
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
                 {!isViewingOldVersion && (
                   <button
                     data-testid="button-toggle-subscription"
-                    className="ml-auto p-1 rounded-full hover:bg-muted/50 transition-colors"
+                    className={`${canArchiveCurrent ? "" : "ml-auto"} p-1 rounded-full hover:bg-muted/50 transition-colors`}
                     onClick={() => toggleSubscription(current.materialId)}
                     title={isSubscribed(current.materialId) ? "Отписаться" : "Подписаться"}
                   >

@@ -28,6 +28,7 @@ Key features include:
 -   **New Hires Onboarding**: Marks materials as "required for new hires." Manages new hire profiles and assignments, tracks acknowledgment, and automatically detects and assigns materials to new users. Features an `/my-onboarding` page for users to track their progress.
 -   **Helpfulness Ratings & View Dedup**: Allows users to rate materials as "helpful" or "not helpful" (once per day). Implements view deduplication (once per 30 minutes) for accurate view counts. Material popularity and helpfulness scores are calculated using specific formulas to power "Popular" and "Most Helpful" showcases.
 -   **Domain Logic**: Implements role-based access control (Reader, Author, Owner, Deputy Owner, Administrator), visibility scoping, material status lifecycle (Draft, Pending Approval, Published, Under Review, Archive), and overdue material detection.
+-   **Archive Section** (`/archive`): Dedicated archive page accessible to Administrators, section owners, and material owners/deputies. Admin sees all archived materials with who/when archived; section owners see their section's archived materials; material owners/deputies see their own. Includes "В архив" button on material pages (triggers confirmation dialog, material disappears from catalog) and "Восстановить" button on the archive page. `archivedBy` and `archivedAt` are persisted to DB (`archived_by`, `archived_at` columns on `material_versions`). `visibleMaterials` in kbStore explicitly excludes archived materials.
 
 ### Backend (Server)
 

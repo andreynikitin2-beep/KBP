@@ -111,6 +111,8 @@ export type MaterialVersion = {
   auditViews: { userId: string; at: string }[];
   auditDownloads: { userId: string; at: string }[];
   auditPreviews: { userId: string; at: string }[];
+  archivedBy?: string;
+  archivedAt?: string;
 };
 
 export type RFC = {
