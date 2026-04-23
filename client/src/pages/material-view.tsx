@@ -12,6 +12,7 @@ import {
   FileText,
   FileUp,
   GitBranch,
+  Loader2,
   Globe,
   Heart,
   MessageSquareText,
@@ -128,6 +129,8 @@ export default function MaterialView() {
 
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [returnComment, setReturnComment] = useState("");
   const [rfcTitle, setRfcTitle] = useState("");
   const [rfcText, setRfcText] = useState("");
@@ -1299,12 +1302,26 @@ export default function MaterialView() {
                                   data-testid="button-preview"
                                   variant="outline"
                                   className="rounded-xl"
-                                  onClick={() => {
-                                    setPreviewOpen(true);
-                                    recordPreview(dv.materialId);
+                                  disabled={previewLoading}
+                                  onClick={async () => {
+                                    setPreviewLoading(true);
+                                    try {
+                                      const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
+                                      if (!resp.ok) throw new Error("Ошибка загрузки файла");
+                                      const blob = await resp.blob();
+                                      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+                                      const url = URL.createObjectURL(blob);
+                                      setPreviewBlobUrl(url);
+                                      setPreviewOpen(true);
+                                      recordPreview(dv.materialId);
+                                    } catch {
+                                      toast({ title: "Ошибка", description: "Не удалось загрузить файл для предпросмотра", variant: "destructive" });
+                                    } finally {
+                                      setPreviewLoading(false);
+                                    }
                                   }}
                                 >
-                                  <Eye className="mr-2 h-4 w-4" />
+                                  {previewLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
                                   Предпросмотр
                                 </Button>
                                 <Button
@@ -1882,25 +1899,36 @@ export default function MaterialView() {
         </div>
       </div>
       {/* Диалог предпросмотра файла */}
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl w-full h-[85vh] flex flex-col p-0 gap-0">
-          <DialogHeader className="px-4 pt-4 pb-2 shrink-0">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Eye className="h-4 w-4 text-muted-foreground" />
-              Предпросмотр: {dv?.content.file?.name}
+      <Dialog
+        open={previewOpen}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open && previewBlobUrl) {
+            URL.revokeObjectURL(previewBlobUrl);
+            setPreviewBlobUrl(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl w-full p-0 gap-0 overflow-hidden" style={{ height: "90vh", display: "flex", flexDirection: "column" }}>
+          <DialogHeader className="px-5 pt-4 pb-3 shrink-0 border-b">
+            <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+              <Eye className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="truncate">{dv?.content.file?.name}</span>
+              <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground pr-6">
+                {dv?.content.file?.type?.toUpperCase()}
+              </span>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden px-4 pb-4">
-            {dv?.content.file?.type === "pdf" ? (
+          <div style={{ flex: 1, minHeight: 0, padding: "12px" }}>
+            {dv?.content.file?.type === "pdf" && previewBlobUrl ? (
               <iframe
                 data-testid="iframe-preview-pdf"
-                src={`/api/material-versions/${dv.id}/file?inline=true`}
+                src={previewBlobUrl}
                 title={dv.content.file?.name}
-                className="w-full h-full rounded-xl border bg-white"
-                style={{ minHeight: "400px" }}
+                style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
               />
             ) : dv?.content.file?.type === "docx" ? (
-              <div className="h-full overflow-y-auto rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
+              <div style={{ height: "100%", overflowY: "auto" }} className="rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
                 <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
                   <span className="inline-block rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">DOCX — извлечённый текст</span>
                   <span>Полный рендеринг DOCX недоступен в браузере. Скачайте файл для просмотра форматирования.</span>
