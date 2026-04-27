@@ -6,7 +6,7 @@ import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 const TIMESTAMP_FIELDS = [
   "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
   "slaReactedAt", "slaUpdatedAt", "lastSyncAt", "deactivatedAt", "syncedAt",
-  "addedAt", "assignedAt", "acknowledgedAt"
+  "addedAt", "assignedAt", "acknowledgedAt", "rejectedAt", "archivedAt"
 ];
 
 function coerceDates(data: any): any {

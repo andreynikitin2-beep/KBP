@@ -86,6 +86,8 @@ export const materialVersions = pgTable("material_versions", {
   helpfulNo: integer("helpful_no").default(0).notNull(),
   archivedBy: varchar("archived_by"),
   archivedAt: timestamp("archived_at"),
+  approvalStep: text("approval_step"),
+  rejectedAt: timestamp("rejected_at"),
 });
 
 export const insertMaterialVersionSchema = createInsertSchema(materialVersions).omit({ id: true, createdAt: true, views: true, helpfulYes: true, helpfulNo: true });

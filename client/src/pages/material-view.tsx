@@ -42,7 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getApprovalStep, getSectionOwnerIds, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -367,8 +367,8 @@ export default function MaterialView() {
 
   const showPublishDirect = current ? canPublishDirectly(me, current) : false;
   const showSubmitForApproval = current ? canSubmitForApproval(me, current) : false;
-  const showApprove = current ? canApproveAndPublish(me, current) : false;
-  const showReturn = current ? canReturnForRevision(me, current) : false;
+  const showApprove = current ? canApproveAndPublish(me, current, catalogNodes) : false;
+  const showReturn = current ? canReturnForRevision(me, current, catalogNodes) : false;
 
   const accessAllowed = current ? canViewMaterial(me, current, visibilityGroups) : false;
   const dv = displayVersion || current;
@@ -469,37 +469,37 @@ export default function MaterialView() {
       )}
 
       {returnDialogOpen && (
-        <Card className="mb-4 border-orange-300 bg-orange-50/50">
+        <Card className="mb-4 border-red-300 bg-red-50/50">
           <CardContent className="p-4">
-            <div className="font-semibold text-orange-700 mb-2">Возврат на доработку</div>
+            <div className="font-semibold text-red-700 mb-2">Отклонение публикации</div>
             <div className="text-sm text-muted-foreground mb-3">
-              Укажите причину возврата. Комментарий обязателен и будет отправлен автору.
+              Укажите причину отклонения. Комментарий обязателен и будет отправлен автору. После отклонения повторное согласование этой версии невозможно — автор должен создать новую версию.
             </div>
             <Textarea
               data-testid="textarea-return-comment"
               value={returnComment}
               onChange={(e) => setReturnComment(e.target.value)}
-              placeholder="Укажите причину возврата…"
+              placeholder="Укажите причину отклонения…"
               className="min-h-[80px] rounded-xl mb-3"
             />
             <div className="flex gap-2">
               <Button
                 data-testid="button-confirm-return"
                 variant="default"
-                className="rounded-xl bg-orange-600 hover:bg-orange-700"
+                className="rounded-xl bg-red-600 hover:bg-red-700"
                 disabled={!returnComment.trim()}
                 onClick={() => {
                   const res = returnForRevision(current.id, returnComment);
                   if (!res.ok) {
                     toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
                   } else {
-                    toast({ title: "Возвращено", description: "Материал возвращён автору на доработку." });
+                    toast({ title: "Публикация отклонена", description: "Автор уведомлён. Для новой попытки потребуется создание новой версии." });
                     setReturnDialogOpen(false);
                     setReturnComment("");
                   }
                 }}
               >
-                Подтвердить возврат
+                Отклонить публикацию
               </Button>
               <Button
                 data-testid="button-cancel-return"
@@ -650,60 +650,41 @@ export default function MaterialView() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-[#07268fcc]" data-testid="text-approval-title">
-                  {current.status === "Черновик" ? "Черновик — ожидает публикации" : "На согласовании — ожидает решения"}
+                  {current.status === "Черновик" && !current.rejectedAt && "Черновик — ожидает отправки на согласование"}
+                  {current.status === "Черновик" && current.rejectedAt && "Публикация отклонена — требуется новая версия"}
+                  {current.status === "На согласовании" && getApprovalStep(current) === "material_owner" && "На согласовании — шаг 1: владелец материала"}
+                  {current.status === "На согласовании" && getApprovalStep(current) === "section_owner" && "На согласовании — шаг 2: владелец раздела"}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground" data-testid="text-approval-hint">
-                  {current.status === "Черновик" && showPublishDirect && (
-                    <>Вы — владелец/заместитель. Можете опубликовать напрямую без согласования.</>
+                  {current.status === "Черновик" && !current.rejectedAt && showSubmitForApproval && (
+                    <>Нажмите «Запустить согласование» чтобы направить материал на согласование.</>
                   )}
-                  {current.status === "Черновик" && !showPublishDirect && showSubmitForApproval && (
-                    <>Для публикации необходимо согласование владельцем или заместителем. Нажмите «Отправить на согласование».</>
-                  )}
-                  {current.status === "Черновик" && !showPublishDirect && !showSubmitForApproval && (
+                  {current.status === "Черновик" && !current.rejectedAt && !showSubmitForApproval && (
                     <>Ожидает отправки на согласование автором.</>
                   )}
-                  {current.status === "На согласовании" && showApprove && (
-                    <>Материал ожидает вашего решения. Одобрите или верните на доработку с комментарием.</>
+                  {current.status === "Черновик" && current.rejectedAt && (
+                    <>Публикация была отклонена согласующим. Повторная отправка данной версии невозможна — создайте новую версию документа.</>
                   )}
-                  {current.status === "На согласовании" && !showApprove && (
-                    <>Материал отправлен на согласование владельцу. Ожидайте решения.</>
+                  {current.status === "На согласовании" && getApprovalStep(current) === "material_owner" && showApprove && (
+                    <>Вы — владелец/заместитель материала. Согласуйте публикацию или отклоните с комментарием.</>
                   )}
+                  {current.status === "На согласовании" && getApprovalStep(current) === "material_owner" && !showApprove && (
+                    <>Ожидает согласования с владельцем материала ({owner?.displayName || "—"}).</>
+                  )}
+                  {current.status === "На согласовании" && getApprovalStep(current) === "section_owner" && showApprove && (
+                    <>Вы — владелец раздела. Согласуйте публикацию или отклоните с комментарием.</>
+                  )}
+                  {current.status === "На согласовании" && getApprovalStep(current) === "section_owner" && !showApprove && (() => {
+                    const sectionOwnerNames = getSectionOwnerIds(current, catalogNodes).map(id => users.find(u => u.id === id)?.displayName).filter(Boolean);
+                    return <>Ожидает согласования с владельцем раздела{sectionOwnerNames.length > 0 ? ` (${sectionOwnerNames.join(", ")})` : ""}.</>;
+                  })()}
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
                   Автор: {users.find((u) => u.id === current.createdBy)?.displayName || "—"}
-                  {current.passport.ownerId && <> · Владелец: {owner?.displayName || "—"}</>}
+                  {current.passport.ownerId && <> · Владелец материала: {owner?.displayName || "—"}</>}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {showPublishDirect && (
-                    <Button
-                      data-testid="button-publish-direct"
-                      className="rounded-xl bg-green-500/20 text-green-700 hover:bg-green-500/30 border border-green-300/50"
-                      variant="ghost"
-                      onClick={() => {
-                        const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
-                        const newGids = current.passport.visibilityGroupIds;
-                        const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
-                        const gain = computeAccessGain(oldGids, newGids, visibilityGroups, users);
-                        if (loss.count > 0 || gain.count > 0) {
-                          setAccessLossInfo(loss);
-                          setAccessGainInfo(gain);
-                          setPublishAction("direct");
-                          setPublishWarningOpen(true);
-                          return;
-                        }
-                        const res = publishDirect(current.id);
-                        if (!res.ok) {
-                          toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
-                        } else {
-                          toast({ title: "Опубликовано", description: "Материал опубликован напрямую (владелец/заместитель)." });
-                        }
-                      }}
-                    >
-                      <FileUp className="mr-2 h-4 w-4" />
-                      Опубликовать
-                    </Button>
-                  )}
-                  {showSubmitForApproval && !showPublishDirect && (
+                  {showSubmitForApproval && (
                     <Button
                       data-testid="button-submit-approval"
                       variant="ghost"
@@ -713,12 +694,13 @@ export default function MaterialView() {
                         if (!res.ok) {
                           toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
                         } else {
-                          toast({ title: "Отправлено", description: "Материал отправлен на согласование владельцу." });
+                          const isOwnerOrDeputy = current.createdBy === current.passport.ownerId || current.createdBy === current.passport.deputyId;
+                          toast({ title: "Отправлено", description: isOwnerOrDeputy ? "Запрос направлен владельцу раздела." : "Запрос направлен владельцу материала." });
                         }
                       }}
                     >
                       <FileUp className="mr-2 h-4 w-4" />
-                      Отправить на согласование
+                      Запустить согласование
                     </Button>
                   )}
                   {showApprove && (
@@ -727,41 +709,46 @@ export default function MaterialView() {
                       variant="ghost"
                       className="rounded-xl bg-green-500/20 text-green-700 hover:bg-green-500/30 border border-green-300/50"
                       onClick={() => {
-                        const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
-                        const newGids = current.passport.visibilityGroupIds;
-                        const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
-                        const gain = computeAccessGain(oldGids, newGids, visibilityGroups, users);
-                        if (loss.count > 0 || gain.count > 0) {
-                          setAccessLossInfo(loss);
-                          setAccessGainInfo(gain);
-                          setPublishAction("approve");
-                          setPublishWarningOpen(true);
-                          return;
+                        const step = getApprovalStep(current);
+                        if (step === "section_owner") {
+                          const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
+                          const newGids = current.passport.visibilityGroupIds;
+                          const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
+                          const gain = computeAccessGain(oldGids, newGids, visibilityGroups, users);
+                          if (loss.count > 0 || gain.count > 0) {
+                            setAccessLossInfo(loss);
+                            setAccessGainInfo(gain);
+                            setPublishAction("approve");
+                            setPublishWarningOpen(true);
+                            return;
+                          }
                         }
                         const res = approveAndPublish(current.id);
                         if (!res.ok) {
                           toast({ title: "Ошибка", description: res.message || "", variant: "destructive" });
+                        } else if (step === "material_owner") {
+                          toast({ title: "Согласовано (шаг 1/2)", description: "Передано на согласование владельцу раздела." });
                         } else {
-                          toast({ title: "Согласовано", description: "Материал одобрен и опубликован." });
+                          toast({ title: "Согласовано и опубликовано", description: "Материал успешно опубликован." });
                         }
                       }}
                     >
                       <BadgeCheck className="mr-2 h-4 w-4" />
-                      Одобрить и опубликовать
+                      Согласовать публикацию
                     </Button>
                   )}
                   {showReturn && (
                     <Button
                       data-testid="button-return-revision"
                       variant="ghost"
-                      className="rounded-xl bg-orange-500/15 text-orange-600 hover:bg-orange-500/25 border border-orange-300/50"
+                      className="rounded-xl bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-300/50"
                       onClick={() => {
                         setReturnDialogOpen(true);
                         setReturnComment("");
                       }}
                     >
                       <CircleAlert className="mr-2 h-4 w-4" />
-                      Вернуть на доработку
+                      Отклонить публикацию
                     </Button>
                   )}
                   {me.roles.includes("Администратор") && (

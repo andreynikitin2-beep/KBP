@@ -146,35 +146,63 @@ export function isCreatorOwnerOrDeputy(user: User, version: MaterialVersion) {
   return version.passport.ownerId === user.id || version.passport.deputyId === user.id;
 }
 
-export function canPublishDirectly(user: User, version: MaterialVersion) {
-  if (version.status !== "Черновик") return false;
-  if (user.roles.includes("Администратор")) return true;
-  const isOwnerOrDeputy = isCreatorOwnerOrDeputy(user, version);
-  const isCreator = version.createdBy === user.id;
-  return isCreator && isOwnerOrDeputy;
+export function getSectionOwnerIds(version: MaterialVersion, catalogNodes: CatalogNode[]): string[] {
+  const node = catalogNodes.find(n => n.id === version.passport.sectionId);
+  if (!node) return [];
+  if (node.ownerIds && node.ownerIds.length > 0) return node.ownerIds;
+  if (node.type === "subsection" && node.parentId) {
+    const parent = catalogNodes.find(n => n.id === node.parentId);
+    return parent?.ownerIds || [];
+  }
+  return [];
+}
+
+export function isSectionOwner(user: User, version: MaterialVersion, catalogNodes: CatalogNode[]): boolean {
+  return getSectionOwnerIds(version, catalogNodes).includes(user.id);
+}
+
+export function getApprovalStep(version: MaterialVersion): "material_owner" | "section_owner" {
+  return (version.approvalStep as "material_owner" | "section_owner") || "material_owner";
+}
+
+export function canPublishDirectly(_user: User, _version: MaterialVersion) {
+  return false;
 }
 
 export function canSubmitForApproval(user: User, version: MaterialVersion) {
   if (version.status !== "Черновик") return false;
+  if (version.rejectedAt) return false;
   const isCreator = version.createdBy === user.id;
   const isAdmin = user.roles.includes("Администратор");
   return isCreator || isAdmin;
 }
 
-export function canApproveAndPublish(user: User, version: MaterialVersion) {
+export function canApproveAndPublish(user: User, version: MaterialVersion, catalogNodes: CatalogNode[]) {
   if (version.status !== "На согласовании") return false;
-  const isOwner = version.passport.ownerId === user.id;
-  const isDeputy = version.passport.deputyId === user.id;
   const isAdmin = user.roles.includes("Администратор");
-  return isOwner || isDeputy || isAdmin;
+  if (isAdmin) return true;
+  const step = getApprovalStep(version);
+  if (step === "material_owner") {
+    return version.passport.ownerId === user.id || version.passport.deputyId === user.id;
+  }
+  if (step === "section_owner") {
+    return isSectionOwner(user, version, catalogNodes);
+  }
+  return false;
 }
 
-export function canReturnForRevision(user: User, version: MaterialVersion) {
+export function canReturnForRevision(user: User, version: MaterialVersion, catalogNodes: CatalogNode[]) {
   if (version.status !== "На согласовании") return false;
-  const isOwner = version.passport.ownerId === user.id;
-  const isDeputy = version.passport.deputyId === user.id;
   const isAdmin = user.roles.includes("Администратор");
-  return isOwner || isDeputy || isAdmin;
+  if (isAdmin) return true;
+  const step = getApprovalStep(version);
+  if (step === "material_owner") {
+    return version.passport.ownerId === user.id || version.passport.deputyId === user.id;
+  }
+  if (step === "section_owner") {
+    return isSectionOwner(user, version, catalogNodes);
+  }
+  return false;
 }
 
 export function validatePassport(passport: MaterialVersion["passport"]) {

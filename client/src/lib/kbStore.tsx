@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NewHireAssignment, NewHireProfile, NewHireStatus, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getApprovalStep, getSectionOwnerIds, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 import { api } from "./api";
 
 const VIEW_DEDUP_MINUTES = 30;
@@ -535,25 +535,42 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       submitForApproval: (versionId: string) => {
         const version = materials.find((m) => m.id === versionId);
         if (!version) return { ok: false, message: "Версия не найдена" };
-        if (!canSubmitForApproval(me, version)) return { ok: false, message: "Недостаточно прав для отправки на согласование" };
+        if (!canSubmitForApproval(me, version)) return { ok: false, message: version.rejectedAt ? "Публикация отклонена. Создайте новую версию для повторного согласования." : "Недостаточно прав для отправки на согласование" };
+
+        const isAuthorOwnerOrDeputy =
+          version.createdBy === version.passport.ownerId ||
+          version.createdBy === version.passport.deputyId;
+        const step: "material_owner" | "section_owner" = isAuthorOwnerOrDeputy ? "section_owner" : "material_owner";
 
         setMaterials((prev) =>
           prev.map((m) =>
-            m.id === versionId ? { ...m, status: "На согласовании" as MaterialVersion["status"] } : m,
+            m.id === versionId
+              ? { ...m, status: "На согласовании" as MaterialVersion["status"], approvalStep: step }
+              : m,
           ),
         );
 
-        const ownerEmail = users.find((u) => u.id === version.passport.ownerId)?.email || "unknown@demo.local";
-        const email = seedEmail(notifications, {
-          to: ownerEmail,
-          subject: `Запрос на согласование: ${version.passport.title}`,
-          template: "new_version",
-          related: { materialId: version.materialId, versionId: version.id },
-        });
-        setNotifications((p) => [email, ...p]);
-        persistNotification(email);
+        let notifyEmails: string[] = [];
+        if (step === "material_owner") {
+          const ownerEmail = users.find((u) => u.id === version.passport.ownerId)?.email;
+          if (ownerEmail) notifyEmails = [ownerEmail];
+        } else {
+          const sectionOwnerIds = getSectionOwnerIds(version, catalogNodes);
+          notifyEmails = sectionOwnerIds.map(id => users.find(u => u.id === id)?.email).filter(Boolean) as string[];
+        }
 
-        api.updateMaterialVersionRaw(versionId, { status: "На согласовании" }).catch(console.error);
+        for (const addr of notifyEmails) {
+          const email = seedEmail(notifications, {
+            to: addr,
+            subject: `Запрос на согласование: ${version.passport.title}`,
+            template: "new_version",
+            related: { materialId: version.materialId, versionId: version.id },
+          });
+          setNotifications((p) => [email, ...p]);
+          persistNotification(email);
+        }
+
+        api.updateMaterialVersionRaw(versionId, { status: "На согласовании", approvalStep: step }).catch(console.error);
 
         return { ok: true };
       },
@@ -615,11 +632,40 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       approveAndPublish: (versionId: string) => {
         const version = materials.find((m) => m.id === versionId);
         if (!version) return { ok: false, message: "Версия не найдена" };
-        if (!canApproveAndPublish(me, version)) return { ok: false, message: "Недостаточно прав для согласования" };
+        if (!canApproveAndPublish(me, version, catalogNodes)) return { ok: false, message: "Недостаточно прав для согласования" };
+
+        const step = getApprovalStep(version);
+        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[APPROVED BY ${me.displayName} (${step === "material_owner" ? "владелец материала" : "владелец раздела"})]`;
+
+        if (step === "material_owner") {
+          const nextStep: "section_owner" = "section_owner";
+          setMaterials((prev) =>
+            prev.map((m) =>
+              m.id === versionId
+                ? { ...m, approvalStep: nextStep, changelog: newChangelog }
+                : m,
+            ),
+          );
+
+          const sectionOwnerIds = getSectionOwnerIds(version, catalogNodes);
+          const notifyEmails = sectionOwnerIds.map(id => users.find(u => u.id === id)?.email).filter(Boolean) as string[];
+          for (const addr of notifyEmails) {
+            const email = seedEmail(notifications, {
+              to: addr,
+              subject: `Требуется ваше согласование: ${version.passport.title}`,
+              template: "new_version",
+              related: { materialId: version.materialId, versionId: version.id },
+            });
+            setNotifications((p) => [email, ...p]);
+            persistNotification(email);
+          }
+
+          api.updateMaterialVersionRaw(versionId, { approvalStep: nextStep, changelog: newChangelog }).catch(console.error);
+          return { ok: true };
+        }
 
         const lastReviewedAt = new Date().toISOString();
         const { next, periodDays } = computeNextReview(version.passport.criticality, lastReviewedAt, policy);
-        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[APPROVED BY ${me.displayName}]`;
 
         const archivedIds: string[] = [];
         setMaterials((prev) =>
@@ -628,6 +674,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
               return {
                 ...m,
                 status: "Опубликовано" as MaterialVersion["status"],
+                approvalStep: undefined,
                 changelog: newChangelog,
                 passport: { ...m.passport, lastReviewedAt, nextReviewAt: next, reviewPeriodDays: periodDays },
               };
@@ -644,19 +691,20 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         cleanupSubscriptionsOnGroupChange(version.materialId, version.passport.visibilityGroupIds);
 
         const authorEmail = users.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
-        const email = seedEmail(notifications, {
+        const publishEmail = seedEmail(notifications, {
           to: authorEmail,
           subject: `Согласовано и опубликовано: ${version.passport.title}`,
           template: "new_version",
           related: { materialId: version.materialId, versionId: version.id },
         });
-        setNotifications((p) => [email, ...p]);
-        persistNotification(email);
+        setNotifications((p) => [publishEmail, ...p]);
+        persistNotification(publishEmail);
 
         notifySubscribers(version, version.passport.visibilityGroupIds);
 
         api.updateMaterialVersionRaw(versionId, {
           status: "Опубликовано",
+          approvalStep: null,
           changelog: newChangelog,
           lastReviewedAt,
           nextReviewAt: next,
@@ -673,10 +721,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       returnForRevision: (versionId: string, comment: string) => {
         const version = materials.find((m) => m.id === versionId);
         if (!version) return { ok: false, message: "Версия не найдена" };
-        if (!canReturnForRevision(me, version)) return { ok: false, message: "Недостаточно прав" };
-        if (!comment.trim()) return { ok: false, message: "Комментарий обязателен при возврате на доработку" };
+        if (!canReturnForRevision(me, version, catalogNodes)) return { ok: false, message: "Недостаточно прав" };
+        if (!comment.trim()) return { ok: false, message: "Комментарий обязателен при отклонении" };
 
-        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[RETURNED] ${me.displayName}: ${comment}`;
+        const rejectedAt = new Date().toISOString();
+        const newChangelog = (version.changelog ? version.changelog + "\n" : "") + `[REJECTED] ${me.displayName}: ${comment}`;
 
         setMaterials((prev) =>
           prev.map((m) =>
@@ -685,6 +734,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
                   ...m,
                   status: "Черновик" as MaterialVersion["status"],
                   changelog: newChangelog,
+                  rejectedAt,
+                  approvalStep: undefined,
                 }
               : m,
           ),
@@ -693,7 +744,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const authorEmail = users.find((u) => u.id === version.createdBy)?.email || "unknown@demo.local";
         const email = seedEmail(notifications, {
           to: authorEmail,
-          subject: `Возвращено на доработку: ${version.passport.title}`,
+          subject: `Публикация отклонена: ${version.passport.title}`,
           template: "auto_transition",
           related: { materialId: version.materialId, versionId: version.id },
         });
@@ -703,6 +754,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         api.updateMaterialVersionRaw(versionId, {
           status: "Черновик",
           changelog: newChangelog,
+          rejectedAt,
+          approvalStep: null,
         }).catch(console.error);
 
         return { ok: true };
@@ -1204,6 +1257,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           auditViews: [],
           auditDownloads: [],
           auditPreviews: [],
+          approvalStep: undefined,
+          rejectedAt: undefined,
         };
 
         setMaterials((prev) => {

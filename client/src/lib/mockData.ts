@@ -113,6 +113,8 @@ export type MaterialVersion = {
   auditPreviews: { userId: string; at: string }[];
   archivedBy?: string;
   archivedAt?: string;
+  approvalStep?: "material_owner" | "section_owner";
+  rejectedAt?: string;
 };
 
 export type RFC = {
