@@ -89,6 +89,46 @@ function computeAccessLoss(
   };
 }
 
+function computeAccessGain(
+  oldGroupIds: string[],
+  newGroupIds: string[],
+  groups: VisibilityGroup[],
+  allUsers: User[],
+): { count: number; names: string[] } {
+  const oldGroups = oldGroupIds.map(id => groups.find(g => g.id === id)).filter(Boolean);
+  const newGroups = newGroupIds.map(id => groups.find(g => g.id === id)).filter(Boolean);
+
+  const oldHasSystem = oldGroups.some(g => g!.isSystem);
+  const newHasSystem = newGroups.some(g => g!.isSystem);
+
+  if (oldHasSystem) return { count: 0, names: [] };
+
+  const oldMemberSet = new Set<string>();
+  for (const g of oldGroups) {
+    for (const uid of g!.memberIds) oldMemberSet.add(uid);
+  }
+
+  let gainers: User[];
+  if (newHasSystem) {
+    gainers = allUsers.filter(u =>
+      !u.deactivatedAt && !oldMemberSet.has(u.id) && !u.roles.includes("Администратор")
+    );
+  } else {
+    const newMemberSet = new Set<string>();
+    for (const g of newGroups) {
+      for (const uid of g!.memberIds) newMemberSet.add(uid);
+    }
+    gainers = allUsers.filter(u =>
+      !u.deactivatedAt && !oldMemberSet.has(u.id) && newMemberSet.has(u.id) && !u.roles.includes("Администратор")
+    );
+  }
+
+  return {
+    count: gainers.length,
+    names: gainers.slice(0, 10).map(u => u.displayName),
+  };
+}
+
 function fmt(iso?: string) {
   if (!iso) return "—";
   return format(new Date(iso), "d MMM yyyy, HH:mm", { locale: ru });
@@ -144,6 +184,7 @@ export default function MaterialView() {
   const [publishWarningOpen, setPublishWarningOpen] = useState(false);
   const [publishAction, setPublishAction] = useState<"direct" | "approve" | null>(null);
   const [accessLossInfo, setAccessLossInfo] = useState<{ count: number; names: string[] }>({ count: 0, names: [] });
+  const [accessGainInfo, setAccessGainInfo] = useState<{ count: number; names: string[] }>({ count: 0, names: [] });
 
   const isDraft = current?.status === "Черновик";
 
@@ -484,21 +525,41 @@ export default function MaterialView() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="text-sm">
-              После публикации доступ к материалу и всем его предыдущим версиям потеряют:
-            </div>
-            <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
-              <div className="font-semibold text-orange-700">{accessLossInfo.count} пользователей</div>
-              {accessLossInfo.names.length > 0 && (
-                <div className="mt-1 text-sm text-orange-600">
-                  {accessLossInfo.names.join(", ")}
-                  {accessLossInfo.count > accessLossInfo.names.length && ` и ещё ${accessLossInfo.count - accessLossInfo.names.length}`}
+            {accessLossInfo.count > 0 && (
+              <>
+                <div className="text-sm">
+                  После публикации доступ к материалу и всем его предыдущим версиям <span className="font-semibold text-orange-700">потеряют</span>:
                 </div>
-              )}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Подписки пользователей, потерявших доступ, будут удалены автоматически.
-            </div>
+                <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
+                  <div className="font-semibold text-orange-700">{accessLossInfo.count} {accessLossInfo.count === 1 ? "пользователь" : accessLossInfo.count < 5 ? "пользователя" : "пользователей"}</div>
+                  {accessLossInfo.names.length > 0 && (
+                    <div className="mt-1 text-sm text-orange-600">
+                      {accessLossInfo.names.join(", ")}
+                      {accessLossInfo.count > accessLossInfo.names.length && ` и ещё ${accessLossInfo.count - accessLossInfo.names.length}`}
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Подписки пользователей, потерявших доступ, будут удалены автоматически.
+                </div>
+              </>
+            )}
+            {accessGainInfo.count > 0 && (
+              <>
+                <div className="text-sm">
+                  После публикации доступ к материалу <span className="font-semibold text-green-700">получат</span>:
+                </div>
+                <div className="rounded-lg bg-green-50 border border-green-200 p-3">
+                  <div className="font-semibold text-green-700">{accessGainInfo.count} {accessGainInfo.count === 1 ? "пользователь" : accessGainInfo.count < 5 ? "пользователя" : "пользователей"}</div>
+                  {accessGainInfo.names.length > 0 && (
+                    <div className="mt-1 text-sm text-green-600">
+                      {accessGainInfo.names.join(", ")}
+                      {accessGainInfo.count > accessGainInfo.names.length && ` и ещё ${accessGainInfo.count - accessGainInfo.names.length}`}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
           <div className="flex justify-end gap-2 mt-2">
             <Button variant="outline" className="rounded-xl" onClick={() => setPublishWarningOpen(false)}>
@@ -506,7 +567,7 @@ export default function MaterialView() {
             </Button>
             <Button
               data-testid="button-confirm-publish-warning"
-              className="rounded-xl bg-orange-600 hover:bg-orange-700"
+              className={`rounded-xl ${accessLossInfo.count > 0 ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}`}
               onClick={() => {
                 setPublishWarningOpen(false);
                 if (publishAction === "direct") {
@@ -526,7 +587,7 @@ export default function MaterialView() {
                 }
               }}
             >
-              Опубликовать с ограничением
+              {accessLossInfo.count > 0 ? "Опубликовать с ограничением" : "Опубликовать"}
             </Button>
           </div>
         </DialogContent>
@@ -622,8 +683,10 @@ export default function MaterialView() {
                         const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
                         const newGids = current.passport.visibilityGroupIds;
                         const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
-                        if (loss.count > 0) {
+                        const gain = computeAccessGain(oldGids, newGids, visibilityGroups, users);
+                        if (loss.count > 0 || gain.count > 0) {
                           setAccessLossInfo(loss);
+                          setAccessGainInfo(gain);
                           setPublishAction("direct");
                           setPublishWarningOpen(true);
                           return;
@@ -667,8 +730,10 @@ export default function MaterialView() {
                         const oldGids = previousPublished?.passport.visibilityGroupIds || ["g-base"];
                         const newGids = current.passport.visibilityGroupIds;
                         const loss = computeAccessLoss(oldGids, newGids, visibilityGroups, users);
-                        if (loss.count > 0) {
+                        const gain = computeAccessGain(oldGids, newGids, visibilityGroups, users);
+                        if (loss.count > 0 || gain.count > 0) {
                           setAccessLossInfo(loss);
+                          setAccessGainInfo(gain);
                           setPublishAction("approve");
                           setPublishWarningOpen(true);
                           return;
