@@ -1463,13 +1463,18 @@ export default function MaterialView() {
                                   onClick={async () => {
                                     setPreviewLoading(true);
                                     try {
-                                      const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
-                                      if (!resp.ok) throw new Error("Ошибка загрузки файла");
-                                      const blob = await resp.blob();
-                                      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
-                                      const url = URL.createObjectURL(blob);
-                                      setPreviewBlobUrl(url);
-                                      if (dv.content.file?.type === "docx") {
+                                      if (dv.content.file?.type === "pdf") {
+                                        // Для PDF используем прямой URL API — blob: URL блокируются в production
+                                        if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
+                                        setPreviewBlobUrl(`/api/material-versions/${dv.id}/file?inline=true`);
+                                      } else {
+                                        // Для DOCX загружаем blob для извлечения текста через mammoth
+                                        const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
+                                        if (!resp.ok) throw new Error("Ошибка загрузки файла");
+                                        const blob = await resp.blob();
+                                        if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
+                                        const url = URL.createObjectURL(blob);
+                                        setPreviewBlobUrl(url);
                                         try {
                                           const arrayBuffer = await blob.arrayBuffer();
                                           const result = await mammoth.extractRawText({ arrayBuffer });
@@ -2096,7 +2101,8 @@ export default function MaterialView() {
         onOpenChange={(open) => {
           setPreviewOpen(open);
           if (!open) {
-            if (previewBlobUrl) { URL.revokeObjectURL(previewBlobUrl); setPreviewBlobUrl(null); }
+            if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
+            setPreviewBlobUrl(null);
             setPreviewDocxText(null);
           }
         }}

@@ -256,6 +256,8 @@ export async function registerRoutes(
       );
       res.setHeader("Content-Length", buffer.length);
       res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("X-Frame-Options", "SAMEORIGIN");
+      res.setHeader("Content-Security-Policy", "frame-ancestors 'self'");
       res.send(buffer);
     } catch (e) {
       res.status(500).json({ error: String(e) });
