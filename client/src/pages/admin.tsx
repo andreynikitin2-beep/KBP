@@ -469,7 +469,8 @@ function NewHiresTab() {
                                 <div className="mb-2 text-xs font-semibold text-muted-foreground">Назначенные материалы</div>
                                 <div className="grid gap-1.5">
                                   {userAssignments.map((assignment) => {
-                                    const mat = materials.find(m => m.materialId === assignment.materialId);
+                                    const mat = materials.find(m => m.materialId === assignment.materialId && m.status === "Опубликовано")
+                                      ?? materials.find(m => m.materialId === assignment.materialId);
                                     const matTitle = mat?.passport.title || assignment.materialId;
                                     const isAck = !!assignment.acknowledgedAt;
                                     const assignedUser = user;

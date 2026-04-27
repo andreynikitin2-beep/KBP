@@ -22,12 +22,14 @@ export default function MyOnboarding() {
   );
 
   const enriched = useMemo(() => {
-    return myAssignments.map(a => {
-      const latestVersion = materials.find(m =>
-        m.materialId === a.materialId && m.status === "Опубликовано"
-      );
-      return { ...a, material: latestVersion };
-    });
+    return myAssignments
+      .map(a => {
+        const publishedVersion = materials.find(m =>
+          m.materialId === a.materialId && m.status === "Опубликовано"
+        );
+        return { ...a, material: publishedVersion };
+      })
+      .filter(a => !!a.material);
   }, [myAssignments, materials]);
 
   const filtered = useMemo(() => {
@@ -51,8 +53,8 @@ export default function MyOnboarding() {
     return list;
   }, [enriched, filterStatus, sortBy]);
 
-  const totalCount = myAssignments.length;
-  const acknowledgedCount = myAssignments.filter(a => a.acknowledgedAt).length;
+  const totalCount = enriched.length;
+  const acknowledgedCount = enriched.filter(a => a.acknowledgedAt).length;
   const pendingCount = totalCount - acknowledgedCount;
   const progress = totalCount > 0 ? Math.round((acknowledgedCount / totalCount) * 100) : 0;
 
