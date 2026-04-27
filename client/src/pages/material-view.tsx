@@ -1161,6 +1161,18 @@ export default function MaterialView() {
                           <div className="mt-1 text-xs text-muted-foreground">{deputy?.email || ""}</div>
                         </Card>
                         <Card className="p-4 md:col-span-2">
+                          <div className="text-xs text-muted-foreground">Автор версии {dv.version}</div>
+                          <div className="mt-1 font-semibold" data-testid="text-version-author">
+                            {users.find((u) => u.id === dv.createdBy)?.displayName || "—"}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {users.find((u) => u.id === dv.createdBy)?.email || ""}
+                            {dv.createdAt && (
+                              <span className="ml-2 text-muted-foreground/70">· создана {fmtDate(dv.createdAt)}</span>
+                            )}
+                          </div>
+                        </Card>
+                        <Card className="p-4 md:col-span-2">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-muted-foreground" />
                             <div className="text-xs text-muted-foreground">Группы видимости</div>
