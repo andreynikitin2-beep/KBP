@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
+import { AlertTriangle, FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,7 @@ export default function MaterialWizard() {
   const [deputyId, setDeputyId] = useState<string | undefined>(undefined);
   const [visibilityGroupIds, setVisibilityGroupIds] = useState<string[]>(["g-base"]);
   const [newHireRequired, setNewHireRequired] = useState(false);
+  const [newHireVisWarning, setNewHireVisWarning] = useState(false);
   const [tags, setTags] = useState("hr, отпуск");
   const [contentKind, setContentKind] = useState<"file" | "page">("file");
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
@@ -259,27 +260,44 @@ export default function MaterialWizard() {
 
                 <div>
                   <Label>Группы видимости</Label>
+                  {newHireVisWarning && (
+                    <div className="mt-1 mb-1 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="alert-newhire-vis-warning">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                      <span>Группа видимости автоматически изменена на «Базовая» — материалы для новых сотрудников должны быть доступны всем пользователям.</span>
+                    </div>
+                  )}
                   <div className="mt-1 rounded-xl border p-3 space-y-2 max-h-48 overflow-y-auto">
-                    {visibilityGroups.map((g) => (
-                      <label key={g.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                        <Checkbox
-                          data-testid={`checkbox-vis-group-${g.id}`}
-                          checked={visibilityGroupIds.includes(g.id)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setVisibilityGroupIds(prev => [...prev, g.id]);
-                            } else {
-                              setVisibilityGroupIds(prev => prev.filter(id => id !== g.id));
-                            }
-                          }}
-                        />
-                        <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
-                      </label>
-                    ))}
+                    {visibilityGroups.map((g) => {
+                      const lockedByNewHire = newHireRequired && g.id !== "g-base";
+                      return (
+                        <label key={g.id} className={`flex items-center gap-2 text-sm ${lockedByNewHire ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+                          <Checkbox
+                            data-testid={`checkbox-vis-group-${g.id}`}
+                            checked={visibilityGroupIds.includes(g.id)}
+                            disabled={lockedByNewHire}
+                            onCheckedChange={(checked) => {
+                              if (lockedByNewHire) return;
+                              if (checked) {
+                                setVisibilityGroupIds(prev => [...prev, g.id]);
+                              } else {
+                                setVisibilityGroupIds(prev => prev.filter(id => id !== g.id));
+                              }
+                            }}
+                          />
+                          <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
+                        </label>
+                      );
+                    })}
                   </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    Материал видят участники выбранных групп. Если выбрана «Базовая» — все пользователи.
-                  </div>
+                  {newHireRequired ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Инструкции для новых сотрудников доступны только в группе «Базовая». Другие группы заблокированы.
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Материал видят участники выбранных групп. Если выбрана «Базовая» — все пользователи.
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -287,7 +305,19 @@ export default function MaterialWizard() {
                     <Checkbox
                       data-testid="checkbox-new-hire-required"
                       checked={newHireRequired}
-                      onCheckedChange={(checked) => setNewHireRequired(!!checked)}
+                      onCheckedChange={(checked) => {
+                        const isChecked = !!checked;
+                        setNewHireRequired(isChecked);
+                        if (isChecked) {
+                          const isAlreadyBaseOnly = visibilityGroupIds.length === 1 && visibilityGroupIds[0] === "g-base";
+                          if (!isAlreadyBaseOnly) {
+                            setVisibilityGroupIds(["g-base"]);
+                            setNewHireVisWarning(true);
+                          }
+                        } else {
+                          setNewHireVisWarning(false);
+                        }
+                      }}
                     />
                     <span className="text-sm font-medium">Обязателен для новых сотрудников</span>
                   </label>

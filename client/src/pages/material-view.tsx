@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation, useRoute } from "wouter";
 import {
+  AlertTriangle,
   Archive,
   ArrowLeft,
   BadgeCheck,
@@ -208,6 +209,7 @@ export default function MaterialView() {
   const [editTags, setEditTags] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
   const [editNewHireRequired, setEditNewHireRequired] = useState(false);
+  const [newHireVisWarning, setNewHireVisWarning] = useState(false);
 
   const [editContentKind, setEditContentKind] = useState<"file" | "page">("file");
   const [editPageHtml, setEditPageHtml] = useState("");
@@ -250,6 +252,7 @@ export default function MaterialView() {
       setEditTags(current.passport.tags.join(", "));
       setEditDepartment(current.passport.department || "");
       setEditNewHireRequired(!!current.passport.newHireRequired);
+      setNewHireVisWarning(false);
       setEditContentKind(current.content.kind);
       setEditPageHtml(current.content.page?.html || "");
       setEditFileName(current.content.file?.name || "");
@@ -1109,24 +1112,40 @@ export default function MaterialView() {
 
                         <div>
                           <Label>Группы видимости</Label>
+                          {newHireVisWarning && (
+                            <div className="mt-1 mb-1 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="alert-newhire-vis-warning">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                              <span>Группа видимости автоматически изменена на «Базовая» — материалы для новых сотрудников должны быть доступны всем пользователям.</span>
+                            </div>
+                          )}
                           <div className="mt-1 rounded-xl border p-3 space-y-2 max-h-48 overflow-y-auto">
-                            {visibilityGroups.map(g => (
-                              <label key={g.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                                <Checkbox
-                                  data-testid={`checkbox-edit-vis-group-${g.id}`}
-                                  checked={editVisibilityGroupIds.includes(g.id)}
-                                  onCheckedChange={(checked) => {
-                                    if (checked) {
-                                      setEditVisibilityGroupIds(prev => [...prev, g.id]);
-                                    } else {
-                                      setEditVisibilityGroupIds(prev => prev.filter(id => id !== g.id));
-                                    }
-                                  }}
-                                />
-                                <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
-                              </label>
-                            ))}
+                            {visibilityGroups.map(g => {
+                              const lockedByNewHire = editNewHireRequired && g.id !== "g-base";
+                              return (
+                                <label key={g.id} className={`flex items-center gap-2 text-sm ${lockedByNewHire ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+                                  <Checkbox
+                                    data-testid={`checkbox-edit-vis-group-${g.id}`}
+                                    checked={editVisibilityGroupIds.includes(g.id)}
+                                    disabled={lockedByNewHire}
+                                    onCheckedChange={(checked) => {
+                                      if (lockedByNewHire) return;
+                                      if (checked) {
+                                        setEditVisibilityGroupIds(prev => [...prev, g.id]);
+                                      } else {
+                                        setEditVisibilityGroupIds(prev => prev.filter(id => id !== g.id));
+                                      }
+                                    }}
+                                  />
+                                  <span>{g.title}{g.isSystem ? " (все пользователи)" : ""}</span>
+                                </label>
+                              );
+                            })}
                           </div>
+                          {editNewHireRequired && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Инструкции для новых сотрудников доступны только в группе «Базовая». Другие группы заблокированы.
+                            </div>
+                          )}
                         </div>
 
                         <div>
@@ -1134,7 +1153,19 @@ export default function MaterialView() {
                             <Checkbox
                               data-testid="checkbox-edit-new-hire-required"
                               checked={editNewHireRequired}
-                              onCheckedChange={(checked) => setEditNewHireRequired(!!checked)}
+                              onCheckedChange={(checked) => {
+                                const isChecked = !!checked;
+                                setEditNewHireRequired(isChecked);
+                                if (isChecked) {
+                                  const isAlreadyBaseOnly = editVisibilityGroupIds.length === 1 && editVisibilityGroupIds[0] === "g-base";
+                                  if (!isAlreadyBaseOnly) {
+                                    setEditVisibilityGroupIds(["g-base"]);
+                                    setNewHireVisWarning(true);
+                                  }
+                                } else {
+                                  setNewHireVisWarning(false);
+                                }
+                              }}
                             />
                             <span className="text-sm font-medium">Требуется ознакомление для новых сотрудников</span>
                           </label>
