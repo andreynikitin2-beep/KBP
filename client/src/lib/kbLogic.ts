@@ -142,6 +142,18 @@ export function canForcePublish(user: User) {
   return user.roles.includes("Администратор");
 }
 
+export function canCreateNewVersion(user: User, latestVersion: MaterialVersion, allVersions: MaterialVersion[]): boolean {
+  const isReaderOnly = !user.roles.some(r => r === "Автор" || r === "Владелец" || r === "Заместитель владельца" || r === "Администратор");
+  if (isReaderOnly) return false;
+  if (user.roles.includes("Администратор")) return true;
+  const isMaterialOwnerOrDeputy = latestVersion.passport.ownerId === user.id || latestVersion.passport.deputyId === user.id;
+  if (isMaterialOwnerOrDeputy) return true;
+  if (user.roles.includes("Автор")) {
+    return allVersions.some(v => v.createdBy === user.id);
+  }
+  return false;
+}
+
 export function isCreatorOwnerOrDeputy(user: User, version: MaterialVersion) {
   return version.passport.ownerId === user.id || version.passport.deputyId === user.id;
 }

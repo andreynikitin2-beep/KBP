@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NewHireAssignment, NewHireProfile, NewHireStatus, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getApprovalStep, getSectionOwnerIds, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getApprovalStep, getSectionOwnerIds, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 import { api } from "./api";
 
 const VIEW_DEDUP_MINUTES = 30;
@@ -1238,6 +1238,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         const hasDraft = allVersions.some((v) => v.status === "Черновик" || v.status === "На согласовании");
         if (hasDraft) return { ok: false, message: "Уже существует черновик или версия на согласовании. Завершите её перед созданием новой." };
+
+        if (!canCreateNewVersion(me, current, allVersions)) return { ok: false, message: "Недостаточно прав для создания новой версии этого материала." };
 
         const parts = current.version.split(".");
         const major = parseInt(parts[0], 10) || 1;

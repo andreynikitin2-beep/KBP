@@ -42,7 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { canApproveAndPublish, canConfirmActuality, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getApprovalStep, getSectionOwnerIds, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getApprovalStep, getSectionOwnerIds, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -1507,7 +1507,7 @@ export default function MaterialView() {
                           Опубликованную версию нельзя редактировать напрямую. Создайте новую версию — предыдущая автоматически отправится в архив, а история сохранится.
                         </div>
                       </div>
-                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && (
+                      {(current.status === "Опубликовано" || current.status === "На пересмотре") && canCreateNewVersion(me, current, allVersions) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button data-testid="button-create-new-version" className="rounded-xl shrink-0">
