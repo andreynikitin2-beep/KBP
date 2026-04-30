@@ -166,11 +166,14 @@ export default function Catalog() {
           <div className="grid gap-4">
             {sections
               .filter((s) => {
-                const sAllowed = allowed.has(s.id);
-                if (!isAdmin && !sAllowed) return false;
+                const subs = byParent.get(s.id) || [];
+                if (!isAdmin) {
+                  // Show section only if user has at least one visible material in any of its subsections
+                  const hasVisible = subs.some((sub) => (materialsBySection.get(sub.id) || []).length > 0);
+                  if (!hasVisible) return false;
+                }
                 if (!qLower) return true;
                 if (matchesStr(s.title)) return true;
-                const subs = byParent.get(s.id) || [];
                 if (subs.some((sub) => matchesStr(sub.title))) return true;
                 const allMats = subs.flatMap((sub) => materialsBySection.get(sub.id) || []);
                 return allMats.some((m) => matchesStr(m.passport.title) || m.passport.tags.some(matchesStr));
@@ -178,8 +181,11 @@ export default function Catalog() {
               .map((s) => {
                 const sAllowed = allowed.has(s.id);
                 const subs = (byParent.get(s.id) || []).filter((x) => {
-                  const subAllowedCheck = sAllowed && allowed.has(x.id);
-                  if (!isAdmin && !subAllowedCheck) return false;
+                  if (!isAdmin) {
+                    // Show subsection only if user has at least one visible material in it
+                    const mats = materialsBySection.get(x.id) || [];
+                    if (mats.length === 0) return false;
+                  }
                   if (!qLower) return true;
                   if (matchesStr(x.title) || matchesStr(s.title)) return true;
                   const mats = materialsBySection.get(x.id) || [];
