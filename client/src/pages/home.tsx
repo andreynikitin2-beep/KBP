@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useKB } from "@/lib/kbStore";
-import { computeHelpfulnessScore, computeKpis, computePopularityScore, daysToNextReview, isOverdue, MIN_RATINGS_FOR_HELPFUL, searchMaterials } from "@/lib/kbLogic";
+import { canApproveAndPublish, computeHelpfulnessScore, computeKpis, computePopularityScore, daysToNextReview, isOverdue, MIN_RATINGS_FOR_HELPFUL, searchMaterials } from "@/lib/kbLogic";
 
 const critOrder: Record<string, number> = { "Критическая": 0, "Высокая": 1, "Средняя": 2, "Низкая": 3 };
 const statusOrder: Record<string, number> = { "Опубликовано": 0, "На пересмотре": 1, "На согласовании": 2, "Черновик": 3, "Архив": 4 };
@@ -106,7 +106,7 @@ function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
 }
 
 export default function Home() {
-  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck, visibilityGroups } = useKB();
+  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck, visibilityGroups, catalogNodes } = useKB();
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "popularity" | "criticality" | "status">("date");
 
@@ -125,9 +125,9 @@ export default function Home() {
 
   const awaitingApproval = useMemo(() =>
     allMaterials.filter((m) =>
-      m.status === "На согласовании" && (m.passport.ownerId === me.id || m.passport.deputyId === me.id),
+      m.status === "На согласовании" && canApproveAndPublish(me, m, catalogNodes),
     ),
-    [allMaterials, me.id],
+    [allMaterials, me, catalogNodes],
   );
 
   const myOnReview = useMemo(() =>

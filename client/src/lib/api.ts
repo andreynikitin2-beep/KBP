@@ -105,6 +105,8 @@ function dbMaterialToFrontend(
     auditPreviews,
     archivedBy: dbMat.archivedBy ?? undefined,
     archivedAt: dbMat.archivedAt ? (typeof dbMat.archivedAt === "string" ? dbMat.archivedAt : new Date(dbMat.archivedAt).toISOString()) : undefined,
+    approvalStep: (dbMat.approvalStep ?? undefined) as "material_owner" | "section_owner" | undefined,
+    rejectedAt: dbMat.rejectedAt ? (typeof dbMat.rejectedAt === "string" ? dbMat.rejectedAt : new Date(dbMat.rejectedAt).toISOString()) : undefined,
   };
 }
 
