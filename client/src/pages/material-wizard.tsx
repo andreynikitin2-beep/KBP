@@ -30,6 +30,16 @@ function nextVersionLike(prev?: string) {
 export default function MaterialWizard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Push a history entry so the browser back button has a target
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      setLocation("/catalog");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
   const { me, users, materials, setMaterials, policy, catalogNodes, visibilityGroups } = useKB();
 
   const initialSectionId = useMemo(() => {
@@ -439,6 +449,15 @@ export default function MaterialWizard() {
                   <div className="text-sm text-muted-foreground">
                     Статус новой записи: <span className="font-semibold">Черновик</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                  <Button
+                    data-testid="button-cancel-create"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => setLocation("/catalog")}
+                  >
+                    Отмена
+                  </Button>
                   <Button
                     data-testid="button-create-material"
                     className="rounded-xl"
@@ -488,6 +507,7 @@ export default function MaterialWizard() {
                   >
                     Создать
                   </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
