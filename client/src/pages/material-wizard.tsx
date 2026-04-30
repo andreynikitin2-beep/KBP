@@ -40,7 +40,7 @@ export default function MaterialWizard() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
-  const { me, users, materials, setMaterials, policy, catalogNodes, visibilityGroups } = useKB();
+  const { me, users, materials, visibleMaterials, setMaterials, policy, catalogNodes, visibilityGroups } = useKB();
 
   const initialSectionId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -113,13 +113,23 @@ export default function MaterialWizard() {
     e.target.value = "";
   }
 
+  const isAdmin = me.roles.includes("Администратор");
+
   const sectionOptions = useMemo(() => {
-    const subs = catalogNodes.filter((n) => n.type === "subsection");
+    const matsBySubsection = new Map<string, number>();
+    visibleMaterials.forEach((m) => {
+      matsBySubsection.set(m.passport.sectionId, (matsBySubsection.get(m.passport.sectionId) || 0) + 1);
+    });
+    const subs = catalogNodes.filter((n) => {
+      if (n.type !== "subsection") return false;
+      if (isAdmin) return true;
+      return (matsBySubsection.get(n.id) || 0) > 0;
+    });
     return subs.map((s) => {
       const path = getSectionPath(catalogNodes, s.id).map((x) => x.title).join(" / ");
       return { id: s.id, label: path };
     });
-  }, [catalogNodes]);
+  }, [catalogNodes, visibleMaterials, isAdmin]);
 
   const periodRow = useMemo(() => policy.reviewPeriods.find((p) => p.criticality === criticality), [policy, criticality]);
 

@@ -145,7 +145,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled, archiveMaterial, restoreMaterial } = useKB();
+  const { me, users, materials, visibleMaterials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled, archiveMaterial, restoreMaterial } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -275,12 +275,23 @@ export default function MaterialView() {
   };
 
   const sectionOptions = useMemo(() => {
-    const subs = catalogNodes.filter(n => n.type === "subsection");
-    return subs.map(s => {
-      const path = getSectionPath(catalogNodes, s.id).map(x => x.title).join(" / ");
+    const matsBySubsection = new Map<string, number>();
+    visibleMaterials.forEach((m) => {
+      matsBySubsection.set(m.passport.sectionId, (matsBySubsection.get(m.passport.sectionId) || 0) + 1);
+    });
+    const currentSubId = current?.passport.sectionId;
+    const subs = catalogNodes.filter((n) => {
+      if (n.type !== "subsection") return false;
+      if (isAdmin) return true;
+      // Always include the material's current subsection so the value is preserved
+      if (n.id === currentSubId) return true;
+      return (matsBySubsection.get(n.id) || 0) > 0;
+    });
+    return subs.map((s) => {
+      const path = getSectionPath(catalogNodes, s.id).map((x) => x.title).join(" / ");
       return { id: s.id, label: path };
     });
-  }, [catalogNodes]);
+  }, [catalogNodes, visibleMaterials, isAdmin, current?.passport.sectionId]);
 
   const saveDraft = () => {
     if (!current || !isDraft) return;
