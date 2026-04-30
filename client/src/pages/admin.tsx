@@ -49,6 +49,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -607,6 +609,7 @@ export default function Admin() {
 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [addGroupOpenForUser, setAddGroupOpenForUser] = useState<string | null>(null);
   const [editUserName, setEditUserName] = useState("");
   const [editUserEmail, setEditUserEmail] = useState("");
   const [editUserDept, setEditUserDept] = useState("");
@@ -1661,6 +1664,89 @@ export default function Admin() {
                                     <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
                                   ))}
                                 </div>
+                                {/* Группы видимости */}
+                                {(() => {
+                                  const userGroups = visibilityGroups.filter(g => g.memberIds.includes(u.id));
+                                  const notInGroups = visibilityGroups.filter(g => !g.memberIds.includes(u.id));
+                                  return (
+                                    <div className="mt-2">
+                                      <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                                        <Users className="h-3 w-3" />
+                                        Группы доступа
+                                      </div>
+                                      <div className="flex flex-wrap gap-1 items-center">
+                                        {userGroups.length === 0 && (
+                                          <span className="text-[10px] italic text-muted-foreground/60">Нет групп</span>
+                                        )}
+                                        {userGroups.map(g => (
+                                          <Badge
+                                            key={g.id}
+                                            variant="outline"
+                                            className="text-[10px] gap-1 pr-1 pl-2"
+                                            data-testid={`badge-group-${u.id}-${g.id}`}
+                                          >
+                                            {g.title}
+                                            {!g.isSystem && (
+                                              <button
+                                                data-testid={`button-remove-group-${u.id}-${g.id}`}
+                                                className="ml-0.5 rounded-sm hover:text-destructive transition-colors"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  updateGroup(g.id, { memberIds: g.memberIds.filter(id => id !== u.id) });
+                                                  toast({ title: `Пользователь удалён из группы «${g.title}»` });
+                                                }}
+                                              >
+                                                <X className="h-2.5 w-2.5" />
+                                              </button>
+                                            )}
+                                          </Badge>
+                                        ))}
+                                        {notInGroups.length > 0 && (
+                                          <Popover
+                                            open={addGroupOpenForUser === u.id}
+                                            onOpenChange={(open) => setAddGroupOpenForUser(open ? u.id : null)}
+                                          >
+                                            <PopoverTrigger asChild>
+                                              <Button
+                                                data-testid={`button-add-group-${u.id}`}
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-5 w-5 rounded-full p-0 border-dashed"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <Plus className="h-3 w-3" />
+                                              </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-56 p-0" align="start">
+                                              <Command>
+                                                <CommandInput placeholder="Поиск группы…" className="h-8" />
+                                                <CommandList>
+                                                  <CommandEmpty>Группы не найдены</CommandEmpty>
+                                                  <CommandGroup>
+                                                    {notInGroups.map(g => (
+                                                      <CommandItem
+                                                        key={g.id}
+                                                        value={g.title}
+                                                        data-testid={`item-add-group-${u.id}-${g.id}`}
+                                                        onSelect={() => {
+                                                          updateGroup(g.id, { memberIds: [...g.memberIds, u.id] });
+                                                          toast({ title: `Пользователь добавлен в группу «${g.title}»` });
+                                                          setAddGroupOpenForUser(null);
+                                                        }}
+                                                      >
+                                                        {g.title}
+                                                      </CommandItem>
+                                                    ))}
+                                                  </CommandGroup>
+                                                </CommandList>
+                                              </Command>
+                                            </PopoverContent>
+                                          </Popover>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                               <div className="flex gap-1">
                                 <Button
