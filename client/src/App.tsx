@@ -17,6 +17,14 @@ import { useKB } from "@/lib/kbStore";
 
 import { queryClient } from "./lib/queryClient";
 
+function AdminRoute() {
+  const { me } = useKB();
+  if (!me.roles.includes("Администратор")) {
+    return <Redirect to="/" />;
+  }
+  return <Admin />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -28,7 +36,7 @@ function Router() {
       <Route path="/archive" component={ArchivePage} />
       <Route path="/materials/new" component={MaterialWizard} />
       <Route path="/materials/:id" component={MaterialView} />
-      <Route path="/admin" component={Admin} />
+      <Route path="/admin" component={AdminRoute} />
       <Route path="/home">
         <Redirect to="/" />
       </Route>
