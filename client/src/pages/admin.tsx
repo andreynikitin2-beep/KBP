@@ -335,6 +335,14 @@ function NewHiresTab() {
   } = useKB();
 
   const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null);
+  const [newHireSearch, setNewHireSearch] = useState("");
+
+  const filteredProfiles = newHireProfiles.filter((profile) => {
+    const user = users.find((u) => u.id === profile.userId);
+    if (!newHireSearch.trim()) return true;
+    const q = newHireSearch.trim().toLowerCase();
+    return user?.displayName?.toLowerCase().includes(q) || user?.email?.toLowerCase().includes(q);
+  });
 
   const fmtDate = (iso?: string) => {
     if (!iso) return "—";
@@ -401,6 +409,17 @@ function NewHiresTab() {
           </div>
 
           {newHireProfiles.length > 0 ? (
+            <React.Fragment>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  data-testid="input-newhire-search"
+                  className="rounded-xl pl-9"
+                  placeholder="Поиск по имени или email сотрудника…"
+                  value={newHireSearch}
+                  onChange={(e) => setNewHireSearch(e.target.value)}
+                />
+              </div>
             <Card className="p-4 overflow-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -413,7 +432,14 @@ function NewHiresTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {newHireProfiles.map((profile) => {
+                  {filteredProfiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground" data-testid="empty-newhire-search">
+                        Сотрудники по запросу «{newHireSearch}» не найдены
+                      </td>
+                    </tr>
+                  ) : null}
+                  {filteredProfiles.map((profile) => {
                     const user = users.find((u) => u.id === profile.userId);
                     const userAssignments = newHireAssignments.filter((a) => a.userId === profile.userId);
                     const acknowledged = userAssignments.filter((a) => a.acknowledgedAt).length;
@@ -540,6 +566,7 @@ function NewHiresTab() {
                 </tbody>
               </table>
             </Card>
+            </React.Fragment>
           ) : (
             <Card className="p-6">
               <div className="text-sm text-muted-foreground text-center" data-testid="empty-newhires">
