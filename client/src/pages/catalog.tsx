@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ChevronDown, ChevronRight, Edit2, Folder, Lock, Plus, Search, Tag, Trash2, UserCog, Users } from "lucide-react";
+import { ArrowRight, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Edit2, FileText, Folder, GitPullRequest, Lock, Plus, PlusCircle, Search, Settings, Tag, Trash2, UserCog, Users } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -13,8 +13,28 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { withinScope } from "@/lib/kbLogic";
+import { canApproveAndPublish, withinScope } from "@/lib/kbLogic";
 import type { CatalogNode } from "@/lib/mockData";
+
+function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
+  const { materials } = useKB();
+  const m = materials.find((x: any) => x.materialId === id) || materials.find((x: any) => x.id === id);
+  if (!m) return null;
+  return (
+    <Link href={`/materials/${(m as any).materialId}`}>
+      <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 cursor-pointer group" data-testid={`row-material-${(m as any).materialId}`}>
+        <div className="h-8 w-8 rounded flex items-center justify-center bg-muted/80 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold leading-tight line-clamp-1">{(m as any).passport.title}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">{label || (m as any).status}</div>
+        </div>
+        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+      </div>
+    </Link>
+  );
+}
 
 const statusColor: Record<string, string> = {
   "Черновик": "bg-gray-100 text-gray-700",
@@ -34,7 +54,7 @@ const critColor: Record<string, string> = {
 export default function Catalog() {
   const { toast } = useToast();
   const {
-    me, users, visibleMaterials: materials, catalogNodes,
+    me, users, visibleMaterials: materials, materials: allMaterials, catalogNodes, rfcs, visibilityGroups,
     setSectionOwners, addSection, renameSection, deleteSection,
     addSubsection, renameSubsection, deleteSubsection,
   } = useKB();
@@ -73,7 +93,33 @@ export default function Catalog() {
   };
 
   const isAdmin = me.roles.includes("Администратор");
+  const isAuthor = me.roles.includes("Автор");
+  const isOwner = me.roles.includes("Владелец");
+  const isDeputy = me.roles.includes("Заместитель владельца");
+  const isOwnerOrDeputy = isOwner || isDeputy;
   const canCreateMaterial = me.roles.some(r => r === "Автор" || r === "Владелец" || r === "Заместитель владельца" || r === "Администратор");
+
+  const awaitingApproval = useMemo(() =>
+    allMaterials.filter((m) => m.status === "На согласовании" && canApproveAndPublish(me, m, catalogNodes)),
+    [allMaterials, me, catalogNodes],
+  );
+
+  const myOnReview = useMemo(() =>
+    allMaterials.filter((m) =>
+      m.status === "На пересмотре" && (m.passport.ownerId === me.id || m.passport.deputyId === me.id),
+    ),
+    [allMaterials, me.id],
+  );
+
+  const myDrafts = useMemo(() =>
+    allMaterials.filter((m) => m.createdBy === me.id && m.status === "Черновик"),
+    [allMaterials, me.id],
+  );
+
+  const myRfcs = useMemo(() =>
+    rfcs.filter((r) => r.assignedTo === me.id && (r.status === "Новый" || r.status === "В работе")),
+    [rfcs, me.id],
+  );
 
   const sections = useMemo(() =>
     catalogNodes
@@ -430,38 +476,166 @@ export default function Catalog() {
           </div>
         </div>
 
-        <div className="md:col-span-4">
+        <div className="md:col-span-4 space-y-4">
+          {/* Мой профиль */}
           <Card className="sticky top-[92px]">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Как устроен каталог</CardTitle>
-              <div className="mt-1 text-sm text-muted-foreground">
-                Раздел → Подраздел → Материал. Доступ ограничивается политиками.
-              </div>
+              <CardTitle className="text-base">Мой профиль</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="text-xs font-medium text-muted-foreground">Владельцы разделов</div>
-                <div className="mt-2 text-sm">
-                  Владельцы раздела могут создавать, удалять и переименовывать подразделы.
-                  Администратор может назначать владельцев.
+                <div className="text-xs text-muted-foreground">Текущий пользователь</div>
+                <div className="mt-1 text-sm font-semibold" data-testid="text-me">{me.displayName}</div>
+                <div className="mt-1 text-xs text-muted-foreground" data-testid="text-me-scope">{me.legalEntity}</div>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {me.roles.map((r) => (
+                    <Badge key={r} variant="secondary" className="kb-chip">{r}</Badge>
+                  ))}
+                </div>
+                {(() => {
+                  const myGroups = visibilityGroups.filter(g => !g.isSystem && g.memberIds.includes(me.id));
+                  return myGroups.length > 0 ? (
+                    <div className="mt-3">
+                      <div className="text-xs text-muted-foreground mb-1.5">Группы видимости</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {myGroups.map(g => (
+                          <Badge key={g.id} variant="outline" className="kb-chip">{g.title}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+
+              <div className="rounded-2xl border bg-muted/30 p-4">
+                <div className="text-xs font-medium text-muted-foreground">Быстрые действия</div>
+                <div className="mt-3 grid gap-2">
+                  {(isAuthor || isOwner || isAdmin) && (
+                    <Link href="/materials/new">
+                      <Button data-testid="button-quick-create" className="w-full justify-between rounded-lg bg-[#0891b2] hover:bg-[#0e7490] text-white font-bold h-10">
+                        <span className="flex items-center gap-2"><PlusCircle className="h-4 w-4" /> Создать материал</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
+                  {isAdmin && (
+                    <Link href="/admin">
+                      <Button data-testid="button-quick-admin" variant="outline" className="w-full justify-between rounded-xl">
+                        <span className="flex items-center gap-2"><Settings className="h-4 w-4" /> Админ‑раздел</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               </div>
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="text-xs font-medium text-muted-foreground">Правила доступа</div>
-                <ul className="mt-2 space-y-1 text-sm">
-                  <li>• По роли (RBAC)</li>
-                  <li>• По разделам</li>
-                  <li>• По группам видимости</li>
-                </ul>
-              </div>
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="text-xs font-medium text-muted-foreground">Навигация</div>
-                <div className="mt-2 text-sm">
-                  Нажмите на подраздел, чтобы раскрыть список материалов. Нажмите на материал, чтобы открыть его.
+
+              {isOwnerOrDeputy && (
+                <div className="rounded-2xl border bg-muted/30 p-4">
+                  <div className="text-xs font-medium text-muted-foreground mb-3">Сводка задач</div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">На согласовании</span>
+                      <Badge variant={awaitingApproval.length ? "default" : "secondary"} className="text-[10px]">{awaitingApproval.length}</Badge>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">На пересмотре</span>
+                      <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
+                    </div>
+                    {isAdmin && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Активные RFC</span>
+                        <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
+
+          {/* Мои задачи */}
+          {isOwnerOrDeputy && (
+            <Card data-testid="card-owner-module">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Мои задачи
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-[10px]">{awaitingApproval.length}</Badge>
+                    <span className="text-sm font-semibold">Ждут согласования</span>
+                  </div>
+                  {awaitingApproval.length ? (
+                    <div className="space-y-1">
+                      {awaitingApproval.map((m) => (
+                        <CompactMaterialRow key={m.id} id={m.id} label="На согласовании" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-awaiting">Нет материалов на согласовании.</div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant={myOnReview.length ? "destructive" : "secondary"} className="text-[10px]">{myOnReview.length}</Badge>
+                    <span className="text-sm font-semibold">На пересмотре</span>
+                  </div>
+                  {myOnReview.length ? (
+                    <div className="space-y-1">
+                      {myOnReview.map((m) => (
+                        <CompactMaterialRow key={m.id} id={m.id} label="Требует пересмотра" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground pl-1" data-testid="empty-review">Нет материалов на пересмотре.</div>
+                  )}
+                </div>
+
+                {isAdmin && (
+                  <>
+                    <Separator />
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="secondary" className="text-[10px]">{myRfcs.length}</Badge>
+                        <span className="text-sm font-semibold">Мои RFC</span>
+                      </div>
+                      {myRfcs.length ? (
+                        <div className="space-y-1">
+                          {myRfcs.map((r) => {
+                            const mat = allMaterials.find((m) => m.materialId === r.materialId);
+                            return (
+                              <Link key={r.id} href={`/materials/${r.materialId}`}>
+                                <div className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group" data-testid={`row-rfc-${r.id}`}>
+                                  <div className="h-8 w-8 rounded flex items-center justify-center bg-orange-100 text-orange-600 shrink-0">
+                                    <GitPullRequest className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-semibold leading-tight line-clamp-1">{r.title}</div>
+                                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                                      {r.type} · {r.status} · {mat?.passport.title || r.materialId}
+                                    </div>
+                                  </div>
+                                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground pl-1" data-testid="empty-rfcs">Нет активных RFC.</div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

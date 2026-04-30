@@ -5,6 +5,9 @@ import { api } from "@/lib/api";
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
+  BarChart3,
+  Bell,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -27,6 +30,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  TriangleAlert,
   UserCheck,
   UserPlus,
   Users,
@@ -663,6 +667,13 @@ export default function Admin() {
 
   const kpis = useMemo(() => computeKpis(scoped, users), [scoped, users]);
 
+  const overdueAll = useMemo(() => materials.filter(isOverdue), [materials]);
+  const failedNotifications = useMemo(() => notifications.filter((n) => n.status === "FAILED"), [notifications]);
+  const withoutOwner = useMemo(() =>
+    materials.filter((m) => m.status !== "Архив" && !m.passport.ownerId),
+    [materials],
+  );
+
   const catalogStats = useMemo(() => {
     const sections = catalogNodes.filter((n) => n.type === "section").length;
     const subsections = catalogNodes.filter((n) => n.type === "subsection").length;
@@ -1060,7 +1071,7 @@ export default function Admin() {
           <Separator />
           <CardContent className="p-4">
             <Tabs defaultValue="policies" className="w-full">
-              <TabsList className="grid w-full grid-cols-7">
+              <TabsList className="grid w-full grid-cols-8">
                 <TabsTrigger data-testid="tab-admin-policies" value="policies">
                   Политики
                 </TabsTrigger>
@@ -1081,6 +1092,9 @@ export default function Admin() {
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-newhires" value="newhires">
                   Новые сотрудники
+                </TabsTrigger>
+                <TabsTrigger data-testid="tab-admin-health" value="health">
+                  Здоровье базы
                 </TabsTrigger>
               </TabsList>
 
@@ -2758,6 +2772,93 @@ export default function Admin() {
               {/* ── Новые сотрудники ── */}
               <TabsContent value="newhires" className="mt-4">
                 <NewHiresTab />
+              </TabsContent>
+
+              {/* ── Здоровье базы ── */}
+              <TabsContent value="health" className="mt-4">
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Активных</div>
+                      <div className="text-2xl font-bold mt-1" data-testid="kpi-active-value">{kpis.totalActive}</div>
+                    </div>
+                    <div className="rounded-xl border p-3 border-destructive/30">
+                      <div className="text-xs text-destructive uppercase tracking-wider">Просрочено</div>
+                      <div className="text-2xl font-bold mt-1 text-destructive" data-testid="kpi-overdue-value">{overdueAll.length}</div>
+                    </div>
+                    <div className="rounded-xl border p-3 border-orange-300">
+                      <div className="text-xs text-orange-600 uppercase tracking-wider">Без владельца</div>
+                      <div className="text-2xl font-bold mt-1 text-orange-600" data-testid="kpi-no-owner-value">{withoutOwner.length}</div>
+                    </div>
+                    <div className="rounded-xl border p-3">
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">Без заместителя</div>
+                      <div className="text-2xl font-bold mt-1" data-testid="kpi-no-deputy-value">{kpis.withoutDeputyCount}</div>
+                    </div>
+                  </div>
+
+                  {(overdueAll.length > 0 || failedNotifications.length > 0) && (
+                    <div className="space-y-3">
+                      {overdueAll.length > 0 && (
+                        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <TriangleAlert className="h-4 w-4 text-destructive" />
+                            <span className="text-sm font-semibold text-destructive">Просроченные материалы ({overdueAll.length})</span>
+                          </div>
+                          <div className="space-y-1">
+                            {overdueAll.slice(0, 5).map((m) => (
+                              <Link key={m.id} href={`/materials/${m.materialId}`}>
+                                <div className="flex items-center gap-2 p-2 rounded-lg hover:bg-destructive/5 cursor-pointer text-sm">
+                                  <FileText className="h-3.5 w-3.5 text-destructive shrink-0" />
+                                  <span className="flex-1 line-clamp-1">{m.passport.title}</span>
+                                  <Badge variant="destructive" className="text-[9px] shrink-0">Просрочен</Badge>
+                                </div>
+                              </Link>
+                            ))}
+                            {overdueAll.length > 5 && (
+                              <div className="text-xs text-muted-foreground pl-2">...и ещё {overdueAll.length - 5}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {failedNotifications.length > 0 && (
+                        <div className="rounded-xl border border-orange-300 bg-orange-50/50 p-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <AlertTriangle className="h-4 w-4 text-orange-600" />
+                            <span className="text-sm font-semibold text-orange-700">Ошибки уведомлений ({failedNotifications.length})</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {failedNotifications.slice(0, 3).map((n) => (
+                              <div key={n.id} className="text-xs text-muted-foreground flex items-start gap-2">
+                                <Bell className="h-3 w-3 mt-0.5 text-orange-500 shrink-0" />
+                                <span className="line-clamp-1">{n.subject}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <Separator />
+                  <div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Последние уведомления</div>
+                    <div className="space-y-1.5">
+                      {notifications.slice(0, 6).map((n) => (
+                        <div key={n.id} className="flex items-start gap-2 text-xs text-muted-foreground">
+                          <Badge variant={n.status === "FAILED" ? "destructive" : "secondary"} className="text-[9px] px-1.5 py-0 shrink-0 mt-0.5">
+                            {n.status}
+                          </Badge>
+                          <span className="line-clamp-1 flex-1">{n.subject}</span>
+                          <span className="text-[10px] shrink-0">{new Date(n.at).toLocaleDateString("ru-RU")}</span>
+                        </div>
+                      ))}
+                      {!notifications.length && (
+                        <div className="text-sm text-muted-foreground italic">Нет уведомлений.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

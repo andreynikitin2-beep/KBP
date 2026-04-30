@@ -9,7 +9,6 @@ import {
   FilePlus2,
   GraduationCap,
   Heart,
-  LayoutGrid,
   LockKeyhole,
   Search,
   Settings2,
@@ -27,7 +26,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useKB } from "@/lib/kbStore";
 
 const allNav = [
-  { href: "/", label: "Главная", icon: LayoutGrid, roles: null },
   { href: "/catalog", label: "Каталог", icon: BookOpen, roles: null },
   { href: "/subscriptions", label: "Мои подписки", icon: Heart, roles: null },
   { href: "/my-materials", label: "Мои материалы", icon: ClipboardCheck, roles: ["Владелец", "Заместитель владельца"] as string[] },
