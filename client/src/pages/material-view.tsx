@@ -31,6 +31,7 @@ import { ru } from "date-fns/locale";
 import { AppShell } from "@/components/kb/AppShell";
 import { PageViewer } from "@/components/kb/PageViewer";
 import { RichEditor } from "@/components/kb/RichEditor";
+import { UserSelect } from "@/components/kb/UserSelect";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -205,6 +206,14 @@ export default function MaterialView() {
   const [editSectionId, setEditSectionId] = useState("");
   const [editOwnerId, setEditOwnerId] = useState("");
   const [editDeputyId, setEditDeputyId] = useState<string | undefined>(undefined);
+
+  const OWNER_ELIGIBLE_ROLES = ["Владелец", "Заместитель владельца", "Администратор"] as const;
+  const eligibleUsers = useMemo(
+    () => users.filter(u => !u.deactivatedAt && u.roles.some(r => (OWNER_ELIGIBLE_ROLES as readonly string[]).includes(r))),
+    [users],
+  );
+  const ownerOptions = useMemo(() => eligibleUsers.filter(u => u.id !== editDeputyId), [eligibleUsers, editDeputyId]);
+  const deputyOptions = useMemo(() => eligibleUsers.filter(u => u.id !== editOwnerId), [eligibleUsers, editOwnerId]);
   const [editVisibilityGroupIds, setEditVisibilityGroupIds] = useState<string[]>(["g-base"]);
   const [editTags, setEditTags] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
@@ -1083,30 +1092,26 @@ export default function MaterialView() {
                         <div className="grid gap-4 md:grid-cols-2">
                           <div>
                             <Label>Владелец</Label>
-                            <Select value={editOwnerId} onValueChange={v => setEditOwnerId(v)}>
-                              <SelectTrigger data-testid="select-edit-owner" className={`mt-1 rounded-xl ${isFieldChanged(editOwnerId, previousVersion?.passport.ownerId) ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {users.filter(u => !u.deactivatedAt).map(u => (
-                                  <SelectItem key={u.id} value={u.id}>{u.displayName}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <UserSelect
+                              data-testid="select-edit-owner"
+                              options={ownerOptions}
+                              value={editOwnerId}
+                              onValueChange={(v) => setEditOwnerId(v ?? "")}
+                              placeholder="Выберите владельца…"
+                              triggerClassName={isFieldChanged(editOwnerId, previousVersion?.passport.ownerId) ? "text-foreground" : "text-muted-foreground"}
+                            />
                           </div>
                           <div>
                             <Label>Заместитель</Label>
-                            <Select value={editDeputyId || "none"} onValueChange={v => setEditDeputyId(v === "none" ? undefined : v)}>
-                              <SelectTrigger data-testid="select-edit-deputy" className={`mt-1 rounded-xl ${isFieldChanged(editDeputyId, previousVersion?.passport.deputyId) ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                <SelectValue placeholder="Не выбран" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Не выбран</SelectItem>
-                                {users.filter(u => !u.deactivatedAt).map(u => (
-                                  <SelectItem key={u.id} value={u.id}>{u.displayName}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <UserSelect
+                              data-testid="select-edit-deputy"
+                              options={deputyOptions}
+                              value={editDeputyId}
+                              onValueChange={setEditDeputyId}
+                              placeholder="Не выбран"
+                              allowNone
+                              triggerClassName={isFieldChanged(editDeputyId, previousVersion?.passport.deputyId) ? "text-foreground" : "text-muted-foreground"}
+                            />
                           </div>
                         </div>
 

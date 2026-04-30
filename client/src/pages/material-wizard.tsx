@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { AlertTriangle, FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
+import { UserSelect } from "@/components/kb/UserSelect";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +43,14 @@ export default function MaterialWizard() {
   const [sectionId, setSectionId] = useState(initialSectionId);
   const [ownerId, setOwnerId] = useState(me.id);
   const [deputyId, setDeputyId] = useState<string | undefined>(undefined);
+
+  const OWNER_ROLES = ["Владелец", "Заместитель владельца", "Администратор"] as const;
+  const eligibleUsers = useMemo(
+    () => users.filter(u => !u.deactivatedAt && u.roles.some(r => (OWNER_ROLES as readonly string[]).includes(r))),
+    [users],
+  );
+  const ownerOptions = useMemo(() => eligibleUsers.filter(u => u.id !== deputyId), [eligibleUsers, deputyId]);
+  const deputyOptions = useMemo(() => eligibleUsers.filter(u => u.id !== ownerId), [eligibleUsers, ownerId]);
   const [visibilityGroupIds, setVisibilityGroupIds] = useState<string[]>(["g-base"]);
   const [newHireRequired, setNewHireRequired] = useState(false);
   const [newHireVisWarning, setNewHireVisWarning] = useState(false);
@@ -227,34 +236,24 @@ export default function MaterialWizard() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label>Владелец (обязательно)</Label>
-                    <Select value={ownerId} onValueChange={(v) => setOwnerId(v)}>
-                      <SelectTrigger data-testid="select-owner" className="mt-1 rounded-xl">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {users.filter(u => !u.deactivatedAt).map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.displayName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <UserSelect
+                      data-testid="select-owner"
+                      options={ownerOptions}
+                      value={ownerId}
+                      onValueChange={(v) => setOwnerId(v ?? "")}
+                      placeholder="Выберите владельца…"
+                    />
                   </div>
                   <div>
                     <Label>Заместитель</Label>
-                      <Select value={deputyId || "none"} onValueChange={(v) => setDeputyId(v === "none" ? undefined : v)}>
-                        <SelectTrigger data-testid="select-deputy" className="mt-1 rounded-xl">
-                          <SelectValue placeholder="Не выбран" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Не выбран</SelectItem>
-                          {users.filter(u => !u.deactivatedAt).map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {u.displayName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <UserSelect
+                      data-testid="select-deputy"
+                      options={deputyOptions}
+                      value={deputyId}
+                      onValueChange={setDeputyId}
+                      placeholder="Не выбран"
+                      allowNone
+                    />
                   </div>
                 </div>
 
