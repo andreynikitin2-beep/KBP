@@ -1628,6 +1628,80 @@ export default function Admin() {
                                   ))}
                                 </div>
                               </div>
+                              {/* Группы видимости — управление в режиме редактирования */}
+                              <div>
+                                <Label className="text-xs">Группы доступа</Label>
+                                <div className="mt-1 flex flex-wrap gap-1 items-center">
+                                  {visibilityGroups.filter(g => g.memberIds.includes(u.id)).length === 0 && (
+                                    <span className="text-[10px] italic text-muted-foreground/60">Нет групп</span>
+                                  )}
+                                  {visibilityGroups.filter(g => g.memberIds.includes(u.id)).map(g => (
+                                    <Badge
+                                      key={g.id}
+                                      variant="outline"
+                                      className="text-[10px] gap-1 pr-1 pl-2"
+                                      data-testid={`badge-edit-group-${u.id}-${g.id}`}
+                                    >
+                                      {g.title}
+                                      {!g.isSystem && (
+                                        <button
+                                          data-testid={`button-remove-group-${u.id}-${g.id}`}
+                                          className="ml-0.5 rounded-sm hover:text-destructive transition-colors"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            updateGroup(g.id, { memberIds: g.memberIds.filter(id => id !== u.id) });
+                                            toast({ title: `Пользователь удалён из группы «${g.title}»` });
+                                          }}
+                                        >
+                                          <X className="h-2.5 w-2.5" />
+                                        </button>
+                                      )}
+                                    </Badge>
+                                  ))}
+                                  {visibilityGroups.filter(g => !g.memberIds.includes(u.id)).length > 0 && (
+                                    <Popover
+                                      open={addGroupOpenForUser === u.id}
+                                      onOpenChange={(open) => setAddGroupOpenForUser(open ? u.id : null)}
+                                    >
+                                      <PopoverTrigger asChild>
+                                        <Button
+                                          data-testid={`button-add-group-${u.id}`}
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-5 w-5 rounded-full p-0 border-dashed"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <Plus className="h-3 w-3" />
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-56 p-0" align="start">
+                                        <Command>
+                                          <CommandInput placeholder="Поиск группы…" className="h-8" />
+                                          <CommandList>
+                                            <CommandEmpty>Группы не найдены</CommandEmpty>
+                                            <CommandGroup>
+                                              {visibilityGroups.filter(g => !g.memberIds.includes(u.id)).map(g => (
+                                                <CommandItem
+                                                  key={g.id}
+                                                  value={g.title}
+                                                  data-testid={`item-add-group-${u.id}-${g.id}`}
+                                                  onSelect={() => {
+                                                    updateGroup(g.id, { memberIds: [...g.memberIds, u.id] });
+                                                    toast({ title: `Пользователь добавлен в группу «${g.title}»` });
+                                                    setAddGroupOpenForUser(null);
+                                                  }}
+                                                >
+                                                  {g.title}
+                                                </CommandItem>
+                                              ))}
+                                            </CommandGroup>
+                                          </CommandList>
+                                        </Command>
+                                      </PopoverContent>
+                                    </Popover>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ) : (<>
                             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -1664,85 +1738,24 @@ export default function Admin() {
                                     <Badge key={r} variant="secondary" className="text-[10px]">{r}</Badge>
                                   ))}
                                 </div>
-                                {/* Группы видимости */}
+                                {/* Группы видимости — только просмотр */}
                                 {(() => {
                                   const userGroups = visibilityGroups.filter(g => g.memberIds.includes(u.id));
-                                  const notInGroups = visibilityGroups.filter(g => !g.memberIds.includes(u.id));
                                   return (
                                     <div className="mt-2">
                                       <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
                                         <Users className="h-3 w-3" />
                                         Группы доступа
                                       </div>
-                                      <div className="flex flex-wrap gap-1 items-center">
-                                        {userGroups.length === 0 && (
-                                          <span className="text-[10px] italic text-muted-foreground/60">Нет групп</span>
-                                        )}
-                                        {userGroups.map(g => (
-                                          <Badge
-                                            key={g.id}
-                                            variant="outline"
-                                            className="text-[10px] gap-1 pr-1 pl-2"
-                                            data-testid={`badge-group-${u.id}-${g.id}`}
-                                          >
-                                            {g.title}
-                                            {!g.isSystem && (
-                                              <button
-                                                data-testid={`button-remove-group-${u.id}-${g.id}`}
-                                                className="ml-0.5 rounded-sm hover:text-destructive transition-colors"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  updateGroup(g.id, { memberIds: g.memberIds.filter(id => id !== u.id) });
-                                                  toast({ title: `Пользователь удалён из группы «${g.title}»` });
-                                                }}
-                                              >
-                                                <X className="h-2.5 w-2.5" />
-                                              </button>
-                                            )}
-                                          </Badge>
-                                        ))}
-                                        {notInGroups.length > 0 && (
-                                          <Popover
-                                            open={addGroupOpenForUser === u.id}
-                                            onOpenChange={(open) => setAddGroupOpenForUser(open ? u.id : null)}
-                                          >
-                                            <PopoverTrigger asChild>
-                                              <Button
-                                                data-testid={`button-add-group-${u.id}`}
-                                                variant="outline"
-                                                size="sm"
-                                                className="h-5 w-5 rounded-full p-0 border-dashed"
-                                                onClick={(e) => e.stopPropagation()}
-                                              >
-                                                <Plus className="h-3 w-3" />
-                                              </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-56 p-0" align="start">
-                                              <Command>
-                                                <CommandInput placeholder="Поиск группы…" className="h-8" />
-                                                <CommandList>
-                                                  <CommandEmpty>Группы не найдены</CommandEmpty>
-                                                  <CommandGroup>
-                                                    {notInGroups.map(g => (
-                                                      <CommandItem
-                                                        key={g.id}
-                                                        value={g.title}
-                                                        data-testid={`item-add-group-${u.id}-${g.id}`}
-                                                        onSelect={() => {
-                                                          updateGroup(g.id, { memberIds: [...g.memberIds, u.id] });
-                                                          toast({ title: `Пользователь добавлен в группу «${g.title}»` });
-                                                          setAddGroupOpenForUser(null);
-                                                        }}
-                                                      >
-                                                        {g.title}
-                                                      </CommandItem>
-                                                    ))}
-                                                  </CommandGroup>
-                                                </CommandList>
-                                              </Command>
-                                            </PopoverContent>
-                                          </Popover>
-                                        )}
+                                      <div className="flex flex-wrap gap-1">
+                                        {userGroups.length === 0
+                                          ? <span className="text-[10px] italic text-muted-foreground/60">Нет групп</span>
+                                          : userGroups.map(g => (
+                                            <Badge key={g.id} variant="outline" className="text-[10px]" data-testid={`badge-group-${u.id}-${g.id}`}>
+                                              {g.title}
+                                            </Badge>
+                                          ))
+                                        }
                                       </div>
                                     </div>
                                   );
