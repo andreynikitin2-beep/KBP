@@ -26,6 +26,7 @@ export interface IStorage {
   getMaterialVersionsByMaterialId(materialId: string): Promise<schema.MaterialVersion[]>;
   createMaterialVersion(data: schema.InsertMaterialVersion): Promise<schema.MaterialVersion>;
   updateMaterialVersion(id: string, data: Partial<schema.InsertMaterialVersion>): Promise<schema.MaterialVersion | undefined>;
+  deleteMaterialByMaterialId(materialId: string): Promise<boolean>;
 
   getSubscribers(materialId: string): Promise<schema.MaterialSubscriber[]>;
   addSubscriber(data: schema.InsertMaterialSubscriber): Promise<schema.MaterialSubscriber>;
@@ -195,6 +196,28 @@ export class DatabaseStorage implements IStorage {
   async updateMaterialVersion(id: string, data: Partial<schema.InsertMaterialVersion>): Promise<schema.MaterialVersion | undefined> {
     const [version] = await db.update(schema.materialVersions).set(data).where(eq(schema.materialVersions.id, id)).returning();
     return version;
+  }
+
+  async deleteMaterialByMaterialId(materialId: string): Promise<boolean> {
+    return await db.transaction(async (tx) => {
+      // Delete RFC comments for all RFCs of this material
+      const matRfcs = await tx.select({ id: schema.rfcs.id }).from(schema.rfcs).where(eq(schema.rfcs.materialId, materialId));
+      if (matRfcs.length > 0) {
+        const rfcIds = matRfcs.map(r => r.id);
+        await tx.delete(schema.rfcComments).where(inArray(schema.rfcComments.rfcId, rfcIds));
+      }
+      // Delete all related records
+      await tx.delete(schema.materialSubscribers).where(eq(schema.materialSubscribers.materialId, materialId));
+      await tx.delete(schema.auditViews).where(eq(schema.auditViews.materialId, materialId));
+      await tx.delete(schema.viewLog).where(eq(schema.viewLog.materialId, materialId));
+      await tx.delete(schema.rfcs).where(eq(schema.rfcs.materialId, materialId));
+      await tx.delete(schema.helpfulRatings).where(eq(schema.helpfulRatings.materialId, materialId));
+      await tx.delete(schema.effectiveVisGroupMap).where(eq(schema.effectiveVisGroupMap.materialId, materialId));
+      await tx.delete(schema.newHireAssignments).where(eq(schema.newHireAssignments.materialId, materialId));
+      // Delete all versions
+      const result = await tx.delete(schema.materialVersions).where(eq(schema.materialVersions.materialId, materialId));
+      return (result.rowCount ?? 0) > 0;
+    });
   }
 
   async getSubscribers(materialId: string): Promise<schema.MaterialSubscriber[]> {

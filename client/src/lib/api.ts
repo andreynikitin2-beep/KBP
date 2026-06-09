@@ -504,4 +504,8 @@ export const api = {
   async acknowledgeAssignment(assignmentId: string, versionId: string): Promise<NewHireAssignment> {
     return patchJson<NewHireAssignment>(`/api/new-hires/assignments/${assignmentId}/acknowledge`, { acknowledgedVersionId: versionId });
   },
+
+  async deleteMaterial(materialId: string): Promise<void> {
+    return deleteJson(`/api/materials/${materialId}`);
+  },
 };

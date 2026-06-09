@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   Upload,
   Users,
 } from "lucide-react";
@@ -145,7 +146,7 @@ export default function MaterialView() {
   const [, params] = useRoute("/materials/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { me, users, materials, visibleMaterials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled, archiveMaterial, restoreMaterial } = useKB();
+  const { me, users, materials, visibleMaterials, setMaterials, rfcs, setRfcs, notifications, setNotifications, confirmActuality, submitForApproval, publishDirect, approveAndPublish, returnForRevision, adminForcePublish, catalogNodes, visibilityGroups, isSubscribed, toggleSubscription, createNewVersion, getAllVersions, policy, rateMaterial, canRateToday, recordView, recordDownload, recordPreview, newHireAssignments, acknowledgeAssignment, newHiresEnabled, archiveMaterial, restoreMaterial, deleteMaterial } = useKB();
   const isAdmin = me.roles.includes("Администратор");
 
   const materialId = params?.id || "";
@@ -971,10 +972,50 @@ export default function MaterialView() {
                     </AlertDialogContent>
                   </AlertDialog>
                 )}
+                {!isViewingOldVersion && isAdmin && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        data-testid="button-delete-material"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700 gap-1.5"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Удалить
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Удалить материал безвозвратно?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Материал «{current.passport.title}» и все его версии, комментарии и история просмотров будут удалены навсегда. Это действие нельзя отменить.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-xl">Отмена</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="rounded-xl bg-red-600 hover:bg-red-700"
+                          onClick={async () => {
+                            const res = await deleteMaterial(current.materialId);
+                            if (res.ok) {
+                              toast({ title: "Материал удалён", description: `«${current.passport.title}» удалён безвозвратно` });
+                              setLocation("/catalog");
+                            } else {
+                              toast({ title: "Ошибка", description: res.message, variant: "destructive" });
+                            }
+                          }}
+                        >
+                          Удалить
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
                 {!isViewingOldVersion && (
                   <button
                     data-testid="button-toggle-subscription"
-                    className={`${canArchiveCurrent ? "" : "ml-auto"} p-1 rounded-full hover:bg-muted/50 transition-colors`}
+                    className={`${canArchiveCurrent || isAdmin ? "" : "ml-auto"} p-1 rounded-full hover:bg-muted/50 transition-colors`}
                     onClick={() => toggleSubscription(current.materialId)}
                     title={isSubscribed(current.materialId) ? "Отписаться" : "Подписаться"}
                   >

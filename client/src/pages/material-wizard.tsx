@@ -30,16 +30,6 @@ function nextVersionLike(prev?: string) {
 export default function MaterialWizard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-
-  useEffect(() => {
-    // Push a history entry so the browser back button has a target
-    window.history.pushState(null, "", window.location.href);
-    const handlePopState = () => {
-      setLocation("/catalog");
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
   const { me, users, materials, visibleMaterials, setMaterials, policy, catalogNodes, visibilityGroups } = useKB();
 
   const initialSectionId = useMemo(() => {

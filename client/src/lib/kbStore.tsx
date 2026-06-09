@@ -119,6 +119,7 @@ type Store = {
   viewOldVersion: (versionId: string) => MaterialVersion | undefined;
   archiveMaterial: (materialId: string) => { ok: boolean; message?: string };
   restoreMaterial: (materialId: string) => { ok: boolean; message?: string };
+  deleteMaterial: (materialId: string) => Promise<{ ok: boolean; message?: string }>;
 
   emailConfig: EmailConfig;
   emailTemplates: EmailTemplate[];
@@ -1309,6 +1310,18 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         );
         api.updateMaterialVersionRaw(archived.id, { status: "Опубликовано", archivedBy: null, archivedAt: null } as any).catch(console.error);
         return { ok: true };
+      },
+
+      deleteMaterial: async (materialId: string) => {
+        const existing = materials.filter((m) => m.materialId === materialId);
+        if (existing.length === 0) return { ok: false, message: "Материал не найден" };
+        try {
+          await api.deleteMaterial(materialId);
+          setMaterials((prev) => prev.filter((m) => m.materialId !== materialId));
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, message: String(e) };
+        }
       },
 
       setSectionOwners: (sectionId: string, ownerIds: string[]) => {

@@ -283,6 +283,16 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/materials/:materialId", async (req, res) => {
+    try {
+      const deleted = await storage.deleteMaterialByMaterialId(req.params.materialId);
+      if (!deleted) return res.status(404).json({ error: "Material not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   // MATERIALS SUB-ROUTES
   app.get("/api/materials/:materialId/versions", async (req, res) => {
     try {
