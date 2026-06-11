@@ -342,6 +342,19 @@ export default function MaterialView() {
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
   };
 
+  // Fix: ensure pressing back from a material page always lands on /catalog,
+  // not a blank page (happens when user refreshes or opens URL directly)
+  useEffect(() => {
+    const navEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const navType = navEntry?.type;
+    const isDirectOrRefresh = navType === "reload" || (navType === "navigate" && window.history.length <= 1);
+    if (isDirectOrRefresh) {
+      const currentPath = window.location.pathname + window.location.search;
+      window.history.replaceState(null, "", "/catalog");
+      window.history.pushState(null, "", currentPath);
+    }
+  }, []);
+
   useEffect(() => {
     if (!current) return;
     recordView(current.materialId);
@@ -997,10 +1010,15 @@ export default function MaterialView() {
                         <AlertDialogAction
                           className="rounded-xl bg-red-600 hover:bg-red-700"
                           onClick={async () => {
+                            const titleSnapshot = current.passport.title;
                             const res = await deleteMaterial(current.materialId);
                             if (res.ok) {
-                              toast({ title: "Материал удалён", description: `«${current.passport.title}» удалён безвозвратно` });
-                              setLocation("/catalog");
+                              toast({
+                                title: "✓ Материал успешно удалён",
+                                description: `«${titleSnapshot}» и все его версии удалены безвозвратно.`,
+                                duration: 4000,
+                              });
+                              setTimeout(() => setLocation("/catalog"), 1500);
                             } else {
                               toast({ title: "Ошибка", description: res.message, variant: "destructive" });
                             }
