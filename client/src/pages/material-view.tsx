@@ -436,6 +436,16 @@ export default function MaterialView() {
     return crumbs;
   }, [sectionPath, current]);
 
+  const myAssignment = useMemo(() => {
+    if (!newHiresEnabled) return null;
+    return newHireAssignments.find(a => a.userId === me.id && a.materialId === materialId && !a.acknowledgedAt) || null;
+  }, [newHiresEnabled, newHireAssignments, me.id, materialId]);
+
+  const myAcknowledgedAssignment = useMemo(() => {
+    if (!newHiresEnabled) return null;
+    return newHireAssignments.find(a => a.userId === me.id && a.materialId === materialId && !!a.acknowledgedAt) || null;
+  }, [newHiresEnabled, newHireAssignments, me.id, materialId]);
+
   if (!current || !accessAllowed) {
     return (
       <AppShell
@@ -457,16 +467,6 @@ export default function MaterialView() {
       </AppShell>
     );
   }
-
-  const myAssignment = useMemo(() => {
-    if (!newHiresEnabled) return null;
-    return newHireAssignments.find(a => a.userId === me.id && a.materialId === materialId && !a.acknowledgedAt) || null;
-  }, [newHiresEnabled, newHireAssignments, me.id, materialId]);
-
-  const myAcknowledgedAssignment = useMemo(() => {
-    if (!newHiresEnabled) return null;
-    return newHireAssignments.find(a => a.userId === me.id && a.materialId === materialId && !!a.acknowledgedAt) || null;
-  }, [newHiresEnabled, newHireAssignments, me.id, materialId]);
 
   return (
     <AppShell
