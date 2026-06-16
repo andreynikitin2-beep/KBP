@@ -1284,8 +1284,9 @@ export async function registerRoutes(
             system: systemPrompt,
             messages: [{ role: "user", content: userPrompt }],
           }),
-          signal: AbortSignal.timeout(120000),
+          signal: AbortSignal.timeout(90000),
         });
+        if (res.headersSent) return;
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
           return res.status(500).json({ error: err?.error?.message || "Ошибка LLM" });
@@ -1308,8 +1309,9 @@ export async function registerRoutes(
               { role: "user", content: userPrompt },
             ],
           }),
-          signal: AbortSignal.timeout(120000),
+          signal: AbortSignal.timeout(90000),
         });
+        if (res.headersSent) return;
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
           return res.status(500).json({ error: err?.error?.message || "Ошибка LLM" });
@@ -1331,13 +1333,17 @@ export async function registerRoutes(
       // Sanitize the model output before it ever reaches the author/editor.
       html = sanitizeHtml(html);
       if (!html) {
-        return res.status(500).json({ error: "LLM вернул пустой результат" });
+        if (!res.headersSent)
+          res.status(500).json({ error: "LLM вернул пустой результат" });
+        return;
       }
 
-      res.json({ html, warning });
+      if (!res.headersSent) res.json({ html, warning });
     } catch (e: any) {
-      console.error("[generate-html]", e?.message || e);
-      res.status(500).json({ error: e?.message || "Ошибка генерации HTML" });
+      if (!res.headersSent) {
+        console.error("[generate-html]", e?.message || e);
+        res.status(500).json({ error: e?.message || "Ошибка генерации HTML" });
+      }
     }
   });
 
@@ -1477,6 +1483,7 @@ export async function registerRoutes(
           }),
           signal: AbortSignal.timeout(60000),
         });
+        if (res.headersSent) return;
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
           return res
@@ -1504,6 +1511,7 @@ export async function registerRoutes(
           }),
           signal: AbortSignal.timeout(60000),
         });
+        if (res.headersSent) return;
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
           return res
@@ -1572,9 +1580,11 @@ export async function registerRoutes(
         storage.createAiChatMessage({ sessionId: activeSessionId, role: "assistant", content: answer, sources }),
       ]);
 
-      res.json({ answer, sources, sessionId: activeSessionId });
+      if (!res.headersSent)
+        res.json({ answer, sources, sessionId: activeSessionId });
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
+      if (!res.headersSent)
+        res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
     }
   });
 
