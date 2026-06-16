@@ -487,7 +487,7 @@ export default function MaterialWizard() {
                   <Button
                     data-testid="button-create-material"
                     className="rounded-xl"
-                    onClick={() => {
+                    onClick={async () => {
                       const missingNow = validatePassport(passportDraft);
                       if (missingNow.length) {
                         toast({
@@ -498,9 +498,10 @@ export default function MaterialWizard() {
                         return;
                       }
 
-                      const materialId = `m-${1000 + materials.length}`;
+                      const uid = crypto.randomUUID();
+                      const materialId = `m-${uid}`;
                       const version: MaterialVersion = {
-                        id: `v-${materialId}-1`,
+                        id: `v-${uid}-1`,
                         materialId,
                         version: nextVersionLike(),
                         createdAt: new Date().toISOString(),
@@ -524,10 +525,15 @@ export default function MaterialWizard() {
                         auditDownloads: [],
                       };
 
-                      setMaterials((p) => [version, ...p]);
-                      api.createMaterialVersion(version).catch(console.error);
-                      toast({ title: "Создано", description: "Материал добавлен в Черновики." });
-                      setLocation(`/materials/${materialId}`);
+                      try {
+                        const created = await api.createMaterialVersion(version);
+                        setMaterials((p) => [created, ...p]);
+                        toast({ title: "Создано", description: "Материал добавлен в Черновики." });
+                        setLocation(`/materials/${created.materialId}`);
+                      } catch (e) {
+                        console.error(e);
+                        toast({ title: "Ошибка", description: "Не удалось сохранить материал.", variant: "destructive" });
+                      }
                     }}
                   >
                     Создать
