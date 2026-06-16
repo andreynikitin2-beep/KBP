@@ -287,6 +287,8 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
       (h.textContent || "").toLowerCase()
     );
     const hasStepSection = headings.some((h) => h.includes("пошаговая инструкция"));
+    const unrecognizedSteps = doc.querySelectorAll('[data-unrecognized-step="true"], [data-unrecognized-step=""], [data-unrecognized-step]');
+    const sectionOk = hasStepSection && unrecognizedSteps.length === 0;
     const sizeBytes = new Blob([code]).size;
 
     const result: CheckItem[] = [
@@ -311,10 +313,14 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
       },
       {
         id: "section",
-        label: "Есть раздел «Пошаговая инструкция»",
-        ok: hasStepSection,
+        label: "Есть раздел «Пошаговая инструкция» без нераспознанных шагов",
+        ok: sectionOk,
         required: true,
-        detail: hasStepSection ? undefined : "Добавьте заголовок «Пошаговая инструкция»",
+        detail: !hasStepSection
+          ? "Добавьте заголовок «Пошаговая инструкция»"
+          : unrecognizedSteps.length > 0
+          ? `Нераспознанных шагов: ${unrecognizedSteps.length} — исправьте их вручную`
+          : undefined,
       },
       {
         id: "size",
@@ -548,6 +554,10 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
                 size="sm"
                 className="rounded-lg text-xs"
                 onClick={() => {
+                  const proceed = window.confirm(
+                    "Текущий HTML-код будет удалён, и вы вернётесь к шагу загрузки. Рекомендуем сначала скачать резервную копию (кнопка «Скачать копию»). Продолжить?"
+                  );
+                  if (!proceed) return;
                   setCode("");
                   setChecks(null);
                 }}
