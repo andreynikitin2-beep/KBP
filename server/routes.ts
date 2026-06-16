@@ -961,7 +961,7 @@ export async function registerRoutes(
         }
         return res.json({ ok: true });
       } else {
-        const base = baseUrl ? baseUrl.replace(/\/$/, "") : "https://api.openai.com";
+        const base = baseUrl ? baseUrl.replace(/\/$/, "").replace(/\/v1$/, "") : "https://api.openai.com";
         const r = await fetch(`${base}/v1/chat/completions`, {
           method: "POST",
           headers: {
@@ -1131,7 +1131,7 @@ export async function registerRoutes(
         answer = data.content?.[0]?.text || "";
       } else {
         const base = aiConfig.baseUrl
-          ? aiConfig.baseUrl.replace(/\/$/, "")
+          ? aiConfig.baseUrl.replace(/\/$/, "").replace(/\/v1$/, "")
           : "https://api.openai.com";
         const r = await fetch(`${base}/v1/chat/completions`, {
           method: "POST",
