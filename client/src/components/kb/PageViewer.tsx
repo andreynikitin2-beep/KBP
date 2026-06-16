@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link2, List, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { sanitizeHtml } from "@shared/sanitize";
 
 interface TocEntry {
   id: string;
@@ -52,7 +53,8 @@ export function PageViewer({ html, materialId }: PageViewerProps) {
   const { toast } = useToast();
   const [tocOpen, setTocOpen] = useState(true);
   const headings = useMemo(() => extractHeadings(html), [html]);
-  const processedHtml = useMemo(() => addAnchorsToHtml(html), [html]);
+  // Defense-in-depth: sanitize stored HTML again before rendering it.
+  const processedHtml = useMemo(() => addAnchorsToHtml(sanitizeHtml(html)), [html]);
 
   useEffect(() => {
     const hash = window.location.hash.slice(1);

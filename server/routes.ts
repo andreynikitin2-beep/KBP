@@ -2,6 +2,20 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
+import { sanitizeHtml } from "@shared/sanitize";
+
+// Sanitize the HTML stored inside a material version's content before it is
+// persisted. Page/HTML content lives in contentPage.html.
+function sanitizeContentPage(data: any): any {
+  if (!data || typeof data !== "object") return data;
+  if (data.contentPage && typeof data.contentPage === "object" && typeof data.contentPage.html === "string") {
+    return {
+      ...data,
+      contentPage: { ...data.contentPage, html: sanitizeHtml(data.contentPage.html) },
+    };
+  }
+  return data;
+}
 
 const TIMESTAMP_FIELDS = [
   "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
@@ -332,7 +346,7 @@ export async function registerRoutes(
 
   app.post("/api/material-versions", async (req, res) => {
     try {
-      const version = await storage.createMaterialVersion(coerceDates(req.body));
+      const version = await storage.createMaterialVersion(coerceDates(sanitizeContentPage(req.body)));
       res.json(version);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -341,7 +355,7 @@ export async function registerRoutes(
 
   app.patch("/api/material-versions/:id", async (req, res) => {
     try {
-      const version = await storage.updateMaterialVersion(req.params.id, coerceDates(req.body));
+      const version = await storage.updateMaterialVersion(req.params.id, coerceDates(sanitizeContentPage(req.body)));
       if (!version) return res.status(404).json({ error: "Material version not found" });
       res.json(version);
     } catch (e) {
@@ -1310,6 +1324,12 @@ export async function registerRoutes(
         .replace(/\s*```\s*$/i, "")
         .trim();
 
+      if (!html) {
+        return res.status(500).json({ error: "LLM вернул пустой результат" });
+      }
+
+      // Sanitize the model output before it ever reaches the author/editor.
+      html = sanitizeHtml(html);
       if (!html) {
         return res.status(500).json({ error: "LLM вернул пустой результат" });
       }
