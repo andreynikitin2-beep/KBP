@@ -147,7 +147,7 @@ function extractTextForSearch(data: {
   contentPage?: unknown;
   contentFile?: unknown;
 }): string {
-  if (data.contentKind === "page" && data.contentPage) {
+  if ((data.contentKind === "page" || data.contentKind === "html") && data.contentPage) {
     return ((data.contentPage as any).html || "")
       .replace(/<[^>]*>/g, " ")
       .replace(/&[a-z]+;/gi, " ")

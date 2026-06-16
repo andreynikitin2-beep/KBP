@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { AlertTriangle, FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
+import { AlertTriangle, Code, FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
 import { UserSelect } from "@/components/kb/UserSelect";
@@ -55,12 +55,13 @@ export default function MaterialWizard() {
   const [newHireRequired, setNewHireRequired] = useState(false);
   const [newHireVisWarning, setNewHireVisWarning] = useState(false);
   const [tags, setTags] = useState("hr, отпуск");
-  const [contentKind, setContentKind] = useState<"file" | "page">("file");
+  const [contentKind, setContentKind] = useState<"file" | "page" | "html">("file");
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
   const [fileName, setFileName] = useState("");
   const [extractedText, setExtractedText] = useState("");
   const [fileDataBase64, setFileDataBase64] = useState("");
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
+  const [rawHtml, setRawHtml] = useState("<h1>Заголовок</h1>\n<p>Описание материала.</p>");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -379,6 +380,16 @@ export default function MaterialWizard() {
                       <Globe className="mr-2 h-4 w-4" />
                       Страница портала
                     </Button>
+                    <Button
+                      data-testid="button-kind-html"
+                      type="button"
+                      variant={contentKind === "html" ? "default" : "outline"}
+                      className="rounded-xl"
+                      onClick={() => setContentKind("html")}
+                    >
+                      <Code className="mr-2 h-4 w-4" />
+                      HTML-код
+                    </Button>
                   </div>
 
                   {contentKind === "file" ? (
@@ -432,13 +443,28 @@ export default function MaterialWizard() {
                         </div>
                       </div>
                     </Card>
-                  ) : (
+                  ) : contentKind === "page" ? (
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <Globe className="h-4 w-4 text-muted-foreground" />
                         <div className="text-sm font-semibold">Страница портала</div>
                       </div>
                       <RichEditor content={pageHtml} onChange={setPageHtml} />
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <Code className="h-4 w-4 text-muted-foreground" />
+                        <div className="text-sm font-semibold">HTML-код</div>
+                      </div>
+                      <Textarea
+                        data-testid="input-raw-html"
+                        value={rawHtml}
+                        onChange={(e) => setRawHtml(e.target.value)}
+                        placeholder="<h1>Заголовок</h1><p>Контент...</p>"
+                        className="font-mono text-xs rounded-xl min-h-[280px]"
+                        spellCheck={false}
+                      />
                     </div>
                   )}
                 </div>
@@ -487,10 +513,9 @@ export default function MaterialWizard() {
                                 kind: "file",
                                 file: { name: fileName, type: fileType, extractedText, dataBase64: fileDataBase64 },
                               }
-                            : {
-                                kind: "page",
-                                page: { html: pageHtml },
-                              },
+                            : contentKind === "html"
+                            ? { kind: "html", page: { html: rawHtml } }
+                            : { kind: "page", page: { html: pageHtml } },
                         subscribers: [],
                         discussionsEnabled: false,
                         discussionVisibility: "Все",

@@ -16,6 +16,7 @@ import {
   FileUp,
   GitBranch,
   Loader2,
+  Code,
   Globe,
   Heart,
   MessageSquareText,
@@ -221,8 +222,9 @@ export default function MaterialView() {
   const [editNewHireRequired, setEditNewHireRequired] = useState(false);
   const [newHireVisWarning, setNewHireVisWarning] = useState(false);
 
-  const [editContentKind, setEditContentKind] = useState<"file" | "page">("file");
+  const [editContentKind, setEditContentKind] = useState<"file" | "page" | "html">("file");
   const [editPageHtml, setEditPageHtml] = useState("");
+  const [editRawHtml, setEditRawHtml] = useState("");
   const [editFileName, setEditFileName] = useState("");
   const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
@@ -263,8 +265,9 @@ export default function MaterialView() {
       setEditDepartment(current.passport.department || "");
       setEditNewHireRequired(!!current.passport.newHireRequired);
       setNewHireVisWarning(false);
-      setEditContentKind(current.content.kind);
-      setEditPageHtml(current.content.page?.html || "");
+      setEditContentKind(current.content.kind as "file" | "page" | "html");
+      setEditPageHtml(current.content.kind === "page" ? (current.content.page?.html || "") : "");
+      setEditRawHtml(current.content.kind === "html" ? (current.content.page?.html || "") : "");
       setEditFileName(current.content.file?.name || "");
       setEditFileType(current.content.file?.type || "pdf");
       setEditExtractedText(current.content.file?.extractedText || "");
@@ -320,6 +323,8 @@ export default function MaterialView() {
         },
         content: editContentKind === "file"
           ? { kind: "file" as const, file: { name: editFileName, type: editFileType, extractedText: editExtractedText } }
+          : editContentKind === "html"
+          ? { kind: "html" as const, page: { html: editRawHtml } }
           : { kind: "page" as const, page: { html: editPageHtml } },
       } : m
     ));
@@ -337,7 +342,7 @@ export default function MaterialView() {
       nextReviewAt: computedNextReview.toISOString(),
       contentKind: editContentKind,
       contentFile: editContentKind === "file" ? { name: editFileName, type: editFileType, extractedText: editExtractedText } : null,
-      contentPage: editContentKind === "page" ? { html: editPageHtml } : null,
+      contentPage: editContentKind === "page" ? { html: editPageHtml } : editContentKind === "html" ? { html: editRawHtml } : null,
     }).catch(console.error);
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
   };
@@ -1434,6 +1439,16 @@ export default function MaterialView() {
                           <Globe className="mr-2 h-4 w-4" />
                           Страница портала
                         </Button>
+                        <Button
+                          data-testid="button-edit-kind-html"
+                          type="button"
+                          variant={editContentKind === "html" ? "default" : "outline"}
+                          className="rounded-xl"
+                          onClick={() => setEditContentKind("html")}
+                        >
+                          <Code className="mr-2 h-4 w-4" />
+                          HTML-код
+                        </Button>
                       </div>
 
                       {editContentKind === "file" ? (
@@ -1485,13 +1500,28 @@ export default function MaterialView() {
                             </div>
                           </div>
                         </Card>
-                      ) : (
+                      ) : editContentKind === "page" ? (
                         <div>
                           <div className="mb-2 flex items-center gap-2">
                             <Globe className="h-4 w-4 text-muted-foreground" />
                             <div className="text-sm font-semibold">Редактор страницы</div>
                           </div>
                           <RichEditor content={editPageHtml} onChange={setEditPageHtml} />
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <Code className="h-4 w-4 text-muted-foreground" />
+                            <div className="text-sm font-semibold">HTML-код</div>
+                          </div>
+                          <Textarea
+                            data-testid="input-edit-raw-html"
+                            value={editRawHtml}
+                            onChange={(e) => setEditRawHtml(e.target.value)}
+                            placeholder="<h1>Заголовок</h1><p>Контент...</p>"
+                            className="font-mono text-xs rounded-xl min-h-[280px]"
+                            spellCheck={false}
+                          />
                         </div>
                       )}
 
