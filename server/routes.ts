@@ -22,8 +22,10 @@ function coerceDates(data: any): any {
 
 function buildChatEndpoint(baseUrl?: string | null): string {
   if (!baseUrl) return "https://api.openai.com/v1/chat/completions";
-  // User provides the exact endpoint URL — use it as-is (strip trailing slash only)
-  return baseUrl.replace(/\/$/, "");
+  const base = baseUrl.replace(/\/$/, "");
+  // If user already specified the full endpoint (ends with /chat/completions), use as-is
+  if (base.endsWith("/chat/completions")) return base;
+  return `${base}/chat/completions`;
 }
 
 export async function registerRoutes(
