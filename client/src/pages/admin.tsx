@@ -49,8 +49,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -603,6 +605,9 @@ function AiSettingsTab() {
   const [queryLog, setQueryLog] = useState<any[]>([]);
   const [loadingLog, setLoadingLog] = useState(true);
   const [logPeriod, setLogPeriod] = useState<7 | 30 | 90>(30);
+  const [allLogsOpen, setAllLogsOpen] = useState(false);
+  const [allLogsSearch, setAllLogsSearch] = useState("");
+  const [userLogsUser, setUserLogsUser] = useState<{ userId: string; name: string } | null>(null);
 
   const MODEL_DEFAULTS: Record<string, string> = {
     openai: "gpt-4o",
@@ -666,9 +671,9 @@ function AiSettingsTab() {
   }, [queryLog, logPeriod]);
 
   const topUsers = useMemo(() => {
-    const counts: Record<string, { name: string; count: number }> = {};
+    const counts: Record<string, { userId: string; name: string; count: number }> = {};
     for (const l of periodLogs) {
-      if (!counts[l.userId]) counts[l.userId] = { name: l.userName || l.userId, count: 0 };
+      if (!counts[l.userId]) counts[l.userId] = { userId: l.userId, name: l.userName || l.userId, count: 0 };
       counts[l.userId].count++;
     }
     return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
@@ -919,13 +924,19 @@ function AiSettingsTab() {
                   <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Топ-5 пользователей</div>
                   <div className="space-y-1.5">
                     {topUsers.map((u, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm" data-testid={`ai-log-top-user-${i}`}>
+                      <button
+                        key={i}
+                        className="w-full flex items-center gap-2 text-sm rounded-lg px-1 py-0.5 hover:bg-accent transition-colors cursor-pointer text-left"
+                        onClick={() => setUserLogsUser({ userId: (u as any).userId, name: u.name })}
+                        data-testid={`ai-log-top-user-${i}`}
+                        title="Показать запросы пользователя"
+                      >
                         <div className="shrink-0 h-5 w-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold">
                           {i + 1}
                         </div>
                         <span className="flex-1 truncate">{u.name}</span>
                         <Badge variant="secondary" className="text-[10px] shrink-0">{u.count} запр.</Badge>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -946,6 +957,15 @@ function AiSettingsTab() {
                         </div>
                       </div>
                     ))}
+                    {periodLogs.length > 8 && (
+                      <button
+                        className="w-full text-xs text-primary hover:underline text-left pt-1"
+                        onClick={() => { setAllLogsSearch(""); setAllLogsOpen(true); }}
+                        data-testid="button-ai-log-show-all"
+                      >
+                        Показать все {periodLogs.length} запросов…
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -953,6 +973,84 @@ function AiSettingsTab() {
           </div>
         )}
       </Card>
+
+      {/* Диалог: все запросы за период */}
+      <Dialog open={allLogsOpen} onOpenChange={setAllLogsOpen}>
+        <DialogContent className="max-w-2xl w-full">
+          <DialogHeader>
+            <DialogTitle>Все запросы к AI-помощнику</DialogTitle>
+            <DialogDescription>
+              За выбранный период · {periodLogs.length} запросов
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            <Input
+              placeholder="Поиск по вопросу или пользователю…"
+              value={allLogsSearch}
+              onChange={(e) => setAllLogsSearch(e.target.value)}
+              className="rounded-xl text-sm mb-3"
+              data-testid="input-ai-log-search"
+            />
+            <ScrollArea className="h-[420px] pr-2">
+              <div className="space-y-2">
+                {periodLogs
+                  .filter((l) => {
+                    const q = allLogsSearch.toLowerCase();
+                    return !q || l.question?.toLowerCase().includes(q) || l.userName?.toLowerCase().includes(q);
+                  })
+                  .map((l, i) => (
+                    <div key={i} className="rounded-xl border px-3 py-2.5" data-testid={`ai-log-all-${i}`}>
+                      <div className="text-sm text-foreground">{l.question}</div>
+                      <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1.5">
+                        <span className="font-medium">{l.userName || l.userId}</span>
+                        <span>·</span>
+                        <span>{format(new Date(l.createdAt), "d MMM yyyy, HH:mm", { locale: ru })}</span>
+                      </div>
+                    </div>
+                  ))}
+                {periodLogs.filter((l) => {
+                  const q = allLogsSearch.toLowerCase();
+                  return !q || l.question?.toLowerCase().includes(q) || l.userName?.toLowerCase().includes(q);
+                }).length === 0 && (
+                  <div className="text-sm text-muted-foreground italic text-center py-8">Ничего не найдено</div>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог: запросы конкретного пользователя */}
+      <Dialog open={!!userLogsUser} onOpenChange={(o) => { if (!o) setUserLogsUser(null); }}>
+        <DialogContent className="max-w-2xl w-full">
+          <DialogHeader>
+            <DialogTitle>Запросы пользователя</DialogTitle>
+            <DialogDescription>
+              {userLogsUser?.name} · {queryLog.filter((l) => l.userId === userLogsUser?.userId).length} запросов всего
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            <ScrollArea className="h-[420px] pr-2">
+              <div className="space-y-2">
+                {queryLog
+                  .filter((l) => l.userId === userLogsUser?.userId)
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((l, i) => (
+                    <div key={i} className="rounded-xl border px-3 py-2.5" data-testid={`ai-log-user-${i}`}>
+                      <div className="text-sm text-foreground">{l.question}</div>
+                      <div className="text-[11px] text-muted-foreground mt-1">
+                        {format(new Date(l.createdAt), "d MMM yyyy, HH:mm", { locale: ru })}
+                      </div>
+                    </div>
+                  ))}
+                {queryLog.filter((l) => l.userId === userLogsUser?.userId).length === 0 && (
+                  <div className="text-sm text-muted-foreground italic text-center py-8">Запросов нет</div>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
