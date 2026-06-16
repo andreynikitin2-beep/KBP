@@ -1130,16 +1130,23 @@ export async function registerRoutes(
       if (!aiConfig.apiKey)
         return res.status(400).json({ error: "API-ключ не настроен" });
 
-      const { text, fileBase64, fileType } = req.body as {
+      const { text, fileBase64, fileType, currentHtml, instruction } = req.body as {
         text?: string;
         fileBase64?: string;
         fileType?: "pdf" | "docx";
+        currentHtml?: string;
+        instruction?: string;
       };
 
       let warning: string | undefined;
       let sourceText = "";
 
-      if (fileBase64) {
+      const isRefine = Boolean(currentHtml && currentHtml.trim() && instruction && instruction.trim());
+
+      if (isRefine) {
+        // Refinement mode: rework the existing draft using the author's follow-up
+        // instruction. No source file/text extraction needed.
+      } else if (fileBase64) {
         const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
         const buffer = Buffer.from(base64Data, "base64");
         if (buffer.length > 20 * 1024 * 1024) {
@@ -1170,23 +1177,25 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Не указан текст или файл для обработки" });
       }
 
-      // Clean artifacts: page numbers, repeated whitespace, common header/footer noise
-      sourceText = sourceText
-        .replace(/\r\n/g, "\n")
-        .replace(/^\s*(?:стр\.?|страница|page)\s*\d+(?:\s*(?:из|of|\/)\s*\d+)?\s*$/gim, "")
-        .replace(/^\s*\d+\s*$/gm, "")
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
+      if (!isRefine) {
+        // Clean artifacts: page numbers, repeated whitespace, common header/footer noise
+        sourceText = sourceText
+          .replace(/\r\n/g, "\n")
+          .replace(/^\s*(?:стр\.?|страница|page)\s*\d+(?:\s*(?:из|of|\/)\s*\d+)?\s*$/gim, "")
+          .replace(/^\s*\d+\s*$/gm, "")
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
 
-      if (!sourceText) {
-        return res.status(400).json({ error: "Не удалось извлечь текст из источника" });
-      }
+        if (!sourceText) {
+          return res.status(400).json({ error: "Не удалось извлечь текст из источника" });
+        }
 
-      const MAX_SOURCE = 40000;
-      if (sourceText.length > MAX_SOURCE) {
-        sourceText = sourceText.slice(0, MAX_SOURCE);
-        warning = (warning ? warning + " " : "") + "Текст инструкции был усечён до 40 000 символов.";
+        const MAX_SOURCE = 40000;
+        if (sourceText.length > MAX_SOURCE) {
+          sourceText = sourceText.slice(0, MAX_SOURCE);
+          warning = (warning ? warning + " " : "") + "Текст инструкции был усечён до 40 000 символов.";
+        }
       }
 
       const defaultRules = `Ты — помощник, который превращает текст инструкции в чистую HTML-страницу единого корпоративного формата для внутреннего портала знаний.
@@ -1203,7 +1212,9 @@ export async function registerRoutes(
         ? `${defaultRules}\n\nДополнительные правила оформления от администратора:\n${adminRules}`
         : defaultRules;
 
-      const userPrompt = `Преобразуй следующий текст инструкции в HTML-страницу по указанным правилам.\n\nИСХОДНЫЙ ТЕКСТ:\n---\n${sourceText}\n---`;
+      const userPrompt = isRefine
+        ? `Ниже приведена текущая HTML-страница инструкции и пожелание автора по её доработке. Внеси изменения согласно пожеланию, строго соблюдая те же правила оформления. Сохрани всё содержимое, которое автор не просил менять (включая уже вставленные изображения и плейсхолдеры). Верни ТОЛЬКО обновлённый HTML-фрагмент, без пояснений.\n\nТЕКУЩИЙ HTML:\n---\n${currentHtml}\n---\n\nПОЖЕЛАНИЕ АВТОРА:\n---\n${instruction}\n---`
+        : `Преобразуй следующий текст инструкции в HTML-страницу по указанным правилам.\n\nИСХОДНЫЙ ТЕКСТ:\n---\n${sourceText}\n---`;
 
       let html = "";
 

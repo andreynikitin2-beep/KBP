@@ -582,6 +582,8 @@ export const api = {
     text?: string;
     fileBase64?: string;
     fileType?: "pdf" | "docx";
+    currentHtml?: string;
+    instruction?: string;
   }): Promise<{ html: string; warning?: string }> {
     return postJson<{ html: string; warning?: string }>("/api/ai/generate-html", data);
   },
