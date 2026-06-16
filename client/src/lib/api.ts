@@ -12,49 +12,84 @@ import type {
   NewHireAssignment,
 } from "./mockData";
 
-function getAuthHeaders(): HeadersInit {
+function getAuthHeaders(): { Authorization: string } | Record<string, never> {
   const token = localStorage.getItem("kb_auth_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function handleUnauthorized() {
+  localStorage.removeItem("kb_auth_user");
+  localStorage.removeItem("kb_auth_token");
+  window.location.reload();
+}
+
+function shouldHandleUnauthorized(authHeaders: Record<string, string> | Record<string, never>): boolean {
+  return "Authorization" in authHeaders || !!localStorage.getItem("kb_auth_user");
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: getAuthHeaders() });
+  const authHeaders = getAuthHeaders();
+  const res = await fetch(url, { headers: authHeaders });
+  if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+    handleUnauthorized();
+    throw new Error("Сессия истекла");
+  }
   if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
   return res.json();
 }
 
 async function postJson<T>(url: string, body: any): Promise<T> {
+  const authHeaders = getAuthHeaders();
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(body),
   });
+  if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+    handleUnauthorized();
+    throw new Error("Сессия истекла");
+  }
   if (!res.ok) throw new Error(`POST ${url} failed: ${res.status}`);
   return res.json();
 }
 
 async function patchJson<T>(url: string, body: any): Promise<T> {
+  const authHeaders = getAuthHeaders();
   const res = await fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(body),
   });
+  if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+    handleUnauthorized();
+    throw new Error("Сессия истекла");
+  }
   if (!res.ok) throw new Error(`PATCH ${url} failed: ${res.status}`);
   return res.json();
 }
 
 async function putJson<T>(url: string, body: any): Promise<T> {
+  const authHeaders = getAuthHeaders();
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(body),
   });
+  if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+    handleUnauthorized();
+    throw new Error("Сессия истекла");
+  }
   if (!res.ok) throw new Error(`PUT ${url} failed: ${res.status}`);
   return res.json();
 }
 
 async function deleteJson(url: string): Promise<void> {
-  const res = await fetch(url, { method: "DELETE", headers: getAuthHeaders() });
+  const authHeaders = getAuthHeaders();
+  const res = await fetch(url, { method: "DELETE", headers: authHeaders });
+  if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+    handleUnauthorized();
+    throw new Error("Сессия истекла");
+  }
   if (!res.ok) throw new Error(`DELETE ${url} failed: ${res.status}`);
 }
 
