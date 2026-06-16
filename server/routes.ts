@@ -610,6 +610,105 @@ export async function registerRoutes(
     }
   });
 
+  // MATERIAL FEEDBACK (report error / suggest improvement)
+  async function sendFeedbackEmail(opts: {
+    templateKey: string;
+    materialId: string;
+    reporterUserId: string;
+    message: string;
+  }) {
+    const versions = await storage.getMaterialVersionsByMaterialId(opts.materialId);
+    const current = versions.find((v) => v.status === "Опубликовано" || v.status === "На пересмотре") ?? versions[0];
+    if (!current) throw new Error("Material not found");
+
+    const allUsers = await storage.getUsers();
+    const reporter = allUsers.find((u) => u.id === opts.reporterUserId);
+    const owner = allUsers.find((u) => u.id === (current.passport as any)?.ownerId);
+    const admins = allUsers.filter((u) => (u.roles as string[]).includes("Администратор"));
+
+    const recipientEmails = Array.from(
+      new Set([
+        ...(owner?.email ? [owner.email] : []),
+        ...admins.map((a) => a.email).filter(Boolean),
+      ])
+    );
+    if (recipientEmails.length === 0) return { emailSent: false, reason: "no_recipients" };
+
+    const config = await storage.getEmailConfig();
+    if (!config?.smtpHost) return { emailSent: false, reason: "smtp_not_configured" };
+
+    const template = await storage.getEmailTemplateByKey(opts.templateKey);
+    const title = (current.passport as any)?.title ?? current.title ?? opts.materialId;
+    const link = `${process.env.PUBLIC_URL || ""}` + `/materials/${opts.materialId}`;
+    const ownerName = owner?.displayName ?? "Владелец";
+
+    const render = (str: string) =>
+      str
+        .replace(/\{\{title\}\}/g, title)
+        .replace(/\{\{reporter\}\}/g, reporter?.displayName ?? opts.reporterUserId)
+        .replace(/\{\{owner\}\}/g, ownerName)
+        .replace(/\{\{message\}\}/g, opts.message)
+        .replace(/\{\{link\}\}/g, link);
+
+    const subject = template ? render(template.subject) : render(`Обратная связь по «{{title}}» от {{reporter}}`);
+    const body = template ? render(template.body) : render(`{{reporter}} написал(а):\n\n{{message}}\n\nМатериал: {{link}}`);
+
+    try {
+      const nodemailer = await import("nodemailer");
+      const transporter = nodemailer.createTransport({
+        host: config.smtpHost,
+        port: config.smtpPort || 587,
+        secure: config.smtpUseTls && config.smtpPort === 465,
+        requireTLS: config.smtpUseTls && config.smtpPort !== 465,
+        auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPassword || "" } : undefined,
+        connectionTimeout: 8000,
+        greetingTimeout: 5000,
+        tls: { rejectUnauthorized: false },
+      } as any);
+
+      const from = config.senderName ? `"${config.senderName}" <${config.senderAddress}>` : config.senderAddress;
+      await transporter.sendMail({ from, to: recipientEmails.join(", "), subject, text: body });
+      return { emailSent: true };
+    } catch (smtpErr: any) {
+      console.error("[email] Feedback send failed:", smtpErr?.message);
+      return { emailSent: false, reason: "smtp_error" };
+    }
+  }
+
+  app.post("/api/materials/:materialId/report-error", async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId ?? req.headers["x-user-id"] as string;
+      const { message } = req.body;
+      if (!message?.trim()) return res.status(400).json({ ok: false, message: "Текст сообщения не может быть пустым" });
+      const result = await sendFeedbackEmail({
+        templateKey: "report_error",
+        materialId: req.params.materialId,
+        reporterUserId: userId,
+        message: message.trim(),
+      });
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, message: e?.message || "Ошибка отправки" });
+    }
+  });
+
+  app.post("/api/materials/:materialId/suggest-improvement", async (req, res) => {
+    try {
+      const userId = (req as any).session?.userId ?? req.headers["x-user-id"] as string;
+      const { message } = req.body;
+      if (!message?.trim()) return res.status(400).json({ ok: false, message: "Текст сообщения не может быть пустым" });
+      const result = await sendFeedbackEmail({
+        templateKey: "suggest_improvement",
+        materialId: req.params.materialId,
+        reporterUserId: userId,
+        message: message.trim(),
+      });
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, message: e?.message || "Ошибка отправки" });
+    }
+  });
+
   // POLICY REVIEW PERIODS
   app.get("/api/policy/review-periods", async (_req, res) => {
     try {

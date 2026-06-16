@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowLeft,
   BadgeCheck,
+  Bug,
   CalendarClock,
   ChevronDown,
   CircleAlert,
@@ -15,6 +16,7 @@ import {
   FileText,
   FileUp,
   GitBranch,
+  Lightbulb,
   Loader2,
   Code,
   Globe,
@@ -178,6 +180,14 @@ export default function MaterialView() {
   const [returnDialogOpen, setReturnDialogOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [reportErrorOpen, setReportErrorOpen] = useState(false);
+  const [reportErrorText, setReportErrorText] = useState("");
+  const [reportErrorSending, setReportErrorSending] = useState(false);
+  const [reportErrorDone, setReportErrorDone] = useState<string | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestText, setSuggestText] = useState("");
+  const [suggestSending, setSuggestSending] = useState(false);
+  const [suggestDone, setSuggestDone] = useState<string | null>(null);
   const [previewDocxText, setPreviewDocxText] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [returnComment, setReturnComment] = useState("");
@@ -2169,6 +2179,32 @@ export default function MaterialView() {
                 {!canRate && <div className="text-xs text-amber-600 mt-1">Оценка уже поставлена сегодня</div>}
               </div>
 
+              {accessAllowed && (
+                <div className="rounded-2xl border bg-card p-4 space-y-2">
+                  <div className="text-sm font-semibold text-foreground mb-1">Обратная связь</div>
+                  <Button
+                    data-testid="button-report-error"
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-2 rounded-xl text-sm"
+                    onClick={() => { setReportErrorText(""); setReportErrorDone(null); setReportErrorOpen(true); }}
+                  >
+                    <Bug className="h-4 w-4 text-destructive shrink-0" />
+                    Сообщить об ошибке
+                  </Button>
+                  <Button
+                    data-testid="button-suggest-improvement"
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-2 rounded-xl text-sm"
+                    onClick={() => { setSuggestText(""); setSuggestDone(null); setSuggestOpen(true); }}
+                  >
+                    <Lightbulb className="h-4 w-4 text-amber-500 shrink-0" />
+                    Предложить улучшение
+                  </Button>
+                </div>
+              )}
+
               <div className="rounded-2xl border bg-muted/30 p-4">
                 <div className="flex items-start gap-2">
                   <div className="mt-0.5 rounded-xl bg-accent/60 p-2">
@@ -2200,6 +2236,122 @@ export default function MaterialView() {
           </Card>
         </div>
       </div>
+      {/* Диалог: Сообщить об ошибке */}
+      <Dialog open={reportErrorOpen} onOpenChange={(o) => { if (!reportErrorSending) { setReportErrorOpen(o); if (!o) setReportErrorDone(null); } }}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Bug className="h-4 w-4 text-destructive" />
+              Сообщить об ошибке в инструкции
+            </DialogTitle>
+          </DialogHeader>
+          {reportErrorDone ? (
+            <div className="py-4 space-y-4">
+              <div className={`rounded-xl p-3 text-sm ${reportErrorDone === "ok" ? "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-200" : "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200"}`}>
+                {reportErrorDone === "ok"
+                  ? "Сообщение отправлено владельцу инструкции и администраторам. Спасибо!"
+                  : reportErrorDone}
+              </div>
+              <Button data-testid="button-report-error-close" className="w-full rounded-xl" variant="outline" onClick={() => setReportErrorOpen(false)}>Закрыть</Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Textarea
+                data-testid="textarea-report-error"
+                placeholder="Опишите ошибку подробно: что неверно, где находится и как должно быть..."
+                value={reportErrorText}
+                onChange={(e) => setReportErrorText(e.target.value)}
+                className="rounded-xl min-h-[120px] text-sm resize-none"
+                disabled={reportErrorSending}
+              />
+              <div className="flex gap-2">
+                <Button
+                  data-testid="button-report-error-submit"
+                  className="flex-1 rounded-xl"
+                  disabled={reportErrorSending || !reportErrorText.trim()}
+                  onClick={async () => {
+                    if (!materialId) return;
+                    setReportErrorSending(true);
+                    try {
+                      const res = await api.reportMaterialError(materialId, reportErrorText.trim());
+                      setReportErrorDone(res.ok ? "ok" : (res.message || "Ошибка отправки"));
+                    } catch (e: any) {
+                      setReportErrorDone(e?.message || "Ошибка отправки");
+                    } finally {
+                      setReportErrorSending(false);
+                    }
+                  }}
+                >
+                  {reportErrorSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Отправить
+                </Button>
+                <Button data-testid="button-report-error-cancel" variant="outline" className="rounded-xl" onClick={() => setReportErrorOpen(false)} disabled={reportErrorSending}>
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Диалог: Предложить улучшение */}
+      <Dialog open={suggestOpen} onOpenChange={(o) => { if (!suggestSending) { setSuggestOpen(o); if (!o) setSuggestDone(null); } }}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="h-4 w-4 text-amber-500" />
+              Предложить улучшение
+            </DialogTitle>
+          </DialogHeader>
+          {suggestDone ? (
+            <div className="py-4 space-y-4">
+              <div className={`rounded-xl p-3 text-sm ${suggestDone === "ok" ? "bg-green-50 text-green-800 dark:bg-green-950/40 dark:text-green-200" : "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200"}`}>
+                {suggestDone === "ok"
+                  ? "Предложение отправлено владельцу инструкции и администраторам. Спасибо!"
+                  : suggestDone}
+              </div>
+              <Button data-testid="button-suggest-close" className="w-full rounded-xl" variant="outline" onClick={() => setSuggestOpen(false)}>Закрыть</Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Textarea
+                data-testid="textarea-suggest"
+                placeholder="Опишите ваше предложение: что можно улучшить, добавить или изменить..."
+                value={suggestText}
+                onChange={(e) => setSuggestText(e.target.value)}
+                className="rounded-xl min-h-[120px] text-sm resize-none"
+                disabled={suggestSending}
+              />
+              <div className="flex gap-2">
+                <Button
+                  data-testid="button-suggest-submit"
+                  className="flex-1 rounded-xl"
+                  disabled={suggestSending || !suggestText.trim()}
+                  onClick={async () => {
+                    if (!materialId) return;
+                    setSuggestSending(true);
+                    try {
+                      const res = await api.suggestMaterialImprovement(materialId, suggestText.trim());
+                      setSuggestDone(res.ok ? "ok" : (res.message || "Ошибка отправки"));
+                    } catch (e: any) {
+                      setSuggestDone(e?.message || "Ошибка отправки");
+                    } finally {
+                      setSuggestSending(false);
+                    }
+                  }}
+                >
+                  {suggestSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Отправить
+                </Button>
+                <Button data-testid="button-suggest-cancel" variant="outline" className="rounded-xl" onClick={() => setSuggestOpen(false)} disabled={suggestSending}>
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Диалог предпросмотра файла */}
       <Dialog
         open={previewOpen}

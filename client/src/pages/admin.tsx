@@ -3113,7 +3113,7 @@ export default function Admin() {
                       <Badge variant="secondary" className="kb-chip">{emailTemplates.length}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground mb-3">
-                      Переменные шаблона: <code className="bg-muted px-1 py-0.5 rounded">{"{{title}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{owner}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{days}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{dueDate}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{link}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{version}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{recipient}}"}</code>
+                      Переменные шаблона: <code className="bg-muted px-1 py-0.5 rounded">{"{{title}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{owner}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{days}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{dueDate}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{link}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{version}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{recipient}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{reporter}}"}</code>, <code className="bg-muted px-1 py-0.5 rounded">{"{{message}}"}</code>
                     </div>
                     <div className="grid gap-3" data-testid="list-email-templates">
                       {emailTemplates.map((tpl) => (

@@ -456,6 +456,14 @@ export const api = {
     return patchJson<EmailTemplate>(`/api/email-templates/${id}`, data);
   },
 
+  async reportMaterialError(materialId: string, message: string): Promise<{ ok: boolean; emailSent: boolean; message?: string }> {
+    return postJson(`/api/materials/${materialId}/report-error`, { message });
+  },
+
+  async suggestMaterialImprovement(materialId: string, message: string): Promise<{ ok: boolean; emailSent: boolean; message?: string }> {
+    return postJson(`/api/materials/${materialId}/suggest-improvement`, { message });
+  },
+
   async getReviewPeriods(): Promise<any[]> {
     return fetchJson<any[]>("/api/policy/review-periods");
   },

@@ -772,3 +772,30 @@ export async function backfillSearchText(): Promise<void> {
     console.log(`[search] Backfilled searchText for ${updated} material version(s)`);
   }
 }
+
+const FEEDBACK_TEMPLATES = [
+  {
+    key: "report_error",
+    label: "Сообщение об ошибке в инструкции",
+    subject: "Ошибка в инструкции «{{title}}» — сообщение от {{reporter}}",
+    body: "Уважаемый(ая) {{owner}},\n\nПользователь {{reporter}} сообщил об ошибке в инструкции «{{title}}».\n\nТекст сообщения:\n{{message}}\n\nСсылка на материал: {{link}}",
+    description: "Отправляется автору и администратору, когда пользователь сообщает об ошибке в материале. Переменные: {{title}}, {{reporter}}, {{owner}}, {{message}}, {{link}}",
+  },
+  {
+    key: "suggest_improvement",
+    label: "Предложение по улучшению",
+    subject: "Предложение по улучшению «{{title}}» от {{reporter}}",
+    body: "Уважаемый(ая) {{owner}},\n\nПользователь {{reporter}} предлагает улучшение для инструкции «{{title}}».\n\nПредложение:\n{{message}}\n\nСсылка на материал: {{link}}",
+    description: "Отправляется автору и администратору, когда пользователь предлагает улучшение материала. Переменные: {{title}}, {{reporter}}, {{owner}}, {{message}}, {{link}}",
+  },
+];
+
+export async function ensureFeedbackTemplates() {
+  const existing = await db.select({ key: schema.emailTemplates.key }).from(schema.emailTemplates);
+  const existingKeys = new Set(existing.map((t) => t.key));
+  const toInsert = FEEDBACK_TEMPLATES.filter((t) => !existingKeys.has(t.key));
+  if (toInsert.length > 0) {
+    await db.insert(schema.emailTemplates).values(toInsert);
+    console.log(`[email] Ensured feedback templates: ${toInsert.map((t) => t.key).join(", ")}`);
+  }
+}
