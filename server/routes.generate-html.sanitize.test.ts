@@ -84,10 +84,20 @@ beforeEach(() => {
   // Stub only the outbound LLM HTTP call. The route runs in this same process
   // and uses the global fetch, but so does the test when it calls the route
   // itself — so pass through any request that isn't aimed at the LLM provider.
+  // Each provider has a different response shape: OpenAI nests the text under
+  // `choices[0].message.content`, Anthropic under `content[0].text`.
   const realFetch = globalThis.fetch;
   fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input: any, init?: any) => {
     const url = typeof input === "string" ? input : input?.url ?? String(input);
-    if (url.includes("openai.com") || url.includes("anthropic.com")) {
+    if (url.includes("anthropic.com")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ content: [{ text: MALICIOUS_LLM_HTML }] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }
+    if (url.includes("openai.com")) {
       return Promise.resolve(
         new Response(
           JSON.stringify({ choices: [{ message: { content: MALICIOUS_LLM_HTML } }] }),
@@ -116,6 +126,63 @@ describe("POST /api/ai/generate-html — sanitizes LLM output", () => {
 
     expect(res.status).toBe(200);
     // The route reached out to the (stubbed) LLM provider.
+    expect(
+      fetchSpy.mock.calls.some(([input]) =>
+        String(typeof input === "string" ? input : (input as any)?.url ?? input).includes("openai.com"),
+      ),
+    ).toBe(true);
+
+    const body = await res.json();
+    assertSanitized(body.html as string);
+  });
+
+  it("sanitizes output from the Anthropic provider branch (content[0].text shape)", async () => {
+    getAiSettings.mockResolvedValue({
+      enabled: true,
+      htmlGeneratorEnabled: true,
+      apiKey: "sk-ant-test",
+      provider: "anthropic",
+      model: "claude-3-5-sonnet-20241022",
+      baseUrl: null,
+      htmlGeneratorSystemPrompt: "",
+    });
+
+    const res = await fetch(`${baseUrl}/api/ai/generate-html`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-token",
+      },
+      body: JSON.stringify({ text: "Текст исходной инструкции для преобразования." }),
+    });
+
+    expect(res.status).toBe(200);
+    // The route reached out to the (stubbed) Anthropic provider, not OpenAI.
+    expect(
+      fetchSpy.mock.calls.some(([input]) =>
+        String(typeof input === "string" ? input : (input as any)?.url ?? input).includes("anthropic.com"),
+      ),
+    ).toBe(true);
+
+    const body = await res.json();
+    assertSanitized(body.html as string);
+  });
+
+  it("sanitizes output in refine mode (currentHtml + instruction)", async () => {
+    const res = await fetch(`${baseUrl}/api/ai/generate-html`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer test-token",
+      },
+      body: JSON.stringify({
+        currentHtml: "<h1>Старая инструкция</h1><p>текст</p>",
+        instruction: "Добавь раздел про технику безопасности.",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    // Refine mode still calls the LLM provider.
     expect(
       fetchSpy.mock.calls.some(([input]) =>
         String(typeof input === "string" ? input : (input as any)?.url ?? input).includes("openai.com"),
