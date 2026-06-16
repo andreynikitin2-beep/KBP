@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
-import { ChevronLeft, Clock, Loader2, Plus, Send, Sparkles, Trash2, User as UserIcon, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Clock, Loader2, Plus, Send, Sparkles, Trash2, User as UserIcon, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
+import { isOverdue } from "@/lib/kbLogic";
 import { useKB } from "@/lib/kbStore";
 
 type Message = {
@@ -33,8 +34,14 @@ type ChatSession = {
 
 type View = "chat" | "history";
 
+function trimDanglingUserMessages(msgs: Message[]): Message[] {
+  let end = msgs.length;
+  while (end > 0 && msgs[end - 1].role === "user") end--;
+  return msgs.slice(0, end);
+}
+
 export function AiChat() {
-  const { me } = useKB();
+  const { me, visibleMaterials } = useKB();
   const [enabled, setEnabled] = useState(false);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("chat");
@@ -75,14 +82,13 @@ export function AiChat() {
         if (data.length > 0) {
           const latest = data[0];
           setSessionId(latest.id);
-          setMessages(
-            latest.messages.map((m) => ({
-              id: m.id,
-              role: m.role as "user" | "assistant",
-              content: m.content,
-              sources: m.sources ?? undefined,
-            }))
-          );
+          const mapped: Message[] = latest.messages.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            sources: m.sources ?? undefined,
+          }));
+          setMessages(trimDanglingUserMessages(mapped));
         }
       } catch {
       } finally {
@@ -143,14 +149,13 @@ export function AiChat() {
 
   const loadSession = (session: ChatSession) => {
     setSessionId(session.id);
-    setMessages(
-      session.messages.map((m) => ({
-        id: m.id,
-        role: m.role as "user" | "assistant",
-        content: m.content,
-        sources: m.sources ?? undefined,
-      }))
-    );
+    const mapped: Message[] = session.messages.map((m) => ({
+      id: m.id,
+      role: m.role as "user" | "assistant",
+      content: m.content,
+      sources: m.sources ?? undefined,
+    }));
+    setMessages(trimDanglingUserMessages(mapped));
     setView("chat");
   };
 
@@ -194,7 +199,7 @@ export function AiChat() {
       </Button>
 
       <Sheet open={open} onOpenChange={onOpen}>
-        <SheetContent side="right" className="w-[420px] sm:w-[520px] p-0 flex flex-col gap-0">
+        <SheetContent side="right" className="w-[420px] sm:w-[520px] p-0 flex flex-col gap-0 [&>button:first-of-type]:hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
             {view === "history" && (
               <Button
@@ -315,7 +320,15 @@ export function AiChat() {
                     </div>
                   )}
 
-                  {messages.map((msg) => (
+                  {messages.map((msg) => {
+                    const outdatedSources = msg.role === "assistant" && msg.sources
+                      ? msg.sources.filter((s) => {
+                          const mat = visibleMaterials.find((m) => m.materialId === s.materialId);
+                          if (!mat) return false;
+                          return mat.status === "На пересмотре" || isOverdue(mat);
+                        })
+                      : [];
+                    return (
                     <div
                       key={msg.id}
                       className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : ""}`}
@@ -336,6 +349,19 @@ export function AiChat() {
                           msg.role === "user" ? "items-end" : "items-start"
                         }`}
                       >
+                        {outdatedSources.length > 0 && (
+                          <div className="mb-2 w-full rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2.5 flex items-start gap-2" data-testid="ai-outdated-warning">
+                            <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                            <div>
+                              <div className="text-sm font-bold text-destructive leading-snug">
+                                Внимание: источник может быть устаревшим
+                              </div>
+                              <div className="text-xs text-destructive/80 mt-0.5">
+                                {outdatedSources.map((s) => `«${s.title}»`).join(", ")} — на пересмотре или просрочен
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div
                           className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
                             msg.role === "user"
@@ -364,7 +390,8 @@ export function AiChat() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
 
                   {loading && (
                     <div className="flex gap-2.5">
