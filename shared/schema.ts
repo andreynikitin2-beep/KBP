@@ -340,3 +340,10 @@ export const aiSettings = pgTable("ai_settings", {
 export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({ id: true });
 export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
 export type AiSettings = typeof aiSettings.$inferSelect;
+
+export const sessions = pgTable("sessions", {
+  token: text("token").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+export type Session = typeof sessions.$inferSelect;

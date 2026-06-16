@@ -49,7 +49,7 @@ export function AiChat() {
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const result = await api.aiChat({ userId: me.id, message: msg, history });
+      const result = await api.aiChat({ message: msg, history });
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",

@@ -61,7 +61,7 @@ export type PolicyConfig = {
 type Store = {
   me: User;
   isAuthenticated: boolean;
-  setMeId: (id: string) => void;
+  setMeId: (id: string, token?: string) => void;
   logout: () => void;
 
   users: User[];
@@ -241,10 +241,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [newHireProfiles, setNewHireProfiles] = useState<NewHireProfile[]>([]);
   const [newHireAssignments, setNewHireAssignments] = useState<NewHireAssignment[]>([]);
 
-  const setMeId = (id: string) => {
+  const setMeId = (id: string, token?: string) => {
     setMeIdRaw(id);
     if (id) {
       localStorage.setItem('kb_auth_user', id);
+      if (token) localStorage.setItem('kb_auth_token', token);
       const now = new Date().toISOString();
       setUsers(prev => prev.map(u => u.id === id ? { ...u, lastLogin: now } : u));
       api.getUserSubscriptions(id).then(subs => {
@@ -252,12 +253,21 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
       }).catch(console.error);
     } else {
       localStorage.removeItem('kb_auth_user');
+      localStorage.removeItem('kb_auth_token');
     }
   };
 
   const logout = () => {
+    const token = localStorage.getItem('kb_auth_token');
+    if (token) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
     setMeIdRaw('');
     localStorage.removeItem('kb_auth_user');
+    localStorage.removeItem('kb_auth_token');
   };
 
   useEffect(() => {

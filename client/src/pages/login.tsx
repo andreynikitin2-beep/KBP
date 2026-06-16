@@ -17,7 +17,7 @@ interface UserListItem {
   deactivatedAt: string | null;
 }
 
-export default function LoginPage({ onLogin }: { onLogin: (userId: string) => void }) {
+export default function LoginPage({ onLogin }: { onLogin: (userId: string, token: string) => void }) {
   const [usersList, setUsersList] = useState<UserListItem[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -148,7 +148,7 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string) => vo
         setLoading(false);
         return;
       }
-      onLogin(data.user.id);
+      onLogin(data.user.id, data.token);
     } catch {
       setError("Ошибка соединения с сервером");
       setLoading(false);

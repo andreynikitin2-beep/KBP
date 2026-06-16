@@ -50,7 +50,7 @@ function AuthGate() {
   const { isAuthenticated, setMeId } = useKB();
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={(userId) => setMeId(userId)} />;
+    return <LoginPage onLogin={(userId, token) => setMeId(userId, token)} />;
   }
 
   return <Router />;

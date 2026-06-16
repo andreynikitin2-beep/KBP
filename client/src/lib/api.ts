@@ -12,8 +12,13 @@ import type {
   NewHireAssignment,
 } from "./mockData";
 
+function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem("kb_auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
   return res.json();
 }
@@ -21,7 +26,7 @@ async function fetchJson<T>(url: string): Promise<T> {
 async function postJson<T>(url: string, body: any): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`POST ${url} failed: ${res.status}`);
@@ -31,7 +36,7 @@ async function postJson<T>(url: string, body: any): Promise<T> {
 async function patchJson<T>(url: string, body: any): Promise<T> {
   const res = await fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH ${url} failed: ${res.status}`);
@@ -41,7 +46,7 @@ async function patchJson<T>(url: string, body: any): Promise<T> {
 async function putJson<T>(url: string, body: any): Promise<T> {
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PUT ${url} failed: ${res.status}`);
@@ -49,7 +54,7 @@ async function putJson<T>(url: string, body: any): Promise<T> {
 }
 
 async function deleteJson(url: string): Promise<void> {
-  const res = await fetch(url, { method: "DELETE" });
+  const res = await fetch(url, { method: "DELETE", headers: getAuthHeaders() });
   if (!res.ok) throw new Error(`DELETE ${url} failed: ${res.status}`);
 }
 
@@ -537,7 +542,6 @@ export const api = {
   },
 
   async aiChat(data: {
-    userId: string;
     message: string;
     history: Array<{ role: string; content: string }>;
   }): Promise<{ answer: string; sources: Array<{ materialId: string; title: string }> }> {

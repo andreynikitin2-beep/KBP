@@ -79,10 +79,22 @@ export async function registerRoutes(
       }
 
       await storage.updateUser(user.id, { lastLoginAt: new Date() });
+      const token = await storage.createSession(user.id);
       const { password: _p, ...safeUser } = user;
-      res.json({ ok: true, user: { ...safeUser, lastLoginAt: new Date().toISOString() } });
+      res.json({ ok: true, user: { ...safeUser, lastLoginAt: new Date().toISOString() }, token });
     } catch (e) {
       res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      if (token) await storage.deleteSession(token);
+      res.json({ ok: true });
+    } catch {
+      res.json({ ok: true });
     }
   });
 
@@ -835,9 +847,25 @@ export async function registerRoutes(
     }
   });
 
+  async function verifySession(req: any): Promise<{ user: Awaited<ReturnType<typeof storage.getUser>>; token: string } | null> {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) return null;
+    const user = await storage.getSessionUser(token);
+    if (!user) return null;
+    return { user, token };
+  }
+
+  function isAdmin(user: NonNullable<Awaited<ReturnType<typeof storage.getUser>>>): boolean {
+    return (user.roles as string[]).includes("Администратор");
+  }
+
   // AI SETTINGS (admin only)
-  app.get("/api/admin/ai-settings", async (_req, res) => {
+  app.get("/api/admin/ai-settings", async (req, res) => {
     try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
       const settings = await storage.getAiSettings();
       if (!settings) return res.json(null);
       const { apiKey, ...rest } = settings;
@@ -852,6 +880,9 @@ export async function registerRoutes(
 
   app.put("/api/admin/ai-settings", async (req, res) => {
     try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
       const { provider, apiKey, model, baseUrl, enabled } = req.body;
       const existing = await storage.getAiSettings();
       const finalKey =
@@ -878,6 +909,9 @@ export async function registerRoutes(
   // AI TEST CONNECTION
   app.post("/api/admin/ai-test", async (req, res) => {
     try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
       const { provider, apiKey, model, baseUrl } = req.body;
       let key = apiKey;
       if (!key || key.includes("••")) {
@@ -937,14 +971,17 @@ export async function registerRoutes(
   // AI CHAT WITH RAG
   app.post("/api/ai/chat", async (req, res) => {
     try {
-      const { userId, message, history = [] } = req.body;
-      if (!userId || !message)
-        return res.status(400).json({ error: "userId и message обязательны" });
+      const { message, history = [] } = req.body;
+      if (!message)
+        return res.status(400).json({ error: "message обязателен" });
 
-      const [user, aiConfig] = await Promise.all([
-        storage.getUser(userId),
-        storage.getAiSettings(),
-      ]);
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+
+      const user = session.user;
+      const userId = user.id;
+
+      const aiConfig = await storage.getAiSettings();
 
       if (!user) return res.status(401).json({ error: "Пользователь не найден" });
       if (!aiConfig || !aiConfig.enabled)

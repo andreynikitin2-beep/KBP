@@ -113,6 +113,10 @@ export interface IStorage {
     contentPage: unknown;
     visibilityGroupIds: string[];
   }>>;
+
+  createSession(userId: string): Promise<string>;
+  getSessionUser(token: string): Promise<schema.User | undefined>;
+  deleteSession(token: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -571,6 +575,31 @@ export class DatabaseStorage implements IStorage {
       contentPage: schema.materialVersions.contentPage,
       visibilityGroupIds: schema.materialVersions.visibilityGroupIds,
     }).from(schema.materialVersions).where(eq(schema.materialVersions.status, "Опубликовано"));
+  }
+
+  async createSession(userId: string): Promise<string> {
+    const { randomUUID } = await import("crypto");
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await db.insert(schema.sessions).values({ token, userId, expiresAt });
+    return token;
+  }
+
+  async getSessionUser(token: string): Promise<schema.User | undefined> {
+    const [session] = await db
+      .select()
+      .from(schema.sessions)
+      .where(eq(schema.sessions.token, token));
+    if (!session) return undefined;
+    if (session.expiresAt < new Date()) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
+      return undefined;
+    }
+    return this.getUser(session.userId);
+  }
+
+  async deleteSession(token: string): Promise<void> {
+    await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
   }
 }
 
