@@ -1040,7 +1040,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "API-ключ не настроен" });
 
       const [allVersions, groups] = await Promise.all([
-        storage.getPublishedMaterialVersionsLight(),
+        storage.searchPublishedMaterialsByQuery(message),
         storage.getVisibilityGroups(),
       ]);
 
@@ -1073,32 +1073,12 @@ export async function registerRoutes(
               .replace(/\s+/g, " ")
               .trim();
           }
-          return { materialId: v.materialId, title: v.title, text };
+          return { materialId: v.materialId, title: v.title, text, rank: (v as any).rank ?? 0 };
         })
         .filter((m: any) => m.text.length > 50);
 
-      const queryWords = message
-        .toLowerCase()
-        .split(/[\s,\.!?;:()]+/)
-        .filter((w: string) => w.length > 2);
-
-      const scored = materialsWithText
-        .map((m: any) => {
-          const tl = m.text.toLowerCase();
-          const titl = m.title.toLowerCase();
-          let score = 0;
-          for (const word of queryWords) {
-            const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const count = (tl.match(new RegExp(esc, "g")) || []).length;
-            score += count;
-            if (titl.includes(word)) score += 15;
-          }
-          return { ...m, score };
-        })
-        .sort((a: any, b: any) => b.score - a.score);
-
-      const withScore = scored.filter((m: any) => m.score > 0).slice(0, 8);
-      const contextMaterials = withScore.length > 0 ? withScore : scored.slice(0, 5);
+      const withRank = materialsWithText.filter((m: any) => m.rank > 0).slice(0, 8);
+      const contextMaterials = withRank.length > 0 ? withRank : materialsWithText.slice(0, 5);
 
       if (contextMaterials.length === 0) {
         return res.json({

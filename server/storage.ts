@@ -126,9 +126,42 @@ export interface IStorage {
     visibilityGroupIds: string[];
   }>>;
 
+  searchPublishedMaterialsByQuery(query: string): Promise<Array<{
+    id: string;
+    materialId: string;
+    title: string;
+    contentKind: string;
+    contentFile: unknown;
+    contentPage: unknown;
+    visibilityGroupIds: string[];
+    rank: number;
+  }>>;
+
   createSession(userId: string): Promise<string>;
   getSessionUser(token: string): Promise<schema.User | undefined>;
   deleteSession(token: string): Promise<void>;
+}
+
+function extractTextForSearch(data: {
+  contentKind: string;
+  contentPage?: unknown;
+  contentFile?: unknown;
+}): string {
+  if (data.contentKind === "page" && data.contentPage) {
+    return ((data.contentPage as any).html || "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&[a-z]+;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200000);
+  }
+  if (data.contentKind === "file" && data.contentFile) {
+    return ((data.contentFile as any).extractedText || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200000);
+  }
+  return "";
 }
 
 export class DatabaseStorage implements IStorage {
@@ -218,12 +251,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMaterialVersion(data: schema.InsertMaterialVersion): Promise<schema.MaterialVersion> {
-    const [version] = await db.insert(schema.materialVersions).values(data).returning();
+    const searchText = extractTextForSearch(data);
+    const [version] = await db.insert(schema.materialVersions).values({ ...data, searchText }).returning();
     return version;
   }
 
   async updateMaterialVersion(id: string, data: Partial<schema.InsertMaterialVersion>): Promise<schema.MaterialVersion | undefined> {
-    const [version] = await db.update(schema.materialVersions).set(data).where(eq(schema.materialVersions.id, id)).returning();
+    const payload: Partial<schema.InsertMaterialVersion> & { searchText?: string } = { ...data };
+    if (data.contentKind !== undefined || data.contentPage !== undefined || data.contentFile !== undefined) {
+      const existing = await this.getMaterialVersion(id);
+      if (existing) {
+        const merged = {
+          contentKind: data.contentKind ?? existing.contentKind,
+          contentPage: data.contentPage ?? existing.contentPage,
+          contentFile: data.contentFile ?? existing.contentFile,
+        };
+        payload.searchText = extractTextForSearch(merged);
+      }
+    }
+    const [version] = await db.update(schema.materialVersions).set(payload).where(eq(schema.materialVersions.id, id)).returning();
     return version;
   }
 
@@ -598,6 +644,37 @@ export class DatabaseStorage implements IStorage {
     }).from(schema.materialVersions).where(eq(schema.materialVersions.status, "Опубликовано"));
   }
 
+  async searchPublishedMaterialsByQuery(query: string): Promise<Array<{
+    id: string;
+    materialId: string;
+    title: string;
+    contentKind: string;
+    contentFile: unknown;
+    contentPage: unknown;
+    visibilityGroupIds: string[];
+    rank: number;
+  }>> {
+    const tsVector = sql`
+      setweight(to_tsvector('russian', coalesce(${schema.materialVersions.title}, '')), 'A') ||
+      setweight(to_tsvector('russian', coalesce(${schema.materialVersions.searchText}, '')), 'B')
+    `;
+    const tsQuery = sql`plainto_tsquery('russian', ${query})`;
+    const rows = await db.select({
+      id: schema.materialVersions.id,
+      materialId: schema.materialVersions.materialId,
+      title: schema.materialVersions.title,
+      contentKind: schema.materialVersions.contentKind,
+      contentFile: schema.materialVersions.contentFile,
+      contentPage: schema.materialVersions.contentPage,
+      visibilityGroupIds: schema.materialVersions.visibilityGroupIds,
+      rank: sql<number>`ts_rank_cd(${tsVector}, ${tsQuery})`,
+    })
+    .from(schema.materialVersions)
+    .where(eq(schema.materialVersions.status, "Опубликовано"))
+    .orderBy(sql`ts_rank_cd(${tsVector}, ${tsQuery}) DESC`);
+    return rows;
+  }
+
   async createAiChatSession(userId: string, title: string): Promise<schema.AiChatSession> {
     const [session] = await db.insert(schema.aiChatSessions).values({ userId, title }).returning();
     return session;
@@ -664,3 +741,23 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+export async function backfillSearchText(): Promise<void> {
+  const { isNull } = await import("drizzle-orm");
+  const rows = await db.select({
+    id: schema.materialVersions.id,
+    contentKind: schema.materialVersions.contentKind,
+    contentPage: schema.materialVersions.contentPage,
+    contentFile: schema.materialVersions.contentFile,
+  }).from(schema.materialVersions).where(isNull(schema.materialVersions.searchText));
+
+  if (rows.length === 0) return;
+
+  for (const row of rows) {
+    const searchText = extractTextForSearch(row);
+    await db.update(schema.materialVersions)
+      .set({ searchText })
+      .where(eq(schema.materialVersions.id, row.id));
+  }
+  console.log(`[search] Backfilled searchText for ${rows.length} material version(s)`);
+}
