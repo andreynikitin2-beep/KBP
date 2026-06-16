@@ -761,9 +761,9 @@ function AiSettingsTab() {
             {(provider === "custom" || provider === "openai") && (
               <div>
                 <Label className="text-xs text-muted-foreground">
-                  Base URL{" "}
+                  URL эндпоинта{" "}
                   {provider === "openai"
-                    ? "(опционально — для Azure/прокси)"
+                    ? "(опционально — для Azure/прокси/совместимых API)"
                     : "(обязательно)"}
                 </Label>
                 <Input
@@ -773,7 +773,7 @@ function AiSettingsTab() {
                   placeholder={
                     provider === "custom"
                       ? "https://your-llm-host/v1"
-                      : "https://api.openai.com"
+                      : "https://api.openai.com/v1/chat/completions"
                   }
                   className="mt-1 rounded-xl"
                 />
