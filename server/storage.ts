@@ -103,6 +103,10 @@ export interface IStorage {
 
   getAiSettings(): Promise<schema.AiSettings | undefined>;
   upsertAiSettings(data: schema.InsertAiSettings): Promise<schema.AiSettings>;
+
+  createAiQueryLog(data: schema.InsertAiQueryLog): Promise<schema.AiQueryLog>;
+  getAiQueryLogs(limit?: number): Promise<schema.AiQueryLog[]>;
+
   getPublishedMaterialVersionsLight(): Promise<Array<{
     id: string;
     materialId: string;
@@ -553,6 +557,15 @@ export class DatabaseStorage implements IStorage {
     }
     const [created] = await db.insert(schema.aiSettings).values(data).returning();
     return created;
+  }
+
+  async createAiQueryLog(data: schema.InsertAiQueryLog): Promise<schema.AiQueryLog> {
+    const [entry] = await db.insert(schema.aiQueryLog).values(data).returning();
+    return entry;
+  }
+
+  async getAiQueryLogs(limit: number = 200): Promise<schema.AiQueryLog[]> {
+    return db.select().from(schema.aiQueryLog).orderBy(desc(schema.aiQueryLog.createdAt)).limit(limit);
   }
 
   async getPublishedMaterialVersionsLight(): Promise<Array<{

@@ -594,10 +594,15 @@ function AiSettingsTab() {
   const [model, setModel] = useState("gpt-4o");
   const [baseUrl, setBaseUrl] = useState("");
   const [enabled, setEnabled] = useState(false);
+  const [loggingEnabled, setLoggingEnabled] = useState(true);
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
+
+  const [queryLog, setQueryLog] = useState<any[]>([]);
+  const [loadingLog, setLoadingLog] = useState(true);
+  const [logPeriod, setLogPeriod] = useState<7 | 30 | 90>(30);
 
   const MODEL_DEFAULTS: Record<string, string> = {
     openai: "gpt-4o",
@@ -615,16 +620,23 @@ function AiSettingsTab() {
           setModel(data.model || "gpt-4o");
           setBaseUrl(data.baseUrl || "");
           setEnabled(data.enabled ?? false);
+          setLoggingEnabled(data.loggingEnabled ?? true);
         }
       })
       .catch(() => {})
       .finally(() => setLoadingSettings(false));
+
+    api
+      .getAiQueryLog()
+      .then((data) => setQueryLog(data || []))
+      .catch(() => setQueryLog([]))
+      .finally(() => setLoadingLog(false));
   }, []);
 
   const save = async () => {
     setSaving(true);
     try {
-      await api.saveAiSettings({ provider, apiKey, model, baseUrl, enabled });
+      await api.saveAiSettings({ provider, apiKey, model, baseUrl, enabled, loggingEnabled });
       toast({ title: "Сохранено", description: "Настройки AI-помощника обновлены" });
       setTestResult(null);
     } catch {
@@ -647,6 +659,21 @@ function AiSettingsTab() {
     }
   };
 
+  const periodLogs = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - logPeriod);
+    return queryLog.filter((l) => new Date(l.createdAt) >= cutoff);
+  }, [queryLog, logPeriod]);
+
+  const topUsers = useMemo(() => {
+    const counts: Record<string, { name: string; count: number }> = {};
+    for (const l of periodLogs) {
+      if (!counts[l.userId]) counts[l.userId] = { name: l.userName || l.userId, count: 0 };
+      counts[l.userId].count++;
+    }
+    return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
+  }, [periodLogs]);
+
   if (loadingSettings) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -656,175 +683,275 @@ function AiSettingsTab() {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="h-4 w-4 text-amber-500" />
-          <div className="text-sm font-semibold">Подключение LLM</div>
-        </div>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="ai-enabled" className="text-sm cursor-pointer">
-              Включить AI-помощник
-            </Label>
-            <Switch
-              id="ai-enabled"
-              data-testid="switch-ai-enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="h-4 w-4 text-amber-500" />
+            <div className="text-sm font-semibold">Подключение LLM</div>
           </div>
-
-          <div>
-            <Label className="text-xs text-muted-foreground">Провайдер</Label>
-            <Select
-              value={provider}
-              onValueChange={(v: any) => {
-                setProvider(v);
-                setModel(MODEL_DEFAULTS[v] || "");
-              }}
-            >
-              <SelectTrigger data-testid="select-ai-provider" className="mt-1 rounded-xl">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="anthropic">Anthropic Claude</SelectItem>
-                <SelectItem value="custom">Custom (OpenAI-compatible)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label className="text-xs text-muted-foreground">API-ключ</Label>
-            <Input
-              data-testid="input-ai-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
-              className="mt-1 rounded-xl font-mono text-xs"
-            />
-          </div>
-
-          <div>
-            <Label className="text-xs text-muted-foreground">Модель</Label>
-            <Input
-              data-testid="input-ai-model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder={MODEL_DEFAULTS[provider] || "model-name"}
-              className="mt-1 rounded-xl"
-            />
-          </div>
-
-          {(provider === "custom" || provider === "openai") && (
-            <div>
-              <Label className="text-xs text-muted-foreground">
-                Base URL{" "}
-                {provider === "openai"
-                  ? "(опционально — для Azure/прокси)"
-                  : "(обязательно)"}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ai-enabled" className="text-sm cursor-pointer">
+                Включить AI-помощник
               </Label>
+              <Switch
+                id="ai-enabled"
+                data-testid="switch-ai-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ai-logging" className="text-sm cursor-pointer">
+                Вести журнал запросов
+              </Label>
+              <Switch
+                id="ai-logging"
+                data-testid="switch-ai-logging"
+                checked={loggingEnabled}
+                onCheckedChange={setLoggingEnabled}
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Провайдер</Label>
+              <Select
+                value={provider}
+                onValueChange={(v: any) => {
+                  setProvider(v);
+                  setModel(MODEL_DEFAULTS[v] || "");
+                }}
+              >
+                <SelectTrigger data-testid="select-ai-provider" className="mt-1 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openai">OpenAI</SelectItem>
+                  <SelectItem value="anthropic">Anthropic Claude</SelectItem>
+                  <SelectItem value="custom">Custom (OpenAI-compatible)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">API-ключ</Label>
               <Input
-                data-testid="input-ai-base-url"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={
-                  provider === "custom"
-                    ? "https://your-llm-host/v1"
-                    : "https://api.openai.com"
-                }
+                data-testid="input-ai-api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-..."
+                className="mt-1 rounded-xl font-mono text-xs"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs text-muted-foreground">Модель</Label>
+              <Input
+                data-testid="input-ai-model"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder={MODEL_DEFAULTS[provider] || "model-name"}
                 className="mt-1 rounded-xl"
               />
             </div>
-          )}
 
-          <div className="flex gap-2 pt-1">
-            <Button
-              data-testid="button-ai-test"
-              variant="outline"
-              className="rounded-xl flex-1"
-              onClick={test}
-              disabled={testing || !apiKey.trim()}
-            >
-              {testing ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Activity className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              Проверить
-            </Button>
-            <Button
-              data-testid="button-ai-save"
-              className="rounded-xl flex-1"
-              onClick={save}
-              disabled={saving}
-            >
-              {saving ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              Сохранить
-            </Button>
-          </div>
-
-          {testResult && (
-            <div
-              className={`flex items-center gap-2 rounded-xl p-3 text-sm ${
-                testResult.ok
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {testResult.ok ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-              ) : (
-                <XCircle className="h-4 w-4 shrink-0" />
-              )}
-              <span>
-                {testResult.ok
-                  ? "Подключение успешно"
-                  : testResult.message || "Ошибка подключения"}
-              </span>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      <Card className="p-4">
-        <div className="flex items-center gap-2 mb-4">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <div className="text-sm font-semibold">Как работает AI-помощник</div>
-        </div>
-        <div className="space-y-3 text-sm text-muted-foreground">
-          {[
-            "Пользователь задаёт вопрос в чате (кнопка AI в шапке).",
-            "Система отбирает материалы, доступные пользователю (статус «Опубликован» + группы видимости).",
-            "По ключевым словам вопроса находятся до 8 наиболее релевантных материалов (страницы и файлы с извлечённым текстом).",
-            "LLM формирует развёрнутый ответ строго по контексту из базы знаний.",
-            "Под ответом — кликабельные ссылки на использованные материалы.",
-          ].map((text, i) => (
-            <div key={i} className="flex gap-2.5">
-              <div className="shrink-0 h-5 w-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold">
-                {i + 1}
+            {(provider === "custom" || provider === "openai") && (
+              <div>
+                <Label className="text-xs text-muted-foreground">
+                  Base URL{" "}
+                  {provider === "openai"
+                    ? "(опционально — для Azure/прокси)"
+                    : "(обязательно)"}
+                </Label>
+                <Input
+                  data-testid="input-ai-base-url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={
+                    provider === "custom"
+                      ? "https://your-llm-host/v1"
+                      : "https://api.openai.com"
+                  }
+                  className="mt-1 rounded-xl"
+                />
               </div>
-              <div>{text}</div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                data-testid="button-ai-test"
+                variant="outline"
+                className="rounded-xl flex-1"
+                onClick={test}
+                disabled={testing || !apiKey.trim()}
+              >
+                {testing ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Activity className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Проверить
+              </Button>
+              <Button
+                data-testid="button-ai-save"
+                className="rounded-xl flex-1"
+                onClick={save}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Сохранить
+              </Button>
             </div>
-          ))}
-        </div>
-        <Separator className="my-3" />
-        <div className="text-xs text-muted-foreground space-y-1">
-          <div>
-            <strong>Провайдеры:</strong> OpenAI (GPT-4o, GPT-4), Anthropic (Claude), любой
-            OpenAI-compatible API (vLLM, Ollama, LM Studio, Azure OpenAI).
+
+            {testResult && (
+              <div
+                className={`flex items-center gap-2 rounded-xl p-3 text-sm ${
+                  testResult.ok
+                    ? "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-red-50 text-red-700 border border-red-200"
+                }`}
+              >
+                {testResult.ok ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                ) : (
+                  <XCircle className="h-4 w-4 shrink-0" />
+                )}
+                <span>
+                  {testResult.ok
+                    ? "Подключение успешно"
+                    : testResult.message || "Ошибка подключения"}
+                </span>
+              </div>
+            )}
           </div>
-          <div>
-            <strong>Данные:</strong> API-ключ хранится в зашифрованной базе данных.
-            Запросы отправляются сервером напрямую — ключ никогда не попадает в браузер.
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <div className="text-sm font-semibold">Как работает AI-помощник</div>
           </div>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            {[
+              "Пользователь задаёт вопрос в чате (кнопка AI в шапке).",
+              "Система отбирает материалы, доступные пользователю (статус «Опубликован» + группы видимости).",
+              "По ключевым словам вопроса находятся до 8 наиболее релевантных материалов (страницы и файлы с извлечённым текстом).",
+              "LLM формирует развёрнутый ответ строго по контексту из базы знаний.",
+              "Под ответом — кликабельные ссылки на использованные материалы.",
+            ].map((text, i) => (
+              <div key={i} className="flex gap-2.5">
+                <div className="shrink-0 h-5 w-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold">
+                  {i + 1}
+                </div>
+                <div>{text}</div>
+              </div>
+            ))}
+          </div>
+          <Separator className="my-3" />
+          <div className="text-xs text-muted-foreground space-y-1">
+            <div>
+              <strong>Провайдеры:</strong> OpenAI (GPT-4o, GPT-4), Anthropic (Claude), любой
+              OpenAI-compatible API (vLLM, Ollama, LM Studio, Azure OpenAI).
+            </div>
+            <div>
+              <strong>Данные:</strong> API-ключ хранится в зашифрованной базе данных.
+              Запросы отправляются сервером напрямую — ключ никогда не попадает в браузер.
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* AI Query Log */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <div className="text-sm font-semibold">Журнал запросов AI</div>
+            {!loggingEnabled && (
+              <Badge variant="secondary" className="text-[10px]">Логирование отключено</Badge>
+            )}
+          </div>
+          <Select value={String(logPeriod)} onValueChange={(v) => setLogPeriod(Number(v) as 7 | 30 | 90)}>
+            <SelectTrigger data-testid="select-ai-log-period" className="w-36 rounded-xl h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">За 7 дней</SelectItem>
+              <SelectItem value="30">За 30 дней</SelectItem>
+              <SelectItem value="90">За 90 дней</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
+
+        {loadingLog ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border p-3" data-testid="ai-log-stat-total">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Запросов за период</div>
+                <div className="text-2xl font-bold mt-1">{periodLogs.length}</div>
+              </div>
+              <div className="rounded-xl border p-3" data-testid="ai-log-stat-users">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Уникальных пользователей</div>
+                <div className="text-2xl font-bold mt-1">
+                  {new Set(periodLogs.map((l) => l.userId)).size}
+                </div>
+              </div>
+              <div className="rounded-xl border p-3" data-testid="ai-log-stat-all">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider">Всего в журнале</div>
+                <div className="text-2xl font-bold mt-1">{queryLog.length}</div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {topUsers.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Топ-5 пользователей</div>
+                  <div className="space-y-1.5">
+                    {topUsers.map((u, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm" data-testid={`ai-log-top-user-${i}`}>
+                        <div className="shrink-0 h-5 w-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold">
+                          {i + 1}
+                        </div>
+                        <span className="flex-1 truncate">{u.name}</span>
+                        <Badge variant="secondary" className="text-[10px] shrink-0">{u.count} запр.</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Последние вопросы</div>
+                {periodLogs.length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic">Запросов за этот период нет.</div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {periodLogs.slice(0, 8).map((l, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground" data-testid={`ai-log-recent-${i}`}>
+                        <Clock className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/60" />
+                        <div className="flex-1 min-w-0">
+                          <div className="line-clamp-1 text-foreground">{l.question}</div>
+                          <div className="text-[10px] mt-0.5">{l.userName} · {format(new Date(l.createdAt), "d MMM, HH:mm", { locale: ru })}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

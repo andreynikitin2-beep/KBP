@@ -528,8 +528,13 @@ export const api = {
     model: string;
     baseUrl: string;
     enabled: boolean;
+    loggingEnabled: boolean;
   }): Promise<any> {
     return putJson<any>("/api/admin/ai-settings", data);
+  },
+
+  async getAiQueryLog(): Promise<any[]> {
+    return fetchJson<any[]>("/api/admin/ai-query-log");
   },
 
   async testAiConnection(data: {

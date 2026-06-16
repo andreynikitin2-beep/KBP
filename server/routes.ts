@@ -883,7 +883,7 @@ export async function registerRoutes(
       const session = await verifySession(req);
       if (!session) return res.status(401).json({ error: "Требуется авторизация" });
       if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
-      const { provider, apiKey, model, baseUrl, enabled } = req.body;
+      const { provider, apiKey, model, baseUrl, enabled, loggingEnabled } = req.body;
       const existing = await storage.getAiSettings();
       const finalKey =
         apiKey && !apiKey.includes("••") ? apiKey : (existing?.apiKey || "");
@@ -893,6 +893,7 @@ export async function registerRoutes(
         model: model || "gpt-4o",
         baseUrl: baseUrl || "",
         enabled: enabled ?? false,
+        loggingEnabled: loggingEnabled ?? true,
         updatedAt: new Date(),
       };
       const saved = await storage.upsertAiSettings(data);
@@ -901,6 +902,23 @@ export async function registerRoutes(
         ? savedKey.slice(0, 4) + "••••••••" + (savedKey.length > 8 ? savedKey.slice(-4) : "")
         : "";
       res.json({ ...rest, apiKey: maskedKey });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // AI QUERY LOG (admin only)
+  app.get("/api/admin/ai-query-log", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
+      const logs = await storage.getAiQueryLogs(500);
+      const users = await storage.getUsers();
+      const userMap: Record<string, string> = {};
+      for (const u of users) userMap[u.id] = u.displayName || u.username;
+      const enriched = logs.map((l) => ({ ...l, userName: userMap[l.userId] || l.userId }));
+      res.json(enriched);
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
@@ -1134,6 +1152,15 @@ export async function registerRoutes(
         materialId: m.materialId,
         title: m.title,
       }));
+
+      if (aiConfig.loggingEnabled !== false) {
+        storage.createAiQueryLog({
+          userId,
+          question: message,
+          sourcesUsed: sources.map((s: any) => s.materialId),
+          tokensUsed: null,
+        }).catch(() => {});
+      }
 
       res.json({ answer, sources });
     } catch (e: any) {

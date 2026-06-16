@@ -334,12 +334,26 @@ export const aiSettings = pgTable("ai_settings", {
   model: text("model").notNull().default("gpt-4o"),
   baseUrl: text("base_url").default(""),
   enabled: boolean("enabled").default(false).notNull(),
+  loggingEnabled: boolean("logging_enabled").default(true).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({ id: true });
 export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
 export type AiSettings = typeof aiSettings.$inferSelect;
+
+export const aiQueryLog = pgTable("ai_query_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  question: text("question").notNull(),
+  sourcesUsed: text("sources_used").array().notNull(),
+  tokensUsed: integer("tokens_used"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAiQueryLogSchema = createInsertSchema(aiQueryLog).omit({ id: true, createdAt: true });
+export type InsertAiQueryLog = z.infer<typeof insertAiQueryLogSchema>;
+export type AiQueryLog = typeof aiQueryLog.$inferSelect;
 
 export const sessions = pgTable("sessions", {
   token: text("token").primaryKey(),
