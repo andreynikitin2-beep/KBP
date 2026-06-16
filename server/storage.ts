@@ -107,6 +107,14 @@ export interface IStorage {
   createAiQueryLog(data: schema.InsertAiQueryLog): Promise<schema.AiQueryLog>;
   getAiQueryLogs(limit?: number): Promise<schema.AiQueryLog[]>;
 
+  createAiChatSession(userId: string, title: string): Promise<schema.AiChatSession>;
+  getAiChatSessions(userId: string): Promise<schema.AiChatSession[]>;
+  getAiChatSession(id: string): Promise<schema.AiChatSession | undefined>;
+  touchAiChatSession(id: string): Promise<void>;
+  deleteAiChatSession(id: string): Promise<boolean>;
+  createAiChatMessage(data: schema.InsertAiChatMessage): Promise<schema.AiChatMessage>;
+  getAiChatMessages(sessionId: string): Promise<schema.AiChatMessage[]>;
+
   getPublishedMaterialVersionsLight(): Promise<Array<{
     id: string;
     materialId: string;
@@ -588,6 +596,45 @@ export class DatabaseStorage implements IStorage {
       contentPage: schema.materialVersions.contentPage,
       visibilityGroupIds: schema.materialVersions.visibilityGroupIds,
     }).from(schema.materialVersions).where(eq(schema.materialVersions.status, "Опубликовано"));
+  }
+
+  async createAiChatSession(userId: string, title: string): Promise<schema.AiChatSession> {
+    const [session] = await db.insert(schema.aiChatSessions).values({ userId, title }).returning();
+    return session;
+  }
+
+  async getAiChatSessions(userId: string): Promise<schema.AiChatSession[]> {
+    return db.select().from(schema.aiChatSessions)
+      .where(eq(schema.aiChatSessions.userId, userId))
+      .orderBy(desc(schema.aiChatSessions.updatedAt));
+  }
+
+  async getAiChatSession(id: string): Promise<schema.AiChatSession | undefined> {
+    const [session] = await db.select().from(schema.aiChatSessions).where(eq(schema.aiChatSessions.id, id));
+    return session;
+  }
+
+  async touchAiChatSession(id: string): Promise<void> {
+    await db.update(schema.aiChatSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.aiChatSessions.id, id));
+  }
+
+  async deleteAiChatSession(id: string): Promise<boolean> {
+    await db.delete(schema.aiChatMessages).where(eq(schema.aiChatMessages.sessionId, id));
+    const result = await db.delete(schema.aiChatSessions).where(eq(schema.aiChatSessions.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async createAiChatMessage(data: schema.InsertAiChatMessage): Promise<schema.AiChatMessage> {
+    const [msg] = await db.insert(schema.aiChatMessages).values(data).returning();
+    return msg;
+  }
+
+  async getAiChatMessages(sessionId: string): Promise<schema.AiChatMessage[]> {
+    return db.select().from(schema.aiChatMessages)
+      .where(eq(schema.aiChatMessages.sessionId, sessionId))
+      .orderBy(schema.aiChatMessages.createdAt);
   }
 
   async createSession(userId: string): Promise<string> {

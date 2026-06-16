@@ -549,7 +549,30 @@ export const api = {
   async aiChat(data: {
     message: string;
     history: Array<{ role: string; content: string }>;
-  }): Promise<{ answer: string; sources: Array<{ materialId: string; title: string }> }> {
+    sessionId?: string;
+  }): Promise<{ answer: string; sources: Array<{ materialId: string; title: string }>; sessionId: string }> {
     return postJson<any>("/api/ai/chat", data);
+  },
+
+  async getAiHistory(): Promise<Array<{
+    id: string;
+    userId: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    messages: Array<{
+      id: string;
+      sessionId: string;
+      role: string;
+      content: string;
+      sources: Array<{ materialId: string; title: string }> | null;
+      createdAt: string;
+    }>;
+  }>> {
+    return fetchJson<any[]>("/api/ai/history");
+  },
+
+  async deleteAiSession(sessionId: string): Promise<void> {
+    await deleteJson(`/api/ai/history/${sessionId}`);
   },
 };

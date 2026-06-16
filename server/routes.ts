@@ -986,10 +986,42 @@ export async function registerRoutes(
     }
   });
 
+  // AI CHAT HISTORY
+  app.get("/api/ai/history", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      const sessions = await storage.getAiChatSessions(session.user.id);
+      const result = await Promise.all(
+        sessions.slice(0, 20).map(async (s) => {
+          const msgs = await storage.getAiChatMessages(s.id);
+          return { ...s, messages: msgs };
+        })
+      );
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
+    }
+  });
+
+  app.delete("/api/ai/history/:sessionId", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      const chatSession = await storage.getAiChatSession(req.params.sessionId);
+      if (!chatSession) return res.status(404).json({ error: "Сессия не найдена" });
+      if (chatSession.userId !== session.user.id) return res.status(403).json({ error: "Нет доступа" });
+      const ok = await storage.deleteAiChatSession(req.params.sessionId);
+      res.json({ ok });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
+    }
+  });
+
   // AI CHAT WITH RAG
   app.post("/api/ai/chat", async (req, res) => {
     try {
-      const { message, history = [] } = req.body;
+      const { message, history = [], sessionId: incomingSessionId } = req.body;
       if (!message)
         return res.status(400).json({ error: "message обязателен" });
 
@@ -1162,7 +1194,24 @@ export async function registerRoutes(
         }).catch(() => {});
       }
 
-      res.json({ answer, sources });
+      let activeSessionId = incomingSessionId as string | undefined;
+      if (activeSessionId) {
+        const existing = await storage.getAiChatSession(activeSessionId);
+        if (!existing || existing.userId !== userId) activeSessionId = undefined;
+      }
+      if (!activeSessionId) {
+        const newSession = await storage.createAiChatSession(userId, message.slice(0, 120));
+        activeSessionId = newSession.id;
+      } else {
+        storage.touchAiChatSession(activeSessionId).catch(() => {});
+      }
+
+      await Promise.all([
+        storage.createAiChatMessage({ sessionId: activeSessionId, role: "user", content: message, sources: null }),
+        storage.createAiChatMessage({ sessionId: activeSessionId, role: "assistant", content: answer, sources }),
+      ]);
+
+      res.json({ answer, sources, sessionId: activeSessionId });
     } catch (e: any) {
       res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
     }
