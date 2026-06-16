@@ -241,6 +241,44 @@ export async function registerRoutes(
     }
   });
 
+  // IMAGES (uploaded screenshots referenced by URL instead of inline base64)
+  app.post("/api/images", async (req, res) => {
+    try {
+      const { dataUrl } = req.body as { dataUrl?: string };
+      if (!dataUrl || typeof dataUrl !== "string") {
+        return res.status(400).json({ error: "dataUrl is required" });
+      }
+      const match = /^data:([^;]+);base64,([\s\S]+)$/.exec(dataUrl);
+      if (!match) {
+        return res.status(400).json({ error: "Invalid data URL" });
+      }
+      const mimeType = match[1];
+      const data = match[2];
+      if (!mimeType.startsWith("image/")) {
+        return res.status(400).json({ error: "Only image uploads are allowed" });
+      }
+      const image = await storage.createImage({ data, mimeType });
+      res.json({ id: image.id, url: `/api/images/${image.id}` });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get("/api/images/:id", async (req, res) => {
+    try {
+      const image = await storage.getImage(req.params.id);
+      if (!image) return res.status(404).json({ error: "Image not found" });
+      const buffer = Buffer.from(image.data, "base64");
+      res.setHeader("Content-Type", image.mimeType);
+      res.setHeader("Content-Length", buffer.length);
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.send(buffer);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   // MATERIAL VERSIONS
   app.get("/api/material-versions", async (_req, res) => {
     try {

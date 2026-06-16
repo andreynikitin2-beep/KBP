@@ -578,6 +578,10 @@ export const api = {
     return putJson<any>("/api/admin/ai-settings", data);
   },
 
+  async uploadImage(dataUrl: string): Promise<{ id: string; url: string }> {
+    return postJson<{ id: string; url: string }>("/api/images", { dataUrl });
+  },
+
   async generateHtml(data: {
     text?: string;
     fileBase64?: string;

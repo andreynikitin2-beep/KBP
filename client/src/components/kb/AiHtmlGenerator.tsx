@@ -103,6 +103,7 @@ function buildPreviewDoc(code: string): string {
     body = code;
   }
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<base href="${window.location.origin}/">
 <style>
   body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; padding: 24px; max-width: 880px; margin: 0 auto; }
   img { max-width: 100%; height: auto; border-radius: 8px; }
@@ -303,13 +304,19 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
     try {
       const dataUrl = await compressImage(f);
       const bytes = approxBytesOfBase64(dataUrl);
-      if (bytes > 400 * 1024) {
+      // Upload to file storage so the page references the image by URL instead of
+      // embedding heavy base64 inline. Fall back to inline base64 if upload fails.
+      let src = dataUrl;
+      try {
+        const uploaded = await api.uploadImage(dataUrl);
+        src = uploaded.url;
+      } catch {
         toast({
-          title: "Крупное изображение",
-          description: `После сжатия ~${Math.round(bytes / 1024)} КБ. Это увеличит размер страницы.`,
+          title: "Не удалось загрузить изображение",
+          description: `Картинка встроена в страницу (~${Math.round(bytes / 1024)} КБ). Это увеличит её размер.`,
         });
       }
-      const imgHtml = `<img src="${dataUrl}" alt="" />`;
+      const imgHtml = `<img src="${src}" alt="" />`;
       if (targetIdx !== null && !Number.isNaN(targetIdx)) {
         replacePlaceholder(targetIdx, imgHtml);
       } else {

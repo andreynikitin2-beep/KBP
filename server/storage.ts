@@ -137,6 +137,9 @@ export interface IStorage {
     rank: number;
   }>>;
 
+  createImage(data: schema.InsertImage): Promise<schema.Image>;
+  getImage(id: string): Promise<schema.Image | undefined>;
+
   createSession(userId: string): Promise<string>;
   getSessionUser(token: string): Promise<schema.User | undefined>;
   deleteSession(token: string): Promise<void>;
@@ -737,6 +740,16 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSession(token: string): Promise<void> {
     await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
+  }
+
+  async createImage(data: schema.InsertImage): Promise<schema.Image> {
+    const [image] = await db.insert(schema.images).values(data).returning();
+    return image;
+  }
+
+  async getImage(id: string): Promise<schema.Image | undefined> {
+    const [image] = await db.select().from(schema.images).where(eq(schema.images.id, id));
+    return image;
   }
 }
 
