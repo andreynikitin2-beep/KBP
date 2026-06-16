@@ -977,12 +977,16 @@ export async function registerRoutes(
         });
         if (!r.ok) {
           const rawBody = await r.text().catch(() => "");
-          console.error(`[ai-test] OpenAI ${r.status} from ${base}/v1/chat/completions:`, rawBody);
+          const endpoint = `${base}/v1/chat/completions`;
+          console.error(`[ai-test] ${r.status} POST ${endpoint} model=${model || "gpt-4o"} body:`, rawBody || "(empty)");
           let errMsg = `HTTP ${r.status}`;
           try {
             const err = JSON.parse(rawBody);
             errMsg = err?.error?.message || err?.message || errMsg;
           } catch {}
+          if (errMsg === `HTTP ${r.status}`) {
+            errMsg = `HTTP ${r.status} — URL: ${endpoint}`;
+          }
           return res.json({ ok: false, message: errMsg });
         }
         return res.json({ ok: true });
