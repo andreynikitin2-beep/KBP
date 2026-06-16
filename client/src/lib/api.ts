@@ -557,8 +557,8 @@ export const api = {
     return deleteJson(`/api/materials/${materialId}`);
   },
 
-  async getAiStatus(): Promise<{ enabled: boolean }> {
-    return fetchJson<{ enabled: boolean }>("/api/ai/status");
+  async getAiStatus(): Promise<{ enabled: boolean; htmlGeneratorEnabled?: boolean }> {
+    return fetchJson<{ enabled: boolean; htmlGeneratorEnabled?: boolean }>("/api/ai/status");
   },
 
   async getAiSettings(): Promise<any> {
@@ -572,8 +572,18 @@ export const api = {
     baseUrl: string;
     enabled: boolean;
     loggingEnabled: boolean;
+    htmlGeneratorEnabled?: boolean;
+    htmlGeneratorSystemPrompt?: string;
   }): Promise<any> {
     return putJson<any>("/api/admin/ai-settings", data);
+  },
+
+  async generateHtml(data: {
+    text?: string;
+    fileBase64?: string;
+    fileType?: "pdf" | "docx";
+  }): Promise<{ html: string; warning?: string }> {
+    return postJson<{ html: string; warning?: string }>("/api/ai/generate-html", data);
   },
 
   async getAiQueryLog(): Promise<any[]> {

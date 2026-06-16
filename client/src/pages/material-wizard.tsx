@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { AlertTriangle, Code, FilePlus2, FileText, Globe, ShieldCheck, Upload } from "lucide-react";
+import { AlertTriangle, Code, FilePlus2, FileText, Globe, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
+import { AiHtmlGenerator } from "@/components/kb/AiHtmlGenerator";
 import { UserSelect } from "@/components/kb/UserSelect";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,7 +63,16 @@ export default function MaterialWizard() {
   const [fileDataBase64, setFileDataBase64] = useState("");
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
   const [rawHtml, setRawHtml] = useState("<h1>Заголовок</h1>\n<p>Описание материала.</p>");
+  const [aiGeneratorOpen, setAiGeneratorOpen] = useState(false);
+  const [aiGeneratorAvailable, setAiGeneratorAvailable] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api
+      .getAiStatus()
+      .then((s) => setAiGeneratorAvailable(Boolean(s.htmlGeneratorEnabled)))
+      .catch(() => setAiGeneratorAvailable(false));
+  }, []);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -456,6 +466,19 @@ export default function MaterialWizard() {
                       <div className="mb-2 flex items-center gap-2">
                         <Code className="h-4 w-4 text-muted-foreground" />
                         <div className="text-sm font-semibold">HTML-код</div>
+                        {aiGeneratorAvailable && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="ml-auto rounded-lg text-xs"
+                            data-testid="button-open-ai-generator"
+                            onClick={() => setAiGeneratorOpen(true)}
+                          >
+                            <Sparkles className="mr-1.5 h-3.5 w-3.5 text-amber-500" />
+                            Создать с помощью AI
+                          </Button>
+                        )}
                       </div>
                       <Textarea
                         data-testid="input-raw-html"
@@ -593,6 +616,18 @@ export default function MaterialWizard() {
           </Card>
         </div>
       </div>
+
+      {aiGeneratorOpen && (
+        <AiHtmlGenerator
+          onClose={() => setAiGeneratorOpen(false)}
+          onPublish={(html) => {
+            setContentKind("html");
+            setRawHtml(html);
+            setAiGeneratorOpen(false);
+            toast({ title: "Готово", description: "Сгенерированный HTML добавлен в материал." });
+          }}
+        />
+      )}
     </AppShell>
   );
 }

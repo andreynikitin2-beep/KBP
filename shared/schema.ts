@@ -336,6 +336,8 @@ export const aiSettings = pgTable("ai_settings", {
   baseUrl: text("base_url").default(""),
   enabled: boolean("enabled").default(false).notNull(),
   loggingEnabled: boolean("logging_enabled").default(true).notNull(),
+  htmlGeneratorEnabled: boolean("html_generator_enabled").default(false).notNull(),
+  htmlGeneratorSystemPrompt: text("html_generator_system_prompt").default("").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

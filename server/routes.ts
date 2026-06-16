@@ -956,9 +956,12 @@ export async function registerRoutes(
   app.get("/api/ai/status", async (_req, res) => {
     try {
       const settings = await storage.getAiSettings();
-      res.json({ enabled: settings?.enabled ?? false });
+      res.json({
+        enabled: settings?.enabled ?? false,
+        htmlGeneratorEnabled: (settings?.enabled ?? false) && (settings?.htmlGeneratorEnabled ?? false),
+      });
     } catch {
-      res.json({ enabled: false });
+      res.json({ enabled: false, htmlGeneratorEnabled: false });
     }
   });
 
@@ -998,7 +1001,7 @@ export async function registerRoutes(
       const session = await verifySession(req);
       if (!session) return res.status(401).json({ error: "Требуется авторизация" });
       if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
-      const { provider, apiKey, model, baseUrl, enabled, loggingEnabled } = req.body;
+      const { provider, apiKey, model, baseUrl, enabled, loggingEnabled, htmlGeneratorEnabled, htmlGeneratorSystemPrompt } = req.body;
       const existing = await storage.getAiSettings();
       const rawKey = apiKey && !apiKey.includes("••") ? apiKey : (existing?.apiKey || "");
       const finalKey = sanitizeApiKey(rawKey);
@@ -1009,6 +1012,8 @@ export async function registerRoutes(
         baseUrl: baseUrl || "",
         enabled: enabled ?? false,
         loggingEnabled: loggingEnabled ?? true,
+        htmlGeneratorEnabled: htmlGeneratorEnabled ?? (existing?.htmlGeneratorEnabled ?? false),
+        htmlGeneratorSystemPrompt: htmlGeneratorSystemPrompt ?? (existing?.htmlGeneratorSystemPrompt ?? ""),
         updatedAt: new Date(),
       };
       const saved = await storage.upsertAiSettings(data);
@@ -1108,6 +1113,161 @@ export async function registerRoutes(
       }
     } catch (e: any) {
       res.json({ ok: false, message: e?.message || "Ошибка подключения" });
+    }
+  });
+
+  // AI HTML GENERATOR
+  app.post("/api/ai/generate-html", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+
+      const aiConfig = await storage.getAiSettings();
+      if (!aiConfig || !aiConfig.enabled)
+        return res.status(400).json({ error: "AI-помощник не настроен или отключён" });
+      if (!aiConfig.htmlGeneratorEnabled)
+        return res.status(400).json({ error: "AI HTML-генератор отключён администратором" });
+      if (!aiConfig.apiKey)
+        return res.status(400).json({ error: "API-ключ не настроен" });
+
+      const { text, fileBase64, fileType } = req.body as {
+        text?: string;
+        fileBase64?: string;
+        fileType?: "pdf" | "docx";
+      };
+
+      let warning: string | undefined;
+      let sourceText = "";
+
+      if (fileBase64) {
+        const base64Data = fileBase64.includes(",") ? fileBase64.split(",")[1] : fileBase64;
+        const buffer = Buffer.from(base64Data, "base64");
+        if (buffer.length > 20 * 1024 * 1024) {
+          return res.status(400).json({ error: "Файл превышает 20 МБ" });
+        }
+        if (fileType === "docx") {
+          const mammoth = (await import("mammoth")).default;
+          const result = await mammoth.extractRawText({ buffer });
+          sourceText = result.value || "";
+        } else if (fileType === "pdf") {
+          const { PDFParse } = await import("pdf-parse");
+          const parser = new PDFParse({ data: new Uint8Array(buffer) });
+          try {
+            const result = await parser.getText();
+            sourceText = result.text || "";
+          } finally {
+            await parser.destroy().catch(() => {});
+          }
+          if (sourceText.trim().length < 30) {
+            warning = "Из PDF извлечено мало текста — возможно, это скан. Распознавание изображений (OCR) не выполняется.";
+          }
+        } else {
+          return res.status(400).json({ error: "Неподдерживаемый тип файла" });
+        }
+      } else if (text && text.trim()) {
+        sourceText = text;
+      } else {
+        return res.status(400).json({ error: "Не указан текст или файл для обработки" });
+      }
+
+      // Clean artifacts: page numbers, repeated whitespace, common header/footer noise
+      sourceText = sourceText
+        .replace(/\r\n/g, "\n")
+        .replace(/^\s*(?:стр\.?|страница|page)\s*\d+(?:\s*(?:из|of|\/)\s*\d+)?\s*$/gim, "")
+        .replace(/^\s*\d+\s*$/gm, "")
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+      if (!sourceText) {
+        return res.status(400).json({ error: "Не удалось извлечь текст из источника" });
+      }
+
+      const MAX_SOURCE = 40000;
+      if (sourceText.length > MAX_SOURCE) {
+        sourceText = sourceText.slice(0, MAX_SOURCE);
+        warning = (warning ? warning + " " : "") + "Текст инструкции был усечён до 40 000 символов.";
+      }
+
+      const defaultRules = `Ты — помощник, который превращает текст инструкции в чистую HTML-страницу единого корпоративного формата для внутреннего портала знаний.
+Правила оформления:
+- Используй семантические теги: <h1> для названия, <h2>/<h3> для разделов, <p>, <ol>/<ul>, <table>, <blockquote>.
+- Обязательно выдели раздел «Пошаговая инструкция» как <h2>Пошаговая инструкция</h2>, а сами шаги оформи нумерованным списком <ol>.
+- Там, где в тексте упоминается скриншот, изображение, «см. рисунок» и т.п., вставь плейсхолдер вида <div data-placeholder="screenshot" class="screenshot-placeholder">Здесь будет скриншот: краткое описание</div> вместо картинки.
+- Не выдумывай информацию, которой нет в исходном тексте.
+- Не добавляй inline-стили, <style>, <script>, <head>, <body>, markdown или markdown-ограждения (\`\`\`). Верни ТОЛЬКО валидный HTML-фрагмент содержимого.`;
+
+      const adminRules = (aiConfig.htmlGeneratorSystemPrompt || "").trim();
+      const systemPrompt = adminRules
+        ? `${defaultRules}\n\nДополнительные правила оформления от администратора:\n${adminRules}`
+        : defaultRules;
+
+      const userPrompt = `Преобразуй следующий текст инструкции в HTML-страницу по указанным правилам.\n\nИСХОДНЫЙ ТЕКСТ:\n---\n${sourceText}\n---`;
+
+      let html = "";
+
+      if (aiConfig.provider === "anthropic") {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": sanitizeApiKey(aiConfig.apiKey),
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: aiConfig.model || "claude-3-5-sonnet-20241022",
+            max_tokens: 8192,
+            system: systemPrompt,
+            messages: [{ role: "user", content: userPrompt }],
+          }),
+          signal: AbortSignal.timeout(120000),
+        });
+        if (!r.ok) {
+          const err: any = await r.json().catch(() => ({}));
+          return res.status(500).json({ error: err?.error?.message || "Ошибка LLM" });
+        }
+        const data: any = await r.json();
+        html = data.content?.[0]?.text || "";
+      } else {
+        const chatEndpoint = buildChatEndpoint(aiConfig.baseUrl);
+        const r = await fetch(chatEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sanitizeApiKey(aiConfig.apiKey)}`,
+          },
+          body: JSON.stringify({
+            model: aiConfig.model || "gpt-4o",
+            max_tokens: 8192,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+          }),
+          signal: AbortSignal.timeout(120000),
+        });
+        if (!r.ok) {
+          const err: any = await r.json().catch(() => ({}));
+          return res.status(500).json({ error: err?.error?.message || "Ошибка LLM" });
+        }
+        const data: any = await r.json();
+        html = data.choices?.[0]?.message?.content || "";
+      }
+
+      // Strip markdown code fences if the model wrapped the output
+      html = html
+        .replace(/^\s*```(?:html)?\s*/i, "")
+        .replace(/\s*```\s*$/i, "")
+        .trim();
+
+      if (!html) {
+        return res.status(500).json({ error: "LLM вернул пустой результат" });
+      }
+
+      res.json({ html, warning });
+    } catch (e: any) {
+      console.error("[generate-html]", e?.message || e);
+      res.status(500).json({ error: e?.message || "Ошибка генерации HTML" });
     }
   });
 

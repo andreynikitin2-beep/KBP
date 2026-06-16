@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Clock,
   Cloud,
+  Code,
   CloudOff,
   Download,
   Edit2,
@@ -597,6 +598,8 @@ function AiSettingsTab() {
   const [baseUrl, setBaseUrl] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [loggingEnabled, setLoggingEnabled] = useState(true);
+  const [htmlGeneratorEnabled, setHtmlGeneratorEnabled] = useState(false);
+  const [htmlGeneratorSystemPrompt, setHtmlGeneratorSystemPrompt] = useState("");
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -626,6 +629,8 @@ function AiSettingsTab() {
           setBaseUrl(data.baseUrl || "");
           setEnabled(data.enabled ?? false);
           setLoggingEnabled(data.loggingEnabled ?? true);
+          setHtmlGeneratorEnabled(data.htmlGeneratorEnabled ?? false);
+          setHtmlGeneratorSystemPrompt(data.htmlGeneratorSystemPrompt ?? "");
         }
       })
       .catch(() => {})
@@ -641,7 +646,7 @@ function AiSettingsTab() {
   const save = async () => {
     setSaving(true);
     try {
-      await api.saveAiSettings({ provider, apiKey, model, baseUrl, enabled, loggingEnabled });
+      await api.saveAiSettings({ provider, apiKey, model, baseUrl, enabled, loggingEnabled, htmlGeneratorEnabled, htmlGeneratorSystemPrompt });
       toast({ title: "Сохранено", description: "Настройки AI-помощника обновлены" });
       setTestResult(null);
     } catch {
@@ -872,6 +877,59 @@ function AiSettingsTab() {
           </div>
         </Card>
       </div>
+
+      {/* AI HTML Generator */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Code className="h-4 w-4 text-amber-500" />
+            <div className="text-sm font-semibold">AI HTML-генератор</div>
+          </div>
+          <Switch
+            data-testid="switch-html-generator-enabled"
+            checked={htmlGeneratorEnabled}
+            onCheckedChange={setHtmlGeneratorEnabled}
+          />
+        </div>
+        <div className="text-xs text-muted-foreground mb-3">
+          Инструмент в мастере создания материала: автор загружает PDF/DOCX или текст, AI
+          преобразует инструкцию в HTML-страницу единого корпоративного формата.
+          Требует включённого AI-помощника выше.
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">
+            Системный промпт (правила оформления)
+          </Label>
+          <Textarea
+            data-testid="textarea-html-generator-prompt"
+            value={htmlGeneratorSystemPrompt}
+            onChange={(e) => setHtmlGeneratorSystemPrompt(e.target.value)}
+            placeholder="Например: используй фирменные заголовки, нумеруй шаги, каждый раздел начинай с краткого резюме, термины оформляй жирным…"
+            className="mt-1 min-h-[140px] rounded-xl text-sm"
+            disabled={!htmlGeneratorEnabled}
+          />
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            Эти правила добавляются к базовым требованиям генератора. Базовые правила (семантические
+            теги, обязательный раздел «Пошаговая инструкция», плейсхолдеры для скриншотов) применяются
+            всегда.
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Button
+            data-testid="button-html-generator-save"
+            className="rounded-xl"
+            onClick={save}
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Сохранить
+          </Button>
+        </div>
+      </Card>
 
       {/* AI Query Log */}
       <Card className="p-4">
