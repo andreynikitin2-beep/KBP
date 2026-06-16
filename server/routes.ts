@@ -1185,7 +1185,34 @@ export async function registerRoutes(
         answer = data.choices?.[0]?.message?.content || "";
       }
 
-      const sources = contextMaterials.map((m: any) => ({
+      // Determine which materials were actually used by lexical overlap with the answer.
+      // Tokenise answer into significant lowercase words (≥4 chars, Cyrillic/Latin).
+      function tokenize(text: string): Set<string> {
+        const words = text.toLowerCase().match(/[а-яёa-z]{4,}/g) || [];
+        return new Set(words);
+      }
+      const answerTokens = tokenize(answer);
+      const STOP = new Set(["этот","этого","этому","этим","этих","что","как","для","при","или","все","они","его","её","или","над","под","без","про","через","после","перед","между","которые","который","которая","которого"]);
+      answerTokens.forEach((w) => { if (STOP.has(w)) answerTokens.delete(w); });
+
+      const scoredMaterials = contextMaterials.map((m: any) => {
+        const matTokens = tokenize(m.text);
+        let hits = 0;
+        answerTokens.forEach((w) => { if (matTokens.has(w)) hits++; });
+        const score = answerTokens.size > 0 ? hits / answerTokens.size : 0;
+        return { ...m, score };
+      });
+
+      // Keep materials where ≥8% of answer words appear in the material text, or top-1 if none qualify
+      const THRESHOLD = 0.08;
+      let usedMaterials = scoredMaterials.filter((m: any) => m.score >= THRESHOLD);
+      if (usedMaterials.length === 0 && scoredMaterials.length > 0) {
+        // Fallback: top-1 by score
+        const best = scoredMaterials.reduce((a: any, b: any) => a.score >= b.score ? a : b);
+        if (best.score > 0) usedMaterials = [best];
+      }
+
+      const sources = usedMaterials.map((m: any) => ({
         materialId: m.materialId,
         title: m.title,
       }));
