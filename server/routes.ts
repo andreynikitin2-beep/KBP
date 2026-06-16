@@ -20,6 +20,14 @@ function coerceDates(data: any): any {
   return result;
 }
 
+function sanitizeApiKey(key: string): string {
+  // Replace typographic dashes (em dash —, en dash –) with hyphens, strip other non-ASCII
+  return key
+    .replace(/\u2014/g, "-") // em dash —
+    .replace(/\u2013/g, "-") // en dash –
+    .replace(/[^\x20-\x7E]/g, ""); // strip remaining non-printable / non-ASCII
+}
+
 function buildChatEndpoint(baseUrl?: string | null): string {
   if (!baseUrl) return "https://api.openai.com/v1/chat/completions";
   const base = baseUrl.replace(/\/$/, "");
@@ -893,8 +901,8 @@ export async function registerRoutes(
       if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
       const { provider, apiKey, model, baseUrl, enabled, loggingEnabled } = req.body;
       const existing = await storage.getAiSettings();
-      const finalKey =
-        apiKey && !apiKey.includes("••") ? apiKey : (existing?.apiKey || "");
+      const rawKey = apiKey && !apiKey.includes("••") ? apiKey : (existing?.apiKey || "");
+      const finalKey = sanitizeApiKey(rawKey);
       const data: any = {
         provider: provider || "openai",
         apiKey: finalKey,
@@ -944,6 +952,7 @@ export async function registerRoutes(
         const stored = await storage.getAiSettings();
         key = stored?.apiKey || "";
       }
+      key = sanitizeApiKey(key);
       if (!key) return res.status(400).json({ ok: false, message: "API-ключ не указан" });
 
       const testMsg = "Ответь одним словом: привет";
@@ -1127,7 +1136,7 @@ export async function registerRoutes(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-api-key": aiConfig.apiKey,
+            "x-api-key": sanitizeApiKey(aiConfig.apiKey),
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
@@ -1152,7 +1161,7 @@ export async function registerRoutes(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${aiConfig.apiKey}`,
+            Authorization: `Bearer ${sanitizeApiKey(aiConfig.apiKey)}`,
           },
           body: JSON.stringify({
             model: aiConfig.model || "gpt-4o",
