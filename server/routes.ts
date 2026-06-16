@@ -976,8 +976,14 @@ export async function registerRoutes(
           signal: AbortSignal.timeout(15000),
         });
         if (!r.ok) {
-          const err: any = await r.json().catch(() => ({}));
-          return res.json({ ok: false, message: err?.error?.message || `HTTP ${r.status}` });
+          const rawBody = await r.text().catch(() => "");
+          console.error(`[ai-test] OpenAI ${r.status} from ${base}/v1/chat/completions:`, rawBody);
+          let errMsg = `HTTP ${r.status}`;
+          try {
+            const err = JSON.parse(rawBody);
+            errMsg = err?.error?.message || err?.message || errMsg;
+          } catch {}
+          return res.json({ ok: false, message: errMsg });
         }
         return res.json({ ok: true });
       }
