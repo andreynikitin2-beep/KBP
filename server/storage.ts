@@ -743,21 +743,32 @@ export class DatabaseStorage implements IStorage {
 export const storage = new DatabaseStorage();
 
 export async function backfillSearchText(): Promise<void> {
-  const { isNull } = await import("drizzle-orm");
+  const { isNull, or } = await import("drizzle-orm");
+  // Cover both NULL and empty string — page/html materials may have been saved before fix
   const rows = await db.select({
     id: schema.materialVersions.id,
     contentKind: schema.materialVersions.contentKind,
     contentPage: schema.materialVersions.contentPage,
     contentFile: schema.materialVersions.contentFile,
-  }).from(schema.materialVersions).where(isNull(schema.materialVersions.searchText));
+  }).from(schema.materialVersions).where(
+    or(
+      isNull(schema.materialVersions.searchText),
+      eq(schema.materialVersions.searchText, ""),
+    )
+  );
 
   if (rows.length === 0) return;
 
+  let updated = 0;
   for (const row of rows) {
     const searchText = extractTextForSearch(row);
+    if (!searchText) continue; // skip if content genuinely empty
     await db.update(schema.materialVersions)
       .set({ searchText })
       .where(eq(schema.materialVersions.id, row.id));
+    updated++;
   }
-  console.log(`[search] Backfilled searchText for ${rows.length} material version(s)`);
+  if (updated > 0) {
+    console.log(`[search] Backfilled searchText for ${updated} material version(s)`);
+  }
 }

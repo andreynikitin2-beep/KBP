@@ -1103,8 +1103,9 @@ export async function registerRoutes(
         })
         .filter((m: any) => m.text.length > 50);
 
-      const withRank = materialsWithText.filter((m: any) => m.rank > 0).slice(0, 8);
-      const contextMaterials = withRank.length > 0 ? withRank : materialsWithText.slice(0, 5);
+      // Sort by FTS rank DESC; include both ranked and unranked (page/html may have rank=0)
+      const sorted = [...materialsWithText].sort((a: any, b: any) => b.rank - a.rank);
+      const contextMaterials = sorted.slice(0, 8);
 
       if (contextMaterials.length === 0) {
         return res.json({
