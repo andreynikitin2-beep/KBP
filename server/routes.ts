@@ -20,6 +20,13 @@ function coerceDates(data: any): any {
   return result;
 }
 
+function buildChatEndpoint(baseUrl?: string | null): string {
+  if (!baseUrl) return "https://api.openai.com/v1/chat/completions";
+  const b = baseUrl.replace(/\/$/, "");
+  if (b.endsWith("/v1")) return `${b}/chat/completions`;
+  return `${b}/v1/chat/completions`;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -961,8 +968,8 @@ export async function registerRoutes(
         }
         return res.json({ ok: true });
       } else {
-        const base = baseUrl ? baseUrl.replace(/\/$/, "").replace(/\/v1$/, "") : "https://api.openai.com";
-        const r = await fetch(`${base}/v1/chat/completions`, {
+        const endpoint = buildChatEndpoint(baseUrl);
+        const r = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -977,7 +984,6 @@ export async function registerRoutes(
         });
         if (!r.ok) {
           const rawBody = await r.text().catch(() => "");
-          const endpoint = `${base}/v1/chat/completions`;
           console.error(`[ai-test] ${r.status} POST ${endpoint} model=${model || "gpt-4o"} body:`, rawBody || "(empty)");
           let errMsg = `HTTP ${r.status}`;
           try {
@@ -1140,10 +1146,8 @@ export async function registerRoutes(
         const data: any = await r.json();
         answer = data.content?.[0]?.text || "";
       } else {
-        const base = aiConfig.baseUrl
-          ? aiConfig.baseUrl.replace(/\/$/, "").replace(/\/v1$/, "")
-          : "https://api.openai.com";
-        const r = await fetch(`${base}/v1/chat/completions`, {
+        const chatEndpoint = buildChatEndpoint(aiConfig.baseUrl);
+        const r = await fetch(chatEndpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
