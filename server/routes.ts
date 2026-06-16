@@ -1088,7 +1088,7 @@ export async function registerRoutes(
       const materialsWithText = accessible
         .map((v: any) => {
           let text = "";
-          if (v.contentKind === "page" && v.contentPage) {
+          if ((v.contentKind === "page" || v.contentKind === "html") && v.contentPage) {
             text = ((v.contentPage as any).html || "")
               .replace(/<[^>]*>/g, " ")
               .replace(/&[a-z]+;/gi, " ")
