@@ -825,5 +825,284 @@ export async function registerRoutes(
     }
   });
 
+  // AI STATUS (public to any authenticated user)
+  app.get("/api/ai/status", async (_req, res) => {
+    try {
+      const settings = await storage.getAiSettings();
+      res.json({ enabled: settings?.enabled ?? false });
+    } catch {
+      res.json({ enabled: false });
+    }
+  });
+
+  // AI SETTINGS (admin only)
+  app.get("/api/admin/ai-settings", async (_req, res) => {
+    try {
+      const settings = await storage.getAiSettings();
+      if (!settings) return res.json(null);
+      const { apiKey, ...rest } = settings;
+      const maskedKey = apiKey
+        ? apiKey.slice(0, 4) + "••••••••" + (apiKey.length > 8 ? apiKey.slice(-4) : "")
+        : "";
+      res.json({ ...rest, apiKey: maskedKey });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.put("/api/admin/ai-settings", async (req, res) => {
+    try {
+      const { provider, apiKey, model, baseUrl, enabled } = req.body;
+      const existing = await storage.getAiSettings();
+      const finalKey =
+        apiKey && !apiKey.includes("••") ? apiKey : (existing?.apiKey || "");
+      const data: any = {
+        provider: provider || "openai",
+        apiKey: finalKey,
+        model: model || "gpt-4o",
+        baseUrl: baseUrl || "",
+        enabled: enabled ?? false,
+        updatedAt: new Date(),
+      };
+      const saved = await storage.upsertAiSettings(data);
+      const { apiKey: savedKey, ...rest } = saved;
+      const maskedKey = savedKey
+        ? savedKey.slice(0, 4) + "••••••••" + (savedKey.length > 8 ? savedKey.slice(-4) : "")
+        : "";
+      res.json({ ...rest, apiKey: maskedKey });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  // AI TEST CONNECTION
+  app.post("/api/admin/ai-test", async (req, res) => {
+    try {
+      const { provider, apiKey, model, baseUrl } = req.body;
+      let key = apiKey;
+      if (!key || key.includes("••")) {
+        const stored = await storage.getAiSettings();
+        key = stored?.apiKey || "";
+      }
+      if (!key) return res.status(400).json({ ok: false, message: "API-ключ не указан" });
+
+      const testMsg = "Ответь одним словом: привет";
+
+      if (provider === "anthropic") {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: model || "claude-3-5-sonnet-20241022",
+            max_tokens: 20,
+            messages: [{ role: "user", content: testMsg }],
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!r.ok) {
+          const err: any = await r.json().catch(() => ({}));
+          return res.json({ ok: false, message: err?.error?.message || `HTTP ${r.status}` });
+        }
+        return res.json({ ok: true });
+      } else {
+        const base = baseUrl ? baseUrl.replace(/\/$/, "") : "https://api.openai.com";
+        const r = await fetch(`${base}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            model: model || "gpt-4o",
+            max_tokens: 20,
+            messages: [{ role: "user", content: testMsg }],
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!r.ok) {
+          const err: any = await r.json().catch(() => ({}));
+          return res.json({ ok: false, message: err?.error?.message || `HTTP ${r.status}` });
+        }
+        return res.json({ ok: true });
+      }
+    } catch (e: any) {
+      res.json({ ok: false, message: e?.message || "Ошибка подключения" });
+    }
+  });
+
+  // AI CHAT WITH RAG
+  app.post("/api/ai/chat", async (req, res) => {
+    try {
+      const { userId, message, history = [] } = req.body;
+      if (!userId || !message)
+        return res.status(400).json({ error: "userId и message обязательны" });
+
+      const [user, aiConfig] = await Promise.all([
+        storage.getUser(userId),
+        storage.getAiSettings(),
+      ]);
+
+      if (!user) return res.status(401).json({ error: "Пользователь не найден" });
+      if (!aiConfig || !aiConfig.enabled)
+        return res.status(400).json({ error: "AI-помощник не настроен или отключён" });
+      if (!aiConfig.apiKey)
+        return res.status(400).json({ error: "API-ключ не настроен" });
+
+      const [allVersions, groups] = await Promise.all([
+        storage.getPublishedMaterialVersionsLight(),
+        storage.getVisibilityGroups(),
+      ]);
+
+      const isAdmin = (user.roles as string[]).includes("Администратор");
+
+      const accessible = allVersions.filter((v: any) => {
+        if (isAdmin) return true;
+        const gIds = v.visibilityGroupIds as string[];
+        if (!gIds || gIds.length === 0) return true;
+        for (const gId of gIds) {
+          const group = groups.find((g) => g.id === gId);
+          if (!group) continue;
+          if (group.isSystem) return true;
+          if ((group.memberIds as string[]).includes(userId)) return true;
+        }
+        return false;
+      });
+
+      const materialsWithText = accessible
+        .map((v: any) => {
+          let text = "";
+          if (v.contentKind === "page" && v.contentPage) {
+            text = ((v.contentPage as any).html || "")
+              .replace(/<[^>]*>/g, " ")
+              .replace(/&[a-z]+;/gi, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+          } else if (v.contentKind === "file" && v.contentFile) {
+            text = ((v.contentFile as any).extractedText || "")
+              .replace(/\s+/g, " ")
+              .trim();
+          }
+          return { materialId: v.materialId, title: v.title, text };
+        })
+        .filter((m: any) => m.text.length > 50);
+
+      const queryWords = message
+        .toLowerCase()
+        .split(/[\s,\.!?;:()]+/)
+        .filter((w: string) => w.length > 2);
+
+      const scored = materialsWithText
+        .map((m: any) => {
+          const tl = m.text.toLowerCase();
+          const titl = m.title.toLowerCase();
+          let score = 0;
+          for (const word of queryWords) {
+            const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const count = (tl.match(new RegExp(esc, "g")) || []).length;
+            score += count;
+            if (titl.includes(word)) score += 15;
+          }
+          return { ...m, score };
+        })
+        .sort((a: any, b: any) => b.score - a.score);
+
+      const withScore = scored.filter((m: any) => m.score > 0).slice(0, 8);
+      const contextMaterials = withScore.length > 0 ? withScore : scored.slice(0, 5);
+
+      if (contextMaterials.length === 0) {
+        return res.json({
+          answer:
+            "К сожалению, в базе знаний не найдено материалов, доступных вам и релевантных вашему вопросу.",
+          sources: [],
+        });
+      }
+
+      const MAX_CHARS = 3000;
+      const contextBlocks = contextMaterials
+        .map(
+          (m: any) =>
+            `[ID: ${m.materialId}] Материал: "${m.title}"\n${m.text.slice(0, MAX_CHARS)}`,
+        )
+        .join("\n\n---\n\n");
+
+      const systemPrompt = `Ты — AI-помощник внутреннего портала знаний «Центр знаний ЦОС». Отвечай на вопросы сотрудников полно и развёрнуто, опираясь СТРОГО на предоставленные фрагменты из базы знаний. Если ответа нет в предоставленных материалах — честно сообщи об этом. Не придумывай информацию. Отвечай на русском языке. Не перечисляй источники в конце ответа — они будут добавлены автоматически.\n\nДоступные материалы из базы знаний:\n---\n${contextBlocks}\n---`;
+
+      const chatHistory = (history as any[]).map((h) => ({
+        role: h.role,
+        content: h.content,
+      }));
+
+      let answer = "";
+
+      if (aiConfig.provider === "anthropic") {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": aiConfig.apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: aiConfig.model || "claude-3-5-sonnet-20241022",
+            max_tokens: 2048,
+            system: systemPrompt,
+            messages: [...chatHistory, { role: "user", content: message }],
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (!r.ok) {
+          const err: any = await r.json().catch(() => ({}));
+          return res
+            .status(500)
+            .json({ error: err?.error?.message || "Ошибка LLM" });
+        }
+        const data: any = await r.json();
+        answer = data.content?.[0]?.text || "";
+      } else {
+        const base = aiConfig.baseUrl
+          ? aiConfig.baseUrl.replace(/\/$/, "")
+          : "https://api.openai.com";
+        const r = await fetch(`${base}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${aiConfig.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: aiConfig.model || "gpt-4o",
+            max_tokens: 2048,
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...chatHistory,
+              { role: "user", content: message },
+            ],
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (!r.ok) {
+          const err: any = await r.json().catch(() => ({}));
+          return res
+            .status(500)
+            .json({ error: err?.error?.message || "Ошибка LLM" });
+        }
+        const data: any = await r.json();
+        answer = data.choices?.[0]?.message?.content || "";
+      }
+
+      const sources = contextMaterials.map((m: any) => ({
+        materialId: m.materialId,
+        title: m.title,
+      }));
+
+      res.json({ answer, sources });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
+    }
+  });
+
   return httpServer;
 }

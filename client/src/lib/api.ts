@@ -508,4 +508,39 @@ export const api = {
   async deleteMaterial(materialId: string): Promise<void> {
     return deleteJson(`/api/materials/${materialId}`);
   },
+
+  async getAiStatus(): Promise<{ enabled: boolean }> {
+    return fetchJson<{ enabled: boolean }>("/api/ai/status");
+  },
+
+  async getAiSettings(): Promise<any> {
+    return fetchJson<any>("/api/admin/ai-settings");
+  },
+
+  async saveAiSettings(data: {
+    provider: string;
+    apiKey: string;
+    model: string;
+    baseUrl: string;
+    enabled: boolean;
+  }): Promise<any> {
+    return putJson<any>("/api/admin/ai-settings", data);
+  },
+
+  async testAiConnection(data: {
+    provider: string;
+    apiKey: string;
+    model: string;
+    baseUrl: string;
+  }): Promise<{ ok: boolean; message?: string }> {
+    return postJson<{ ok: boolean; message?: string }>("/api/admin/ai-test", data);
+  },
+
+  async aiChat(data: {
+    userId: string;
+    message: string;
+    history: Array<{ role: string; content: string }>;
+  }): Promise<{ answer: string; sources: Array<{ materialId: string; title: string }> }> {
+    return postJson<any>("/api/ai/chat", data);
+  },
 };

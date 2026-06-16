@@ -1,9 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Archive,
   BookOpen,
-  Building2,
   ChevronRight,
   ClipboardCheck,
   FilePlus2,
@@ -13,9 +12,8 @@ import {
   Search,
   Settings2,
   LogOut,
-  Shield,
-  Sparkles,
 } from "lucide-react";
+import { AiChat } from "./AiChat";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -158,6 +156,7 @@ export function AppShell({
               </div>
             ) : null}
 
+            <AiChat />
             <UserSwitch />
 
             <Sheet>

@@ -100,6 +100,19 @@ export interface IStorage {
   getNewHireAssignment(id: string): Promise<schema.NewHireAssignment | undefined>;
   createNewHireAssignment(data: schema.InsertNewHireAssignment): Promise<schema.NewHireAssignment>;
   updateNewHireAssignment(id: string, data: Partial<{ acknowledgedAt: Date; acknowledgedVersionId: string }>): Promise<schema.NewHireAssignment | undefined>;
+
+  getAiSettings(): Promise<schema.AiSettings | undefined>;
+  upsertAiSettings(data: schema.InsertAiSettings): Promise<schema.AiSettings>;
+  getPublishedMaterialVersionsLight(): Promise<Array<{
+    id: string;
+    materialId: string;
+    status: string;
+    title: string;
+    contentKind: string;
+    contentFile: unknown;
+    contentPage: unknown;
+    visibilityGroupIds: string[];
+  }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -517,6 +530,47 @@ export class DatabaseStorage implements IStorage {
   async updateNewHireAssignment(id: string, data: Partial<{ acknowledgedAt: Date; acknowledgedVersionId: string }>): Promise<schema.NewHireAssignment | undefined> {
     const [assignment] = await db.update(schema.newHireAssignments).set(data).where(eq(schema.newHireAssignments.id, id)).returning();
     return assignment;
+  }
+
+  async getAiSettings(): Promise<schema.AiSettings | undefined> {
+    const [settings] = await db.select().from(schema.aiSettings);
+    return settings;
+  }
+
+  async upsertAiSettings(data: schema.InsertAiSettings): Promise<schema.AiSettings> {
+    const existing = await this.getAiSettings();
+    if (existing) {
+      const [updated] = await db
+        .update(schema.aiSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.aiSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(schema.aiSettings).values(data).returning();
+    return created;
+  }
+
+  async getPublishedMaterialVersionsLight(): Promise<Array<{
+    id: string;
+    materialId: string;
+    status: string;
+    title: string;
+    contentKind: string;
+    contentFile: unknown;
+    contentPage: unknown;
+    visibilityGroupIds: string[];
+  }>> {
+    return db.select({
+      id: schema.materialVersions.id,
+      materialId: schema.materialVersions.materialId,
+      status: schema.materialVersions.status,
+      title: schema.materialVersions.title,
+      contentKind: schema.materialVersions.contentKind,
+      contentFile: schema.materialVersions.contentFile,
+      contentPage: schema.materialVersions.contentPage,
+      visibilityGroupIds: schema.materialVersions.visibilityGroupIds,
+    }).from(schema.materialVersions).where(eq(schema.materialVersions.status, "Опубликовано"));
   }
 }
 

@@ -326,3 +326,17 @@ export const effectiveVisGroupMap = pgTable("effective_vis_group_map", {
 export const insertEffectiveVisGroupMapSchema = createInsertSchema(effectiveVisGroupMap).omit({ id: true });
 export type InsertEffectiveVisGroupMap = z.infer<typeof insertEffectiveVisGroupMapSchema>;
 export type EffectiveVisGroupMap = typeof effectiveVisGroupMap.$inferSelect;
+
+export const aiSettings = pgTable("ai_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("openai"),
+  apiKey: text("api_key").notNull().default(""),
+  model: text("model").notNull().default("gpt-4o"),
+  baseUrl: text("base_url").default(""),
+  enabled: boolean("enabled").default(false).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({ id: true });
+export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
+export type AiSettings = typeof aiSettings.$inferSelect;

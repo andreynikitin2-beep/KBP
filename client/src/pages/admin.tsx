@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import { api } from "@/lib/api";
@@ -26,6 +26,7 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
+  Sparkles,
   Table2,
   ThumbsDown,
   ThumbsUp,
@@ -586,6 +587,249 @@ function NewHiresTab() {
   );
 }
 
+function AiSettingsTab() {
+  const { toast } = useToast();
+  const [provider, setProvider] = useState<"openai" | "anthropic" | "custom">("openai");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("gpt-4o");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [enabled, setEnabled] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
+
+  const MODEL_DEFAULTS: Record<string, string> = {
+    openai: "gpt-4o",
+    anthropic: "claude-3-5-sonnet-20241022",
+    custom: "",
+  };
+
+  useEffect(() => {
+    api
+      .getAiSettings()
+      .then((data) => {
+        if (data) {
+          setProvider(data.provider || "openai");
+          setApiKey(data.apiKey || "");
+          setModel(data.model || "gpt-4o");
+          setBaseUrl(data.baseUrl || "");
+          setEnabled(data.enabled ?? false);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingSettings(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.saveAiSettings({ provider, apiKey, model, baseUrl, enabled });
+      toast({ title: "Сохранено", description: "Настройки AI-помощника обновлены" });
+      setTestResult(null);
+    } catch {
+      toast({ title: "Ошибка", description: "Не удалось сохранить настройки", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const test = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await api.testAiConnection({ provider, apiKey, model, baseUrl });
+      setTestResult(result);
+    } catch (e: any) {
+      setTestResult({ ok: false, message: e?.message || "Ошибка подключения" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loadingSettings) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="h-4 w-4 text-amber-500" />
+          <div className="text-sm font-semibold">Подключение LLM</div>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="ai-enabled" className="text-sm cursor-pointer">
+              Включить AI-помощник
+            </Label>
+            <Switch
+              id="ai-enabled"
+              data-testid="switch-ai-enabled"
+              checked={enabled}
+              onCheckedChange={setEnabled}
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground">Провайдер</Label>
+            <Select
+              value={provider}
+              onValueChange={(v: any) => {
+                setProvider(v);
+                setModel(MODEL_DEFAULTS[v] || "");
+              }}
+            >
+              <SelectTrigger data-testid="select-ai-provider" className="mt-1 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai">OpenAI</SelectItem>
+                <SelectItem value="anthropic">Anthropic Claude</SelectItem>
+                <SelectItem value="custom">Custom (OpenAI-compatible)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground">API-ключ</Label>
+            <Input
+              data-testid="input-ai-api-key"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-..."
+              className="mt-1 rounded-xl font-mono text-xs"
+            />
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground">Модель</Label>
+            <Input
+              data-testid="input-ai-model"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={MODEL_DEFAULTS[provider] || "model-name"}
+              className="mt-1 rounded-xl"
+            />
+          </div>
+
+          {(provider === "custom" || provider === "openai") && (
+            <div>
+              <Label className="text-xs text-muted-foreground">
+                Base URL{" "}
+                {provider === "openai"
+                  ? "(опционально — для Azure/прокси)"
+                  : "(обязательно)"}
+              </Label>
+              <Input
+                data-testid="input-ai-base-url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={
+                  provider === "custom"
+                    ? "https://your-llm-host/v1"
+                    : "https://api.openai.com"
+                }
+                className="mt-1 rounded-xl"
+              />
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button
+              data-testid="button-ai-test"
+              variant="outline"
+              className="rounded-xl flex-1"
+              onClick={test}
+              disabled={testing || !apiKey.trim()}
+            >
+              {testing ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Activity className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Проверить
+            </Button>
+            <Button
+              data-testid="button-ai-save"
+              className="rounded-xl flex-1"
+              onClick={save}
+              disabled={saving}
+            >
+              {saving ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Сохранить
+            </Button>
+          </div>
+
+          {testResult && (
+            <div
+              className={`flex items-center gap-2 rounded-xl p-3 text-sm ${
+                testResult.ok
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-red-700 border border-red-200"
+              }`}
+            >
+              {testResult.ok ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              ) : (
+                <XCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span>
+                {testResult.ok
+                  ? "Подключение успешно"
+                  : testResult.message || "Ошибка подключения"}
+              </span>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <FileText className="h-4 w-4 text-muted-foreground" />
+          <div className="text-sm font-semibold">Как работает AI-помощник</div>
+        </div>
+        <div className="space-y-3 text-sm text-muted-foreground">
+          {[
+            "Пользователь задаёт вопрос в чате (кнопка AI в шапке).",
+            "Система отбирает материалы, доступные пользователю (статус «Опубликован» + группы видимости).",
+            "По ключевым словам вопроса находятся до 8 наиболее релевантных материалов (страницы и файлы с извлечённым текстом).",
+            "LLM формирует развёрнутый ответ строго по контексту из базы знаний.",
+            "Под ответом — кликабельные ссылки на использованные материалы.",
+          ].map((text, i) => (
+            <div key={i} className="flex gap-2.5">
+              <div className="shrink-0 h-5 w-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold">
+                {i + 1}
+              </div>
+              <div>{text}</div>
+            </div>
+          ))}
+        </div>
+        <Separator className="my-3" />
+        <div className="text-xs text-muted-foreground space-y-1">
+          <div>
+            <strong>Провайдеры:</strong> OpenAI (GPT-4o, GPT-4), Anthropic (Claude), любой
+            OpenAI-compatible API (vLLM, Ollama, LM Studio, Azure OpenAI).
+          </div>
+          <div>
+            <strong>Данные:</strong> API-ключ хранится в зашифрованной базе данных.
+            Запросы отправляются сервером напрямую — ключ никогда не попадает в браузер.
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function Admin() {
   const { toast } = useToast();
   const { me, materials, notifications, policy, users, syncADUsers, updateAdConfig, createLocalUser, deactivateUser, reactivateUser, updateReviewPeriod, updateRbacDefaults, updateUser, createGroup, updateGroup, deleteGroup, visibilityGroups, catalogNodes, updateCatalogNode, addSection, renameSection, deleteSection, addSubsection, renameSubsection, deleteSubsection, emailConfig, emailTemplates, updateEmailConfig, updateEmailTemplate } = useKB();
@@ -1071,7 +1315,7 @@ export default function Admin() {
           <Separator />
           <CardContent className="p-4">
             <Tabs defaultValue="policies" className="w-full">
-              <TabsList className="grid w-full grid-cols-8">
+              <TabsList className="grid w-full grid-cols-9">
                 <TabsTrigger data-testid="tab-admin-policies" value="policies">
                   Политики
                 </TabsTrigger>
@@ -1095,6 +1339,10 @@ export default function Admin() {
                 </TabsTrigger>
                 <TabsTrigger data-testid="tab-admin-health" value="health">
                   Здоровье базы
+                </TabsTrigger>
+                <TabsTrigger data-testid="tab-admin-ai" value="ai">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500 mr-1" />
+                  AI
                 </TabsTrigger>
               </TabsList>
 
@@ -2772,6 +3020,11 @@ export default function Admin() {
               {/* ── Новые сотрудники ── */}
               <TabsContent value="newhires" className="mt-4">
                 <NewHiresTab />
+              </TabsContent>
+
+              {/* ── AI-помощник ── */}
+              <TabsContent value="ai" className="mt-4">
+                <AiSettingsTab />
               </TabsContent>
 
               {/* ── Здоровье базы ── */}
