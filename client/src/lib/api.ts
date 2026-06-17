@@ -589,7 +589,23 @@ export const api = {
     currentHtml?: string;
     instruction?: string;
   }): Promise<{ html: string; warning?: string }> {
-    return postJson<{ html: string; warning?: string }>("/api/ai/generate-html", data);
+    // Uses a custom fetch (not postJson) because the server flushes headers
+    // immediately and sends keepalive newlines while waiting for the LLM —
+    // which means errors arrive as {error:"..."} in the body with status 200.
+    const authHeaders = getAuthHeaders();
+    const res = await fetch("/api/ai/generate-html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify(data),
+    });
+    if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+      handleUnauthorized();
+      throw new Error("Сессия истекла");
+    }
+    if (!res.ok) throw new Error(`POST /api/ai/generate-html failed: ${res.status}`);
+    const body = await res.json();
+    if (body.error) throw new Error(body.error);
+    return body as { html: string; warning?: string };
   },
 
   async getAiQueryLog(): Promise<any[]> {

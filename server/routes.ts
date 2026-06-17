@@ -1268,6 +1268,26 @@ export async function registerRoutes(
         ? `Ниже приведена текущая HTML-страница инструкции и пожелание автора по её доработке. Внеси изменения согласно пожеланию, строго соблюдая те же правила оформления. Сохрани всё содержимое, которое автор не просил менять (включая уже вставленные изображения и плейсхолдеры). Верни ТОЛЬКО обновлённый HTML-фрагмент, без пояснений.\n\nТЕКУЩИЙ HTML:\n---\n${currentHtml}\n---\n\nПОЖЕЛАНИЕ АВТОРА:\n---\n${instruction}\n---`
         : `Преобразуй следующий текст инструкции в HTML-страницу по указанным правилам.\n\nИСХОДНЫЙ ТЕКСТ:\n---\n${sourceText}\n---`;
 
+      // — Flush 200 OK headers immediately so the proxy idle-timeout doesn't
+      //   kill the connection while we wait for the LLM (can take 60-120 s).
+      //   We send a newline keepalive every 5 s; JSON.parse ignores leading
+      //   whitespace so the client receives valid JSON at the end.
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders();
+
+      const streamEnd = (payload: object) => {
+        clearInterval(keepAlive);
+        if (!res.writableEnded) {
+          try { res.end(JSON.stringify(payload)); } catch {}
+        }
+      };
+
+      const keepAlive = setInterval(() => {
+        if (res.writableEnded) { clearInterval(keepAlive); return; }
+        try { res.write("\n"); } catch { clearInterval(keepAlive); }
+      }, 5000);
+
       let html = "";
 
       if (aiConfig.provider === "anthropic") {
@@ -1284,12 +1304,11 @@ export async function registerRoutes(
             system: systemPrompt,
             messages: [{ role: "user", content: userPrompt }],
           }),
-          signal: AbortSignal.timeout(90000),
+          signal: AbortSignal.timeout(110000),
         });
-        if (res.headersSent) return;
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
-          return res.status(500).json({ error: err?.error?.message || "Ошибка LLM" });
+          return streamEnd({ error: err?.error?.message || "Ошибка LLM" });
         }
         const data: any = await r.json();
         html = data.content?.[0]?.text || "";
@@ -1309,12 +1328,11 @@ export async function registerRoutes(
               { role: "user", content: userPrompt },
             ],
           }),
-          signal: AbortSignal.timeout(90000),
+          signal: AbortSignal.timeout(110000),
         });
-        if (res.headersSent) return;
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
-          return res.status(500).json({ error: err?.error?.message || "Ошибка LLM" });
+          return streamEnd({ error: err?.error?.message || "Ошибка LLM" });
         }
         const data: any = await r.json();
         html = data.choices?.[0]?.message?.content || "";
@@ -1326,22 +1344,21 @@ export async function registerRoutes(
         .replace(/\s*```\s*$/i, "")
         .trim();
 
-      if (!html) {
-        return res.status(500).json({ error: "LLM вернул пустой результат" });
-      }
+      if (!html) return streamEnd({ error: "LLM вернул пустой результат" });
 
       // Sanitize the model output before it ever reaches the author/editor.
       html = sanitizeHtml(html);
-      if (!html) {
-        if (!res.headersSent)
-          res.status(500).json({ error: "LLM вернул пустой результат" });
-        return;
-      }
+      if (!html) return streamEnd({ error: "LLM вернул пустой результат" });
 
-      if (!res.headersSent) res.json({ html, warning });
+      streamEnd({ html, warning });
     } catch (e: any) {
-      if (!res.headersSent) {
-        console.error("[generate-html]", e?.message || e);
+      console.error("[generate-html]", e?.message || e);
+      if (res.headersSent) {
+        // Headers already flushed — encode the error in the body stream
+        if (!res.writableEnded) {
+          try { res.end(JSON.stringify({ error: e?.message || "Ошибка генерации HTML" })); } catch {}
+        }
+      } else {
         res.status(500).json({ error: e?.message || "Ошибка генерации HTML" });
       }
     }
