@@ -1304,7 +1304,7 @@ export async function registerRoutes(
             system: systemPrompt,
             messages: [{ role: "user", content: userPrompt }],
           }),
-          signal: AbortSignal.timeout(110000),
+          signal: AbortSignal.timeout(300000),
         });
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
@@ -1328,7 +1328,7 @@ export async function registerRoutes(
               { role: "user", content: userPrompt },
             ],
           }),
-          signal: AbortSignal.timeout(110000),
+          signal: AbortSignal.timeout(300000),
         });
         if (!r.ok) {
           const err: any = await r.json().catch(() => ({}));
