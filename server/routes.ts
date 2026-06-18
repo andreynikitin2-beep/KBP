@@ -1322,7 +1322,7 @@ export async function registerRoutes(
           },
           body: JSON.stringify({
             model: aiConfig.model || "gpt-4o",
-            max_tokens: 8192,
+            max_tokens: 32768,
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
@@ -1338,14 +1338,28 @@ export async function registerRoutes(
         const choice = data.choices?.[0];
         const finishReason = choice?.finish_reason;
         const rawContent = choice?.message?.content;
+        const reasoningContent = choice?.message?.reasoning_content;
         console.log("[generate-html] finish_reason:", finishReason,
-          "| content type:", typeof rawContent,
-          "| content length:", typeof rawContent === "string" ? rawContent.length : JSON.stringify(rawContent)?.length,
+          "| content length:", typeof rawContent === "string" ? rawContent.length : String(rawContent),
+          "| reasoning length:", typeof reasoningContent === "string" ? reasoningContent.length : String(reasoningContent),
           "| usage:", JSON.stringify(data.usage));
-        if (!rawContent && data.choices === undefined) {
-          console.log("[generate-html] unexpected response shape:", JSON.stringify(data).slice(0, 500));
+        if (typeof rawContent === "string" && rawContent.trim()) {
+          html = rawContent;
+        } else if (typeof reasoningContent === "string" && reasoningContent.trim()) {
+          // Some reasoning models emit HTML inside reasoning_content when they
+          // run out of tokens before the final answer — try to salvage it.
+          const htmlMatch = reasoningContent.match(/<(?:html|body|div|h[1-6]|p|ol|ul|table|section|header|main)[^>]*>[\s\S]+/i);
+          html = htmlMatch ? htmlMatch[0] : "";
+          if (html) console.log("[generate-html] extracted HTML from reasoning_content, length:", html.length);
+        } else if (rawContent && typeof rawContent === "object") {
+          // Array of content blocks (some API variants)
+          html = (Array.isArray(rawContent) ? rawContent : [rawContent])
+            .map((b: any) => (typeof b === "string" ? b : b?.text || ""))
+            .join("");
         }
-        html = typeof rawContent === "string" ? rawContent : (rawContent ? JSON.stringify(rawContent) : "");
+        if (!html) {
+          console.log("[generate-html] empty content — raw response shape:", JSON.stringify(data).slice(0, 800));
+        }
       }
 
       // Strip markdown code fences if the model wrapped the output
