@@ -1335,7 +1335,17 @@ export async function registerRoutes(
           return streamEnd({ error: err?.error?.message || "Ошибка LLM" });
         }
         const data: any = await r.json();
-        html = data.choices?.[0]?.message?.content || "";
+        const choice = data.choices?.[0];
+        const finishReason = choice?.finish_reason;
+        const rawContent = choice?.message?.content;
+        console.log("[generate-html] finish_reason:", finishReason,
+          "| content type:", typeof rawContent,
+          "| content length:", typeof rawContent === "string" ? rawContent.length : JSON.stringify(rawContent)?.length,
+          "| usage:", JSON.stringify(data.usage));
+        if (!rawContent && data.choices === undefined) {
+          console.log("[generate-html] unexpected response shape:", JSON.stringify(data).slice(0, 500));
+        }
+        html = typeof rawContent === "string" ? rawContent : (rawContent ? JSON.stringify(rawContent) : "");
       }
 
       // Strip markdown code fences if the model wrapped the output
