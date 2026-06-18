@@ -1322,7 +1322,12 @@ export async function registerRoutes(
           },
           body: JSON.stringify({
             model: aiConfig.model || "gpt-4o",
-            max_tokens: 32768,
+            max_tokens: 16384,
+            // Disable extended reasoning/thinking for reasoning models (Kimi, DeepSeek-R1, etc.)
+            // so they don't spend all tokens on internal thoughts before producing output.
+            enable_thinking: false,
+            thinking: { type: "disabled" },
+            reasoning_effort: "none",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
