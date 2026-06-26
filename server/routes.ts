@@ -1275,12 +1275,13 @@ export async function registerRoutes(
       const dbUrl = process.env.DATABASE_URL;
       if (!dbUrl) return res.status(500).json({ error: "DATABASE_URL не настроен" });
 
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2, "0");
-      const mm = String(now.getMinutes()).padStart(2, "0");
-      const dd = String(now.getDate()).padStart(2, "0");
-      const mo = String(now.getMonth() + 1).padStart(2, "0");
-      const yy = String(now.getFullYear()).slice(-2);
+      // Moscow time = UTC+3
+      const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+      const hh = String(now.getUTCHours()).padStart(2, "0");
+      const mm = String(now.getUTCMinutes()).padStart(2, "0");
+      const dd = String(now.getUTCDate()).padStart(2, "0");
+      const mo = String(now.getUTCMonth() + 1).padStart(2, "0");
+      const yy = String(now.getUTCFullYear()).slice(-2);
       const filename = `AppDB_${hh}${mm}_${dd}${mo}${yy}.dump`;
 
       res.setHeader("Content-Type", "application/octet-stream");
