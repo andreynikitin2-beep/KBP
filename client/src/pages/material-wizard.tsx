@@ -466,7 +466,7 @@ export default function MaterialWizard() {
                       <div className="mb-2 flex items-center gap-2">
                         <Code className="h-4 w-4 text-muted-foreground" />
                         <div className="text-sm font-semibold">HTML-код</div>
-                        {aiGeneratorAvailable && (
+                        {aiGeneratorAvailable && isAdmin && (
                           <Button
                             type="button"
                             size="sm"
