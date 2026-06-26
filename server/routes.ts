@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { spawn } from "child_process";
 import { storage } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 import { sanitizeHtml } from "@shared/sanitize";
@@ -1254,6 +1255,52 @@ export async function registerRoutes(
       }
     } catch (e: any) {
       res.json({ ok: false, message: e?.message || "Ошибка подключения" });
+    }
+  });
+
+  // DATABASE DUMP
+  app.get("/api/admin/db-dump", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
+
+      const dbUrl = process.env.DATABASE_URL;
+      if (!dbUrl) return res.status(500).json({ error: "DATABASE_URL не настроен" });
+
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      const mo = String(now.getMonth() + 1).padStart(2, "0");
+      const yy = String(now.getFullYear()).slice(-2);
+      const filename = `AppDB_${hh}${mm}_${dd}${mo}${yy}.dump`;
+
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const pg_dump = spawn("pg_dump", ["--format=plain", "--no-password", dbUrl]);
+
+      pg_dump.stdout.pipe(res);
+
+      pg_dump.stderr.on("data", (chunk) => {
+        console.error("[db-dump] stderr:", chunk.toString());
+      });
+
+      pg_dump.on("error", (err) => {
+        console.error("[db-dump] spawn error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Ошибка запуска pg_dump: " + err.message });
+        } else {
+          res.end();
+        }
+      });
+
+      pg_dump.on("close", (code) => {
+        if (code !== 0 && !res.writableEnded) res.end();
+      });
+    } catch (e: any) {
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
     }
   });
 
