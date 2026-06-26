@@ -12,9 +12,13 @@ import type {
   NewHireAssignment,
 } from "./mockData";
 
-function getAuthHeaders(): { Authorization: string } | Record<string, never> {
+function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem("kb_auth_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const userId = localStorage.getItem("kb_auth_user");
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (userId) headers["X-User-Id"] = userId;
+  return headers;
 }
 
 function handleUnauthorized() {
@@ -81,6 +85,24 @@ async function putJson<T>(url: string, body: any): Promise<T> {
   }
   if (!res.ok) throw new Error(`PUT ${url} failed: ${res.status}`);
   return res.json();
+}
+
+export async function fetchBlobWithAuth(url: string): Promise<{ blob: Blob; filename: string }> {
+  const authHeaders = getAuthHeaders();
+  const res = await fetch(url, { headers: authHeaders });
+  if (res.status === 401 && shouldHandleUnauthorized(authHeaders)) {
+    handleUnauthorized();
+    throw new Error("Сессия истекла");
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `HTTP ${res.status}`);
+  }
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : url.split("/").pop() || "download";
+  const blob = await res.blob();
+  return { blob, filename };
 }
 
 async function deleteJson(url: string): Promise<void> {

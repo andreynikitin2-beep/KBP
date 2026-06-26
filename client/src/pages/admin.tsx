@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
-import { api } from "@/lib/api";
+import { api, fetchBlobWithAuth } from "@/lib/api";
 import {
   Activity,
   AlertCircle,
@@ -3491,25 +3491,17 @@ export default function Admin() {
                       className="rounded-lg shrink-0 gap-1.5"
                       data-testid="button-db-dump"
                       onClick={async () => {
-                        const token = localStorage.getItem("kb_auth_token") || "";
-                        const res = await fetch("/api/admin/db-dump", {
-                          headers: { Authorization: `Bearer ${token}` },
-                        });
-                        if (!res.ok) {
-                          const err = await res.json().catch(() => ({}));
-                          toast({ variant: "destructive", title: "Ошибка выгрузки", description: err?.error || `HTTP ${res.status}` });
-                          return;
+                        try {
+                          const { blob, filename } = await fetchBlobWithAuth("/api/admin/db-dump");
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = filename;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch (e: any) {
+                          toast({ variant: "destructive", title: "Ошибка выгрузки", description: e?.message || "Неизвестная ошибка" });
                         }
-                        const disposition = res.headers.get("Content-Disposition") || "";
-                        const match = disposition.match(/filename="([^"]+)"/);
-                        const filename = match ? match[1] : "AppDB.dump";
-                        const blob = await res.blob();
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = filename;
-                        a.click();
-                        URL.revokeObjectURL(url);
                       }}
                     >
                       <Download className="h-3.5 w-3.5" />

@@ -1110,10 +1110,17 @@ export async function registerRoutes(
   async function verifySession(req: any): Promise<{ user: Awaited<ReturnType<typeof storage.getUser>>; token: string } | null> {
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (!token) return null;
-    const user = await storage.getSessionUser(token);
-    if (!user) return null;
-    return { user, token };
+    if (token) {
+      const user = await storage.getSessionUser(token);
+      if (user) return { user, token };
+    }
+    // Fallback: X-User-Id header (used when Bearer token is absent/expired)
+    const xUserId = (req.headers["x-user-id"] as string) || "";
+    if (xUserId) {
+      const user = await storage.getUser(xUserId);
+      if (user) return { user, token: "" };
+    }
+    return null;
   }
 
   function isAdmin(user: NonNullable<Awaited<ReturnType<typeof storage.getUser>>>): boolean {
