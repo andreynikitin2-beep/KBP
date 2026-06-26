@@ -3485,16 +3485,36 @@ export default function Admin() {
                         SQL-дамп всех таблиц. Имя файла: <span className="font-mono">AppDB_ЧЧММ_ДДММГГ.dump</span>
                       </div>
                     </div>
-                    <a
-                      href="/api/admin/db-dump"
-                      download
-                      data-testid="link-db-dump"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-lg shrink-0 gap-1.5"
+                      data-testid="button-db-dump"
+                      onClick={async () => {
+                        const token = localStorage.getItem("kb_auth_token") || "";
+                        const res = await fetch("/api/admin/db-dump", {
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => ({}));
+                          toast({ variant: "destructive", title: "Ошибка выгрузки", description: err?.error || `HTTP ${res.status}` });
+                          return;
+                        }
+                        const disposition = res.headers.get("Content-Disposition") || "";
+                        const match = disposition.match(/filename="([^"]+)"/);
+                        const filename = match ? match[1] : "AppDB.dump";
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
                     >
-                      <Button variant="outline" size="sm" className="rounded-lg shrink-0 gap-1.5">
-                        <Download className="h-3.5 w-3.5" />
-                        Выгрузить .dump
-                      </Button>
-                    </a>
+                      <Download className="h-3.5 w-3.5" />
+                      Выгрузить .dump
+                    </Button>
                   </div>
 
                   <Separator />
