@@ -241,8 +241,7 @@ export default function MaterialView() {
   const [editExtractedText, setEditExtractedText] = useState("");
   const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null);
   const [fileUploadProgress, setFileUploadProgress] = useState<number | null>(null);
-  const [iframeLoading, setIframeLoading] = useState(false);
-  const [iframeError, setIframeError] = useState(false);
+  const [previewDownloadProgress, setPreviewDownloadProgress] = useState<number | null>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1606,11 +1605,25 @@ export default function MaterialView() {
                                     setPreviewLoading(true);
                                     try {
                                       if (dv.content.file?.type === "pdf") {
-                                        // Для PDF используем прямой URL API — blob: URL блокируются в production
-                                        if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
-                                        setIframeLoading(true);
-                                        setIframeError(false);
-                                        setPreviewBlobUrl(`/api/material-versions/${dv.id}/file?inline=true`);
+                                        if (previewBlobUrl?.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
+                                        setPreviewBlobUrl(null);
+                                        setPreviewDownloadProgress(0);
+                                        const blobUrl = await new Promise<string>((resolve, reject) => {
+                                          const xhr = new XMLHttpRequest();
+                                          xhr.open("GET", `/api/material-versions/${dv.id}/file?inline=true`);
+                                          xhr.responseType = "blob";
+                                          xhr.onprogress = (e) => {
+                                            if (e.lengthComputable) setPreviewDownloadProgress(Math.round((e.loaded / e.total) * 100));
+                                          };
+                                          xhr.onload = () => {
+                                            if (xhr.status >= 200 && xhr.status < 300) resolve(URL.createObjectURL(xhr.response));
+                                            else reject(new Error(`HTTP ${xhr.status}`));
+                                          };
+                                          xhr.onerror = () => reject(new Error("Network error"));
+                                          xhr.send();
+                                        });
+                                        setPreviewDownloadProgress(null);
+                                        setPreviewBlobUrl(blobUrl);
                                       } else {
                                         // Для DOCX загружаем blob для извлечения текста через mammoth
                                         const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
@@ -1637,7 +1650,7 @@ export default function MaterialView() {
                                   }}
                                 >
                                   {previewLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
-                                  Предпросмотр
+                                  {previewDownloadProgress !== null ? `Загрузка ${previewDownloadProgress}%` : "Предпросмотр"}
                                 </Button>
                                 <Button
                                   data-testid="button-download"
@@ -2405,29 +2418,18 @@ export default function MaterialView() {
           </DialogHeader>
           <div style={{ flex: 1, minHeight: 0, padding: "12px" }}>
             {dv?.content.file?.type === "pdf" && previewBlobUrl ? (
-              <div style={{ position: "relative", width: "100%", height: "100%" }}>
-                {iframeLoading && !iframeError && (
-                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.85)", borderRadius: "12px", zIndex: 10, gap: "12px" }}>
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Загрузка PDF…</span>
-                  </div>
-                )}
-                {iframeError && (
-                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#fff", borderRadius: "12px", zIndex: 10, gap: "8px" }}>
-                    <AlertTriangle className="h-8 w-8 text-destructive" />
-                    <span className="text-sm font-medium">Не удалось открыть PDF</span>
-                    <span className="text-xs text-muted-foreground">Попробуйте скачать файл</span>
-                  </div>
-                )}
-                <iframe
-                  data-testid="iframe-preview-pdf"
-                  src={previewBlobUrl}
-                  title={dv.content.file?.name}
-                  style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
-                  onLoad={() => setIframeLoading(false)}
-                  onError={() => { setIframeLoading(false); setIframeError(true); }}
-                />
-              </div>
+              <object
+                data-testid="object-preview-pdf"
+                data={previewBlobUrl}
+                type="application/pdf"
+                style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "8px" }}>
+                  <AlertTriangle className="h-8 w-8 text-destructive" />
+                  <span className="text-sm font-medium">Браузер не поддерживает просмотр PDF</span>
+                  <a href={previewBlobUrl} download={dv.content.file?.name} className="text-xs text-primary underline">Скачать PDF</a>
+                </div>
+              </object>
             ) : dv?.content.file?.type === "docx" ? (
               <div style={{ height: "100%", overflowY: "auto" }} className="rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
                 <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
