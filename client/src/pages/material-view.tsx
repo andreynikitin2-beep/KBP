@@ -238,6 +238,7 @@ export default function MaterialView() {
   const [editFileName, setEditFileName] = useState("");
   const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
+  const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -247,6 +248,7 @@ export default function MaterialView() {
     const detectedType = ext === "docx" ? "docx" : "pdf";
     setEditFileType(detectedType);
     setEditFileName(file.name);
+    setEditSelectedFile(file);
     if (detectedType === "docx") {
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -281,6 +283,7 @@ export default function MaterialView() {
       setEditFileName(current.content.file?.name || "");
       setEditFileType(current.content.file?.type || "pdf");
       setEditExtractedText(current.content.file?.extractedText || "");
+      setEditSelectedFile(null);
     }
   }, [current?.id]);
 
@@ -354,6 +357,11 @@ export default function MaterialView() {
       contentFile: editContentKind === "file" ? { name: editFileName, type: editFileType, extractedText: editExtractedText } : null,
       contentPage: editContentKind === "page" ? { html: editPageHtml } : editContentKind === "html" ? { html: editRawHtml } : null,
     }).catch(console.error);
+    if (editContentKind === "file" && editSelectedFile) {
+      const fileToUpload = editSelectedFile;
+      setEditSelectedFile(null);
+      api.uploadMaterialFile(current.id, fileToUpload).catch(console.error);
+    }
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
   };
 

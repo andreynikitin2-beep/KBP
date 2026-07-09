@@ -60,7 +60,7 @@ export default function MaterialWizard() {
   const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
   const [fileName, setFileName] = useState("");
   const [extractedText, setExtractedText] = useState("");
-  const [fileDataBase64, setFileDataBase64] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
   const [rawHtml, setRawHtml] = useState("<h1>Заголовок</h1>\n<p>Описание материала.</p>");
   const [aiGeneratorOpen, setAiGeneratorOpen] = useState(false);
@@ -82,34 +82,18 @@ export default function MaterialWizard() {
     setFileType(detectedType);
     setFileName(file.name);
 
-    const toBase64 = (f: File): Promise<string> =>
-      new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1] ?? "");
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(f);
-      });
-
-    try {
-      const b64 = await toBase64(file);
-      setFileDataBase64(b64);
-      if (detectedType === "docx") {
-        try {
-          const arrayBuffer = await file.arrayBuffer();
-          const result = await mammoth.extractRawText({ arrayBuffer });
-          setExtractedText(result.value);
-          toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
-        } catch {
-          toast({ title: "Файл загружен", description: file.name, variant: "default" });
-        }
-      } else {
-        toast({ title: "Файл выбран", description: file.name });
+    setSelectedFile(file);
+    if (detectedType === "docx") {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setExtractedText(result.value);
+        toast({ title: "Файл загружен", description: `${file.name} — текст извлечён` });
+      } catch {
+        toast({ title: "Файл загружен", description: file.name, variant: "default" });
       }
-    } catch {
-      toast({ title: "Ошибка чтения файла", description: file.name, variant: "destructive" });
+    } else {
+      toast({ title: "Файл выбран", description: file.name });
     }
     e.target.value = "";
   }
@@ -535,7 +519,7 @@ export default function MaterialWizard() {
                           contentKind === "file"
                             ? {
                                 kind: "file",
-                                file: { name: fileName, type: fileType, extractedText, dataBase64: fileDataBase64 },
+                                file: { name: fileName, type: fileType, extractedText },
                               }
                             : contentKind === "html"
                             ? { kind: "html", page: { html: rawHtml } }
@@ -551,6 +535,14 @@ export default function MaterialWizard() {
                       try {
                         const created = await api.createMaterialVersion(version);
                         setMaterials((p) => [created, ...p]);
+                        if (contentKind === "file" && selectedFile) {
+                          try {
+                            await api.uploadMaterialFile(created.id, selectedFile);
+                          } catch (uploadErr) {
+                            console.error(uploadErr);
+                            toast({ title: "Предупреждение", description: "Материал создан, но файл не удалось загрузить.", variant: "destructive" });
+                          }
+                        }
                         toast({ title: "Создано", description: "Материал добавлен в Черновики." });
                         setLocation(`/materials/${created.materialId}`);
                       } catch (e) {

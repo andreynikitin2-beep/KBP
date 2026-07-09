@@ -353,6 +353,19 @@ export const api = {
     return patchJson<any>(`/api/material-versions/${id}`, data);
   },
 
+  async uploadMaterialFile(versionId: string, file: File): Promise<void> {
+    const authHeaders = getAuthHeaders();
+    const name = encodeURIComponent(file.name);
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const type = ext === "docx" ? "docx" : "pdf";
+    const res = await fetch(`/api/material-versions/${versionId}/file-data?name=${name}&type=${type}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream", ...authHeaders },
+      body: file,
+    });
+    if (!res.ok) throw new Error(`File upload failed: ${res.status}`);
+  },
+
   async getSubscribers(materialId: string): Promise<string[]> {
     const subs = await fetchJson<any[]>(`/api/materials/${materialId}/subscribers`);
     return subs.map((s: any) => s.userId);

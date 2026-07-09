@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { spawn } from "child_process";
 import { storage } from "./storage";
@@ -434,10 +434,31 @@ export async function registerRoutes(
     }
   });
 
+  app.put("/api/material-versions/:id/file-data", express.raw({ limit: "100mb", type: "application/octet-stream" }), async (req, res) => {
+    try {
+      const version = await storage.getMaterialVersion(req.params.id);
+      if (!version) return res.status(404).json({ error: "Material version not found" });
+      const buffer = req.body as Buffer;
+      if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        return res.status(400).json({ error: "Empty body" });
+      }
+      const base64 = buffer.toString("base64");
+      const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
+      const type = typeof req.query.type === "string" ? req.query.type : undefined;
+      const existingFile = (version.contentFile as any) || {};
+      const updatedFile = { ...existingFile, ...(name ? { name } : {}), ...(type ? { type } : {}) };
+      await storage.updateMaterialVersion(req.params.id, { contentFileData: base64, contentFile: updatedFile } as any);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   app.post("/api/material-versions", async (req, res) => {
     try {
       const version = await storage.createMaterialVersion(coerceDates(sanitizeContentPage(req.body)));
-      res.json(version);
+      const { contentFileData: _cfd, ...rest } = version as any;
+      res.json(rest);
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
