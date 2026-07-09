@@ -353,17 +353,29 @@ export const api = {
     return patchJson<any>(`/api/material-versions/${id}`, data);
   },
 
-  async uploadMaterialFile(versionId: string, file: File): Promise<void> {
-    const authHeaders = getAuthHeaders();
-    const name = encodeURIComponent(file.name);
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    const type = ext === "docx" ? "docx" : "pdf";
-    const res = await fetch(`/api/material-versions/${versionId}/file-data?name=${name}&type=${type}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/octet-stream", ...authHeaders },
-      body: file,
+  async uploadMaterialFile(versionId: string, file: File, onProgress?: (pct: number) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const authHeaders = getAuthHeaders();
+      const name = encodeURIComponent(file.name);
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const type = ext === "docx" ? "docx" : "pdf";
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `/api/material-versions/${versionId}/file-data?name=${name}&type=${type}`);
+      Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => {
+        xhr.setRequestHeader(k, v as string);
+      });
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`File upload failed: ${xhr.status}`));
+      };
+      xhr.onerror = () => reject(new Error("Ошибка сети при загрузке файла"));
+      xhr.send(file);
     });
-    if (!res.ok) throw new Error(`File upload failed: ${res.status}`);
   },
 
   async getSubscribers(materialId: string): Promise<string[]> {

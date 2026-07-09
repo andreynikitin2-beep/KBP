@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { AlertTriangle, Code, FilePlus2, FileText, Globe, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, Code, FilePlus2, FileText, Globe, Loader2, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
 import { AiHtmlGenerator } from "@/components/kb/AiHtmlGenerator";
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import type { CatalogNode, Criticality, MaterialVersion } from "@/lib/mockData";
@@ -61,6 +62,7 @@ export default function MaterialWizard() {
   const [fileName, setFileName] = useState("");
   const [extractedText, setExtractedText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
   const [rawHtml, setRawHtml] = useState("<h1>Заголовок</h1>\n<p>Описание материала.</p>");
   const [aiGeneratorOpen, setAiGeneratorOpen] = useState(false);
@@ -482,11 +484,24 @@ export default function MaterialWizard() {
                   <div className="text-sm text-muted-foreground">
                     Статус новой записи: <span className="font-semibold">Черновик</span>
                   </div>
+                  {uploadProgress !== null && (
+                    <div className="mb-2 w-full">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Загрузка файла…
+                        </span>
+                        <span className="text-xs font-medium text-muted-foreground">{uploadProgress}%</span>
+                      </div>
+                      <Progress value={uploadProgress} className="h-1.5" />
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                   <Button
                     data-testid="button-cancel-create"
                     variant="outline"
                     className="rounded-xl"
+                    disabled={uploadProgress !== null}
                     onClick={() => setLocation("/catalog")}
                   >
                     Отмена
@@ -494,6 +509,7 @@ export default function MaterialWizard() {
                   <Button
                     data-testid="button-create-material"
                     className="rounded-xl"
+                    disabled={uploadProgress !== null}
                     onClick={async () => {
                       const missingNow = validatePassport(passportDraft);
                       if (missingNow.length) {
@@ -537,16 +553,20 @@ export default function MaterialWizard() {
                         setMaterials((p) => [created, ...p]);
                         if (contentKind === "file" && selectedFile) {
                           try {
-                            await api.uploadMaterialFile(created.id, selectedFile);
+                            setUploadProgress(0);
+                            await api.uploadMaterialFile(created.id, selectedFile, (pct) => setUploadProgress(pct));
                           } catch (uploadErr) {
                             console.error(uploadErr);
                             toast({ title: "Предупреждение", description: "Материал создан, но файл не удалось загрузить.", variant: "destructive" });
+                          } finally {
+                            setUploadProgress(null);
                           }
                         }
                         toast({ title: "Создано", description: "Материал добавлен в Черновики." });
                         setLocation(`/materials/${created.materialId}`);
                       } catch (e) {
                         console.error(e);
+                        setUploadProgress(null);
                         toast({ title: "Ошибка", description: "Не удалось сохранить материал.", variant: "destructive" });
                       }
                     }}

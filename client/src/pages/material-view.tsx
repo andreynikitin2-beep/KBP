@@ -46,6 +46,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getApprovalStep, getSectionOwnerIds, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
@@ -239,6 +240,9 @@ export default function MaterialView() {
   const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
   const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null);
+  const [fileUploadProgress, setFileUploadProgress] = useState<number | null>(null);
+  const [iframeLoading, setIframeLoading] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -360,7 +364,10 @@ export default function MaterialView() {
     if (editContentKind === "file" && editSelectedFile) {
       const fileToUpload = editSelectedFile;
       setEditSelectedFile(null);
-      api.uploadMaterialFile(current.id, fileToUpload).catch(console.error);
+      setFileUploadProgress(0);
+      api.uploadMaterialFile(current.id, fileToUpload, (pct) => setFileUploadProgress(pct))
+        .then(() => setFileUploadProgress(null))
+        .catch((e) => { console.error(e); setFileUploadProgress(null); });
     }
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
   };
@@ -1543,8 +1550,20 @@ export default function MaterialView() {
                         </div>
                       )}
 
+                      {fileUploadProgress !== null && (
+                        <div className="w-full">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Загрузка файла…
+                            </span>
+                            <span className="text-xs font-medium text-muted-foreground">{fileUploadProgress}%</span>
+                          </div>
+                          <Progress value={fileUploadProgress} className="h-1.5" />
+                        </div>
+                      )}
                       <div className="flex justify-end">
-                        <Button data-testid="button-save-content" className="rounded-xl" onClick={saveDraft}>
+                        <Button data-testid="button-save-content" className="rounded-xl" onClick={saveDraft} disabled={fileUploadProgress !== null}>
                           <Save className="mr-2 h-4 w-4" />
                           Сохранить контент
                         </Button>
@@ -1589,6 +1608,8 @@ export default function MaterialView() {
                                       if (dv.content.file?.type === "pdf") {
                                         // Для PDF используем прямой URL API — blob: URL блокируются в production
                                         if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
+                                        setIframeLoading(true);
+                                        setIframeError(false);
                                         setPreviewBlobUrl(`/api/material-versions/${dv.id}/file?inline=true`);
                                       } else {
                                         // Для DOCX загружаем blob для извлечения текста через mammoth
@@ -2384,12 +2405,29 @@ export default function MaterialView() {
           </DialogHeader>
           <div style={{ flex: 1, minHeight: 0, padding: "12px" }}>
             {dv?.content.file?.type === "pdf" && previewBlobUrl ? (
-              <iframe
-                data-testid="iframe-preview-pdf"
-                src={previewBlobUrl}
-                title={dv.content.file?.name}
-                style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
-              />
+              <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                {iframeLoading && !iframeError && (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.85)", borderRadius: "12px", zIndex: 10, gap: "12px" }}>
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Загрузка PDF…</span>
+                  </div>
+                )}
+                {iframeError && (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#fff", borderRadius: "12px", zIndex: 10, gap: "8px" }}>
+                    <AlertTriangle className="h-8 w-8 text-destructive" />
+                    <span className="text-sm font-medium">Не удалось открыть PDF</span>
+                    <span className="text-xs text-muted-foreground">Попробуйте скачать файл</span>
+                  </div>
+                )}
+                <iframe
+                  data-testid="iframe-preview-pdf"
+                  src={previewBlobUrl}
+                  title={dv.content.file?.name}
+                  style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
+                  onLoad={() => setIframeLoading(false)}
+                  onError={() => { setIframeLoading(false); setIframeError(true); }}
+                />
+              </div>
             ) : dv?.content.file?.type === "docx" ? (
               <div style={{ height: "100%", overflowY: "auto" }} className="rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
                 <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
