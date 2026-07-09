@@ -1605,25 +1605,43 @@ export default function MaterialView() {
                                     setPreviewLoading(true);
                                     try {
                                       if (dv.content.file?.type === "pdf") {
-                                        if (previewBlobUrl?.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
-                                        setPreviewBlobUrl(null);
+                                        // Открываем вкладку сразу на клике — до async-работы, иначе popup-blocker заблокирует
+                                        const newTab = window.open("about:blank", "_blank");
                                         setPreviewDownloadProgress(0);
-                                        const blobUrl = await new Promise<string>((resolve, reject) => {
-                                          const xhr = new XMLHttpRequest();
-                                          xhr.open("GET", `/api/material-versions/${dv.id}/file?inline=true`);
-                                          xhr.responseType = "blob";
-                                          xhr.onprogress = (e) => {
-                                            if (e.lengthComputable) setPreviewDownloadProgress(Math.round((e.loaded / e.total) * 100));
-                                          };
-                                          xhr.onload = () => {
-                                            if (xhr.status >= 200 && xhr.status < 300) resolve(URL.createObjectURL(xhr.response));
-                                            else reject(new Error(`HTTP ${xhr.status}`));
-                                          };
-                                          xhr.onerror = () => reject(new Error("Network error"));
-                                          xhr.send();
-                                        });
+                                        let blobUrl: string;
+                                        try {
+                                          blobUrl = await new Promise<string>((resolve, reject) => {
+                                            const xhr = new XMLHttpRequest();
+                                            xhr.open("GET", `/api/material-versions/${dv.id}/file?inline=true`);
+                                            xhr.responseType = "blob";
+                                            xhr.onprogress = (e) => {
+                                              if (e.lengthComputable) setPreviewDownloadProgress(Math.round((e.loaded / e.total) * 100));
+                                            };
+                                            xhr.onload = () => {
+                                              if (xhr.status >= 200 && xhr.status < 300) resolve(URL.createObjectURL(xhr.response));
+                                              else reject(new Error(`HTTP ${xhr.status}`));
+                                            };
+                                            xhr.onerror = () => reject(new Error("Network error"));
+                                            xhr.send();
+                                          });
+                                        } catch (err) {
+                                          newTab?.close();
+                                          throw err;
+                                        }
                                         setPreviewDownloadProgress(null);
-                                        setPreviewBlobUrl(blobUrl);
+                                        if (newTab) {
+                                          newTab.location.href = blobUrl;
+                                        } else {
+                                          // Popup заблокирован — скачиваем как файл
+                                          const a = document.createElement("a");
+                                          a.href = blobUrl;
+                                          a.download = dv.content.file?.name ?? "file.pdf";
+                                          a.click();
+                                          URL.revokeObjectURL(blobUrl);
+                                          toast({ title: "Попапы заблокированы", description: "Файл скачан. Разрешите всплывающие окна для предпросмотра.", duration: 5000 });
+                                        }
+                                        recordPreview(dv.materialId);
+                                        return;
                                       } else {
                                         // Для DOCX загружаем blob для извлечения текста через mammoth
                                         const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
@@ -2417,20 +2435,7 @@ export default function MaterialView() {
             </DialogTitle>
           </DialogHeader>
           <div style={{ flex: 1, minHeight: 0, padding: "12px" }}>
-            {dv?.content.file?.type === "pdf" && previewBlobUrl ? (
-              <object
-                data-testid="object-preview-pdf"
-                data={previewBlobUrl}
-                type="application/pdf"
-                style={{ width: "100%", height: "100%", border: "1px solid #e5e7eb", borderRadius: "12px", display: "block" }}
-              >
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: "8px" }}>
-                  <AlertTriangle className="h-8 w-8 text-destructive" />
-                  <span className="text-sm font-medium">Браузер не поддерживает просмотр PDF</span>
-                  <a href={previewBlobUrl} download={dv.content.file?.name} className="text-xs text-primary underline">Скачать PDF</a>
-                </div>
-              </object>
-            ) : dv?.content.file?.type === "docx" ? (
+            {dv?.content.file?.type === "docx" ? (
               <div style={{ height: "100%", overflowY: "auto" }} className="rounded-xl border bg-muted/20 p-4" data-testid="div-preview-docx">
                 <div className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
                   <span className="inline-block rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-medium">DOCX — извлечённый текст</span>
