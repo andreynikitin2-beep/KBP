@@ -1,9 +1,32 @@
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { spawn } from "child_process";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 import { sanitizeHtml } from "@shared/sanitize";
+
+function encryptPortalSettings(json: string, password: string): Buffer {
+  const salt = crypto.randomBytes(32);
+  const iv = crypto.randomBytes(16);
+  const key = crypto.scryptSync(password, salt, 32);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(json, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([Buffer.from("KBPS"), salt, iv, tag, encrypted]);
+}
+
+function decryptPortalSettings(buf: Buffer, password: string): string {
+  if (buf.length < 68 || buf.slice(0, 4).toString() !== "KBPS") throw new Error("Неверный формат файла");
+  const salt = buf.slice(4, 36);
+  const iv = buf.slice(36, 52);
+  const tag = buf.slice(52, 68);
+  const encrypted = buf.slice(68);
+  const key = crypto.scryptSync(password, salt, 32);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
+}
 
 const HTML_GENERATOR_DEFAULT_PROMPT = `Ты — технический писатель и UX-редактор базы знаний. Твоя задача — преобразовывать инструкции, переданные автором в формате PDF, DOC/DOCX или обычного текста, в единообразные HTML-страницы для внутренней базы знаний.
 
@@ -1308,7 +1331,7 @@ export async function registerRoutes(
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
-      const pg_dump = spawn("pg_dump", ["--format=plain", "--no-password", dbUrl]);
+      const pg_dump = spawn("pg_dump", ["-Fc", "--no-password", dbUrl]);
 
       pg_dump.stdout.pipe(res);
 
@@ -1328,6 +1351,98 @@ export async function registerRoutes(
       pg_dump.on("close", (code) => {
         if (code !== 0 && !res.writableEnded) res.end();
       });
+    } catch (e: any) {
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
+    }
+  });
+
+  // PORTAL SETTINGS BACKUP (encrypted)
+  app.post("/api/admin/settings-backup", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
+
+      const { password } = req.body;
+      if (!password || String(password).length < 4)
+        return res.status(400).json({ error: "Пароль должен быть не менее 4 символов" });
+
+      const [emailConfig, emailTemplates, adConfig, aiSettings] = await Promise.all([
+        storage.getEmailConfig(),
+        storage.getEmailTemplates(),
+        storage.getAdIntegrationConfig(),
+        storage.getAiSettings(),
+      ]);
+
+      const payload = JSON.stringify({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        emailConfig: emailConfig ?? null,
+        emailTemplates: emailTemplates ?? [],
+        adConfig: adConfig ?? null,
+        aiSettings: aiSettings ?? null,
+      });
+
+      const encrypted = encryptPortalSettings(payload, String(password));
+
+      const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+      const dd = String(now.getUTCDate()).padStart(2, "0");
+      const mo = String(now.getUTCMonth() + 1).padStart(2, "0");
+      const yy = String(now.getUTCFullYear()).slice(-2);
+      const hh = String(now.getUTCHours()).padStart(2, "0");
+      const mm = String(now.getUTCMinutes()).padStart(2, "0");
+      const filename = `PortalSettings_${hh}${mm}_${dd}${mo}${yy}.kbbackup`;
+
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(encrypted);
+    } catch (e: any) {
+      if (!res.headersSent) res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
+    }
+  });
+
+  // PORTAL SETTINGS RESTORE (encrypted)
+  app.post("/api/admin/settings-restore", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
+
+      const { password, data } = req.body;
+      if (!password) return res.status(400).json({ error: "Пароль обязателен" });
+      if (!data) return res.status(400).json({ error: "Файл не передан" });
+
+      let payload: any;
+      try {
+        const buf = Buffer.from(String(data), "base64");
+        const json = decryptPortalSettings(buf, String(password));
+        payload = JSON.parse(json);
+      } catch {
+        return res.status(400).json({ error: "Неверный пароль или повреждённый файл" });
+      }
+
+      if (payload.version !== 1) return res.status(400).json({ error: "Неподдерживаемая версия бекапа" });
+
+      if (payload.emailConfig) {
+        const { id, ...emailData } = payload.emailConfig;
+        await storage.upsertEmailConfig(emailData);
+      }
+      for (const tmpl of payload.emailTemplates ?? []) {
+        const { id, ...tmplData } = tmpl;
+        const existing = await storage.getEmailTemplateByKey(tmplData.key);
+        if (existing) await storage.updateEmailTemplate(existing.id, tmplData);
+        else await storage.createEmailTemplate(tmplData);
+      }
+      if (payload.adConfig) {
+        const { id, ...adData } = payload.adConfig;
+        await storage.upsertAdIntegrationConfig(adData);
+      }
+      if (payload.aiSettings) {
+        const { id, ...aiData } = payload.aiSettings;
+        await storage.upsertAiSettings(aiData);
+      }
+
+      res.json({ ok: true, message: "Настройки успешно восстановлены" });
     } catch (e: any) {
       if (!res.headersSent) res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
     }

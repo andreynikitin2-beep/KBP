@@ -33,6 +33,7 @@ import {
   ThumbsUp,
   Trash2,
   TriangleAlert,
+  Upload,
   UserCheck,
   UserPlus,
   Users,
@@ -1220,6 +1221,13 @@ export default function Admin() {
   const [q, setQ] = useState("");
   const [notifLimit, setNotifLimit] = useState<number>(50);
   const [helpfulTopN, setHelpfulTopN] = useState<number>(3);
+  const [settingsExportOpen, setSettingsExportOpen] = useState(false);
+  const [settingsExportPwd, setSettingsExportPwd] = useState("");
+  const [settingsExportLoading, setSettingsExportLoading] = useState(false);
+  const [settingsImportOpen, setSettingsImportOpen] = useState(false);
+  const [settingsImportPwd, setSettingsImportPwd] = useState("");
+  const [settingsImportFile, setSettingsImportFile] = useState<File | null>(null);
+  const [settingsImportLoading, setSettingsImportLoading] = useState(false);
   const [uselessTopN, setUselessTopN] = useState<number>(3);
   const [userSearch, setUserSearch] = useState("");
   const [userTypeFilter, setUserTypeFilter] = useState<"all" | "ad" | "local">("all");
@@ -3482,7 +3490,7 @@ export default function Admin() {
                     <div>
                       <div className="text-sm font-semibold">Резервная копия базы данных</div>
                       <div className="text-xs text-muted-foreground mt-0.5">
-                        SQL-дамп всех таблиц. Имя файла: <span className="font-mono">AppDB_ЧЧММ_ДДММГГ.dump</span>
+                        Бинарный дамп (-Fc) всех таблиц. Восстановление через <span className="font-mono">pg_restore</span>. Файл: <span className="font-mono">AppDB_ЧЧММ_ДДММГГ.dump</span>
                       </div>
                     </div>
                     <Button
@@ -3507,6 +3515,154 @@ export default function Admin() {
                       <Download className="h-3.5 w-3.5" />
                       Выгрузить .dump
                     </Button>
+                  </div>
+
+                  <Separator />
+                  <div className="rounded-xl border p-4 space-y-3">
+                    <div>
+                      <div className="text-sm font-semibold">Бекап настроек портала</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        Зашифрованный файл <span className="font-mono">.kbbackup</span> — настройки AD/SSO, почтовой рассылки и AI-ассистента.
+                        Шифрование AES-256-GCM, ключ выводится из пароля через scrypt.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {/* EXPORT */}
+                      <Dialog open={settingsExportOpen} onOpenChange={(v) => { setSettingsExportOpen(v); if (!v) setSettingsExportPwd(""); }}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="rounded-lg gap-1.5" data-testid="button-settings-export">
+                            <Download className="h-3.5 w-3.5" />
+                            Выгрузить настройки
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>Выгрузка настроек портала</DialogTitle>
+                            <DialogDescription>Придумайте пароль для шифрования файла бекапа. Без него восстановление невозможно.</DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3 py-2">
+                            <div className="space-y-1.5">
+                              <Label>Пароль (мин. 4 символа)</Label>
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                value={settingsExportPwd}
+                                onChange={(e) => setSettingsExportPwd(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.form?.requestSubmit(); }}
+                                data-testid="input-settings-export-pwd"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setSettingsExportOpen(false)}>Отмена</Button>
+                            <Button
+                              size="sm"
+                              disabled={settingsExportPwd.length < 4 || settingsExportLoading}
+                              data-testid="button-settings-export-confirm"
+                              onClick={async () => {
+                                setSettingsExportLoading(true);
+                                try {
+                                  const res = await fetch("/api/admin/settings-backup", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", ...(() => { const u = localStorage.getItem("kb_user"); const p = u ? JSON.parse(u) : null; return p ? { "Authorization": `Bearer ${p.sessionToken}`, "X-User-Id": p.id } : {}; })() },
+                                    body: JSON.stringify({ password: settingsExportPwd }),
+                                  });
+                                  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Ошибка"); }
+                                  const cd = res.headers.get("Content-Disposition") || "";
+                                  const fnMatch = cd.match(/filename="?([^"]+)"?/);
+                                  const filename = fnMatch?.[1] || "PortalSettings.kbbackup";
+                                  const blob = await res.blob();
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+                                  URL.revokeObjectURL(url);
+                                  setSettingsExportOpen(false);
+                                  setSettingsExportPwd("");
+                                  toast({ title: "Бекап скачан", description: filename });
+                                } catch (e: any) {
+                                  toast({ variant: "destructive", title: "Ошибка", description: e?.message });
+                                } finally {
+                                  setSettingsExportLoading(false);
+                                }
+                              }}
+                            >
+                              {settingsExportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Download className="h-3.5 w-3.5 mr-1" />}
+                              Скачать
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+
+                      {/* IMPORT */}
+                      <Dialog open={settingsImportOpen} onOpenChange={(v) => { setSettingsImportOpen(v); if (!v) { setSettingsImportPwd(""); setSettingsImportFile(null); } }}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" size="sm" className="rounded-lg gap-1.5" data-testid="button-settings-import">
+                            <Upload className="h-3.5 w-3.5" />
+                            Загрузить настройки
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-sm">
+                          <DialogHeader>
+                            <DialogTitle>Восстановление настроек портала</DialogTitle>
+                            <DialogDescription>Выберите файл <span className="font-mono">.kbbackup</span> и введите пароль, с которым он был создан. Текущие настройки будут перезаписаны.</DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3 py-2">
+                            <div className="space-y-1.5">
+                              <Label>Файл бекапа (.kbbackup)</Label>
+                              <Input
+                                type="file"
+                                accept=".kbbackup"
+                                data-testid="input-settings-import-file"
+                                onChange={(e) => setSettingsImportFile(e.target.files?.[0] ?? null)}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Пароль</Label>
+                              <Input
+                                type="password"
+                                placeholder="••••••••"
+                                value={settingsImportPwd}
+                                onChange={(e) => setSettingsImportPwd(e.target.value)}
+                                data-testid="input-settings-import-pwd"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setSettingsImportOpen(false)}>Отмена</Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={!settingsImportFile || !settingsImportPwd || settingsImportLoading}
+                              data-testid="button-settings-import-confirm"
+                              onClick={async () => {
+                                if (!settingsImportFile) return;
+                                setSettingsImportLoading(true);
+                                try {
+                                  const ab = await settingsImportFile.arrayBuffer();
+                                  const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
+                                  const authH = (() => { const u = localStorage.getItem("kb_user"); const p = u ? JSON.parse(u) : null; return p ? { "Authorization": `Bearer ${p.sessionToken}`, "X-User-Id": p.id } : {}; })();
+                                  const res = await fetch("/api/admin/settings-restore", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json", ...authH },
+                                    body: JSON.stringify({ password: settingsImportPwd, data: b64 }),
+                                  });
+                                  const json = await res.json().catch(() => ({}));
+                                  if (!res.ok) throw new Error(json.error || "Ошибка восстановления");
+                                  setSettingsImportOpen(false);
+                                  toast({ title: "Настройки восстановлены", description: "Перезагрузите страницу, чтобы увидеть изменения." });
+                                } catch (e: any) {
+                                  toast({ variant: "destructive", title: "Ошибка", description: e?.message });
+                                } finally {
+                                  setSettingsImportLoading(false);
+                                }
+                              }}
+                            >
+                              {settingsImportLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+                              Восстановить
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
                   </div>
 
                   <Separator />
