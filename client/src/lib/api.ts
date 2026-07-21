@@ -12,7 +12,7 @@ import type {
   NewHireAssignment,
 } from "./mockData";
 
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem("kb_auth_token");
   const userId = localStorage.getItem("kb_auth_user");
   const headers: Record<string, string> = {};

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
-import { api, fetchBlobWithAuth } from "@/lib/api";
+import { api, fetchBlobWithAuth, getAuthHeaders } from "@/lib/api";
 import {
   Activity,
   AlertCircle,
@@ -3564,7 +3564,7 @@ export default function Admin() {
                                 try {
                                   const res = await fetch("/api/admin/settings-backup", {
                                     method: "POST",
-                                    headers: { "Content-Type": "application/json", ...(() => { const u = localStorage.getItem("kb_user"); const p = u ? JSON.parse(u) : null; return p ? { "Authorization": `Bearer ${p.sessionToken}`, "X-User-Id": p.id } : {}; })() },
+                                    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                                     body: JSON.stringify({ password: settingsExportPwd }),
                                   });
                                   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Ошибка"); }
@@ -3639,10 +3639,9 @@ export default function Admin() {
                                 try {
                                   const ab = await settingsImportFile.arrayBuffer();
                                   const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-                                  const authH = (() => { const u = localStorage.getItem("kb_user"); const p = u ? JSON.parse(u) : null; return p ? { "Authorization": `Bearer ${p.sessionToken}`, "X-User-Id": p.id } : {}; })();
                                   const res = await fetch("/api/admin/settings-restore", {
                                     method: "POST",
-                                    headers: { "Content-Type": "application/json", ...authH },
+                                    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                                     body: JSON.stringify({ password: settingsImportPwd, data: b64 }),
                                   });
                                   const json = await res.json().catch(() => ({}));
