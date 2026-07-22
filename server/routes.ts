@@ -131,9 +131,10 @@ function sanitizeContentPage(data: any): any {
 }
 
 const TIMESTAMP_FIELDS = [
-  "createdAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
+  "createdAt", "updatedAt", "lastReviewedAt", "nextReviewAt", "viewedAt",
   "slaReactedAt", "slaUpdatedAt", "lastSyncAt", "deactivatedAt", "syncedAt",
-  "addedAt", "assignedAt", "acknowledgedAt", "rejectedAt", "archivedAt"
+  "addedAt", "assignedAt", "acknowledgedAt", "rejectedAt", "archivedAt",
+  "lastLoginAt", "expiresAt", "lastTestedAt"
 ];
 
 function coerceDates(data: any): any {
@@ -1471,21 +1472,22 @@ export async function registerRoutes(
 
       if (payload.emailConfig) {
         const { id, ...emailData } = payload.emailConfig;
-        await storage.upsertEmailConfig(emailData);
+        await storage.upsertEmailConfig(coerceDates(emailData));
       }
       for (const tmpl of payload.emailTemplates ?? []) {
         const { id, ...tmplData } = tmpl;
-        const existing = await storage.getEmailTemplateByKey(tmplData.key);
-        if (existing) await storage.updateEmailTemplate(existing.id, tmplData);
-        else await storage.createEmailTemplate(tmplData);
+        const coerced = coerceDates(tmplData);
+        const existing = await storage.getEmailTemplateByKey(coerced.key);
+        if (existing) await storage.updateEmailTemplate(existing.id, coerced);
+        else await storage.createEmailTemplate(coerced);
       }
       if (payload.adConfig) {
         const { id, ...adData } = payload.adConfig;
-        await storage.upsertAdIntegrationConfig(adData);
+        await storage.upsertAdIntegrationConfig(coerceDates(adData));
       }
       if (payload.aiSettings) {
         const { id, ...aiData } = payload.aiSettings;
-        await storage.upsertAiSettings(aiData);
+        await storage.upsertAiSettings(coerceDates(aiData));
       }
 
       res.json({ ok: true, message: "Настройки успешно восстановлены" });
