@@ -457,6 +457,52 @@ export async function registerRoutes(
     }
   });
 
+  // Chunked file upload — each chunk ≤ 5 MB, proxy-safe
+  const _chunkStore = new Map<string, { chunks: (Buffer | null)[]; total: number; name?: string; fileType?: string; ts: number }>();
+  setInterval(() => {
+    const cutoff = Date.now() - 3600_000;
+    for (const [k, v] of _chunkStore) if (v.ts < cutoff) _chunkStore.delete(k);
+  }, 60_000).unref();
+
+  app.post("/api/material-versions/:id/file-chunk", express.raw({ limit: "5mb", type: "application/octet-stream" }), async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      const { id } = req.params;
+      const index = parseInt(req.query.index as string);
+      const total = parseInt(req.query.total as string);
+      const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
+      const fileType = typeof req.query.type === "string" ? req.query.type : undefined;
+      if (isNaN(index) || isNaN(total) || index < 0 || index >= total)
+        return res.status(400).json({ error: "Неверные параметры чанка" });
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0)
+        return res.status(400).json({ error: "Пустое тело чанка" });
+
+      if (!_chunkStore.has(id) || _chunkStore.get(id)!.total !== total) {
+        _chunkStore.set(id, { chunks: new Array(total).fill(null), total, name, fileType, ts: Date.now() });
+      }
+      const entry = _chunkStore.get(id)!;
+      entry.chunks[index] = req.body;
+      entry.ts = Date.now();
+
+      const allReceived = entry.chunks.every((c) => c !== null);
+      if (allReceived) {
+        const full = Buffer.concat(entry.chunks as Buffer[]);
+        const base64 = full.toString("base64");
+        const version = await storage.getMaterialVersion(id);
+        const existingFile = (version?.contentFile as any) || {};
+        const updatedFile = { ...existingFile, ...(entry.name ? { name: entry.name } : {}), ...(entry.fileType ? { type: entry.fileType } : {}) };
+        await storage.updateMaterialVersion(id, { contentFileData: base64, contentFile: updatedFile } as any);
+        _chunkStore.delete(id);
+        return res.json({ ok: true, done: true });
+      }
+      const received = entry.chunks.filter((c) => c !== null).length;
+      res.json({ ok: true, done: false, received });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   app.put("/api/material-versions/:id/file-data", express.raw({ limit: "100mb", type: "application/octet-stream" }), async (req, res) => {
     try {
       const version = await storage.getMaterialVersion(req.params.id);
