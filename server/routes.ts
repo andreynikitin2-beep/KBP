@@ -411,7 +411,7 @@ export async function registerRoutes(
   app.get("/api/material-versions", async (_req, res) => {
     try {
       const versions = await storage.getMaterialVersions();
-      res.json(versions.map(({ contentFileData: _cfd, ...rest }: any) => rest));
+      res.json(versions.map(({ contentFileData: _cfd, additionalFilesData: _afd, ...rest }: any) => rest));
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
@@ -421,7 +421,7 @@ export async function registerRoutes(
     try {
       const version = await storage.getMaterialVersion(req.params.id);
       if (!version) return res.status(404).json({ error: "Material version not found" });
-      const { contentFileData: _cfd, ...rest } = version as any;
+      const { contentFileData: _cfd, additionalFilesData: _afd, ...rest } = version as any;
       res.json(rest);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -524,10 +524,98 @@ export async function registerRoutes(
     }
   });
 
+  // Additional files: chunked upload, delete, download
+  const _addChunkStore = new Map<string, { chunks: (Buffer | null)[]; total: number; name?: string; fileType?: string; fileSize?: number; ts: number }>();
+  setInterval(() => {
+    const cutoff = Date.now() - 3_600_000;
+    for (const [k, v] of _addChunkStore) if (v.ts < cutoff) _addChunkStore.delete(k);
+  }, 60_000).unref();
+
+  app.post("/api/material-versions/:id/additional-file-chunk", express.raw({ limit: "5mb", type: "application/octet-stream" }), async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      const { id } = req.params;
+      const fileId = typeof req.query.fileId === "string" ? req.query.fileId : null;
+      const index = parseInt(req.query.index as string);
+      const total = parseInt(req.query.total as string);
+      const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
+      const fileType = typeof req.query.type === "string" ? decodeURIComponent(req.query.type) : undefined;
+      const fileSize = typeof req.query.size === "string" ? parseInt(req.query.size) : undefined;
+      if (!fileId) return res.status(400).json({ error: "fileId обязателен" });
+      if (isNaN(index) || isNaN(total) || index < 0 || index >= total) return res.status(400).json({ error: "Неверные параметры чанка" });
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "Пустое тело чанка" });
+      const storeKey = `${id}:${fileId}`;
+      if (!_addChunkStore.has(storeKey) || _addChunkStore.get(storeKey)!.total !== total) {
+        _addChunkStore.set(storeKey, { chunks: new Array(total).fill(null), total, name, fileType, fileSize, ts: Date.now() });
+      }
+      const entry = _addChunkStore.get(storeKey)!;
+      entry.chunks[index] = req.body;
+      entry.ts = Date.now();
+      if (entry.chunks.every(c => c !== null)) {
+        const full = Buffer.concat(entry.chunks as Buffer[]);
+        const base64 = full.toString("base64");
+        const version = await storage.getMaterialVersion(id);
+        if (!version) return res.status(404).json({ error: "Версия не найдена" });
+        const existingFiles = (version.additionalFiles as any[]) ?? [];
+        const existingData = (version.additionalFilesData as any) ?? {};
+        const updatedFiles = [...existingFiles.filter((f: any) => f.id !== fileId), { id: fileId, name: entry.name, type: entry.fileType, size: entry.fileSize }];
+        const updatedData = { ...existingData, [fileId]: base64 };
+        await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles, additionalFilesData: updatedData } as any);
+        _addChunkStore.delete(storeKey);
+        return res.json({ ok: true, done: true });
+      }
+      res.json({ ok: true, done: false, received: entry.chunks.filter(c => c !== null).length });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.delete("/api/material-versions/:id/additional-file/:fileId", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      const { id, fileId } = req.params;
+      const version = await storage.getMaterialVersion(id);
+      if (!version) return res.status(404).json({ error: "Версия не найдена" });
+      const existingFiles = (version.additionalFiles as any[]) ?? [];
+      const existingData = (version.additionalFilesData as any) ?? {};
+      const updatedFiles = existingFiles.filter((f: any) => f.id !== fileId);
+      const { [fileId]: _removed, ...updatedData } = existingData;
+      await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles, additionalFilesData: updatedData } as any);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get("/api/material-versions/:id/additional-file/:fileId", async (req, res) => {
+    try {
+      const version = await storage.getMaterialVersion(req.params.id);
+      if (!version) return res.status(404).json({ error: "Версия не найдена" });
+      const { fileId } = req.params;
+      const data = ((version.additionalFilesData as any) ?? {})[fileId];
+      if (!data) return res.status(404).json({ error: "Файл не найден" });
+      const fileInfo = ((version.additionalFiles as any[]) ?? []).find((f: any) => f.id === fileId);
+      const fileName = fileInfo?.name || "file";
+      const buffer = Buffer.from(data, "base64");
+      const ext = fileName.split(".").pop()?.toLowerCase();
+      const mimeType = ext === "pdf" ? "application/pdf"
+        : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/octet-stream";
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader("Content-Length", buffer.length.toString());
+      res.send(buffer);
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
   app.post("/api/material-versions", async (req, res) => {
     try {
       const version = await storage.createMaterialVersion(coerceDates(sanitizeContentPage(req.body)));
-      const { contentFileData: _cfd, ...rest } = version as any;
+      const { contentFileData: _cfd, additionalFilesData: _afd, ...rest } = version as any;
       res.json(rest);
     } catch (e) {
       res.status(500).json({ error: String(e) });

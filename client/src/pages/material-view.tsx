@@ -29,6 +29,8 @@ import {
   Trash2,
   Upload,
   Users,
+  Paperclip,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -243,6 +245,8 @@ export default function MaterialView() {
   const [fileUploadProgress, setFileUploadProgress] = useState<number | null>(null);
   const [previewDownloadProgress, setPreviewDownloadProgress] = useState<number | null>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const addFileInputRef = useRef<HTMLInputElement>(null);
+  const [addFileUploading, setAddFileUploading] = useState<string | null>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -1561,6 +1565,89 @@ export default function MaterialView() {
                           <Progress value={fileUploadProgress} className="h-1.5" />
                         </div>
                       )}
+                      {dv.status === "Черновик" && (
+                        <div className="space-y-2 pt-1">
+                          <Separator />
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <Paperclip className="h-4 w-4 text-muted-foreground" />
+                            Дополнительные файлы
+                          </div>
+                          {(dv.additionalFiles ?? []).map(af => (
+                            <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
+                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="text-sm flex-1 truncate">{af.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{(af.size / 1024 / 1024).toFixed(1)} МБ</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                disabled={addFileUploading !== null}
+                                data-testid={`button-delete-addfile-${af.id}`}
+                                onClick={async () => {
+                                  try {
+                                    await api.deleteAdditionalFile(dv.id, af.id);
+                                    setMaterials(prev => prev.map(m =>
+                                      m.id !== dv.id ? m : { ...m, additionalFiles: (m.additionalFiles ?? []).filter(f => f.id !== af.id) }
+                                    ));
+                                  } catch {
+                                    toast({ title: "Ошибка", description: "Не удалось удалить файл.", variant: "destructive" });
+                                  }
+                                }}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                          {addFileUploading && (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+                              <span className="text-sm text-muted-foreground">Загрузка: {addFileUploading}…</span>
+                            </div>
+                          )}
+                          <input
+                            ref={addFileInputRef}
+                            type="file"
+                            className="hidden"
+                            multiple
+                            onChange={async (e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (e.target) e.target.value = "";
+                              for (const file of files) {
+                                const fileId = crypto.randomUUID();
+                                setAddFileUploading(file.name);
+                                try {
+                                  await api.uploadAdditionalFile(dv.id, fileId, file, () => {});
+                                  setMaterials(prev => prev.map(m =>
+                                    m.id !== dv.id ? m : {
+                                      ...m,
+                                      additionalFiles: [
+                                        ...(m.additionalFiles ?? []),
+                                        { id: fileId, name: file.name, type: file.name.split(".").pop()?.toLowerCase() ?? "bin", size: file.size },
+                                      ],
+                                    }
+                                  ));
+                                } catch {
+                                  toast({ title: "Ошибка", description: `Не удалось загрузить: ${file.name}`, variant: "destructive" });
+                                } finally {
+                                  setAddFileUploading(null);
+                                }
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full rounded-xl border-dashed"
+                            disabled={addFileUploading !== null}
+                            data-testid="button-add-additional-file-view"
+                            onClick={() => addFileInputRef.current?.click()}
+                          >
+                            <Paperclip className="mr-2 h-4 w-4" />
+                            Прикрепить файл
+                          </Button>
+                        </div>
+                      )}
                       <div className="flex justify-end">
                         <Button data-testid="button-save-content" className="rounded-xl" onClick={saveDraft} disabled={fileUploadProgress !== null}>
                           <Save className="mr-2 h-4 w-4" />
@@ -1699,6 +1786,36 @@ export default function MaterialView() {
                         </div>
                       ) : (
                         <PageViewer html={dv.content.page?.html || ""} materialId={dv.materialId} />
+                      )}
+                      {(dv.additionalFiles?.length ?? 0) > 0 && (
+                        <div className="space-y-2 mt-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            <Paperclip className="h-4 w-4 text-muted-foreground" />
+                            Дополнительные файлы
+                          </div>
+                          {(dv.additionalFiles ?? []).map(af => (
+                            <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
+                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                              <span className="text-sm flex-1 truncate">{af.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{(af.size / 1024 / 1024).toFixed(1)} МБ</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="rounded-xl h-7 gap-1"
+                                data-testid={`button-download-addfile-${af.id}`}
+                                onClick={() => {
+                                  const a = document.createElement("a");
+                                  a.href = `/api/material-versions/${dv.id}/additional-file/${af.id}`;
+                                  a.download = af.name;
+                                  a.click();
+                                }}
+                              >
+                                <FileDown className="h-3.5 w-3.5" />
+                                Скачать
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </>
                   )}

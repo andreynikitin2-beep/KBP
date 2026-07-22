@@ -78,6 +78,8 @@ export const materialVersions = pgTable("material_versions", {
   contentKind: text("content_kind").notNull(),
   contentFile: jsonb("content_file"),
   contentFileData: text("content_file_data"),
+  additionalFiles: jsonb("additional_files"),
+  additionalFilesData: jsonb("additional_files_data"),
   contentPage: jsonb("content_page"),
   searchText: text("search_text"),
   discussionsEnabled: boolean("discussions_enabled").default(true).notNull(),

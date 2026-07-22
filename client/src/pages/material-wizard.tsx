@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { AlertTriangle, Code, FilePlus2, FileText, Globe, Loader2, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { AlertTriangle, Code, FilePlus2, FileText, Globe, Loader2, Paperclip, ShieldCheck, Sparkles, Upload, X } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
 import { AiHtmlGenerator } from "@/components/kb/AiHtmlGenerator";
 import { UserSelect } from "@/components/kb/UserSelect";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -67,7 +68,10 @@ export default function MaterialWizard() {
   const [rawHtml, setRawHtml] = useState("<h1>Заголовок</h1>\n<p>Описание материала.</p>");
   const [aiGeneratorOpen, setAiGeneratorOpen] = useState(false);
   const [aiGeneratorAvailable, setAiGeneratorAvailable] = useState(false);
+  const [additionalFilesEnabled, setAdditionalFilesEnabled] = useState(false);
+  const [additionalFilesList, setAdditionalFilesList] = useState<Array<{id: string; file: File; name: string; type: string; size: number}>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const additionalFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api
@@ -480,6 +484,71 @@ export default function MaterialWizard() {
 
                 <Separator />
 
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Paperclip className="h-4 w-4 text-muted-foreground" />
+                    Дополнительные файлы
+                  </div>
+                  <Switch
+                    checked={additionalFilesEnabled}
+                    onCheckedChange={setAdditionalFilesEnabled}
+                    data-testid="switch-additional-files"
+                  />
+                </div>
+                {additionalFilesEnabled && (
+                  <div className="space-y-2">
+                    {additionalFilesList.map(f => (
+                      <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
+                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm flex-1 truncate">{f.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">{(f.size / 1024 / 1024).toFixed(1)} МБ</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          data-testid={`button-remove-addfile-${f.id}`}
+                          onClick={() => setAdditionalFilesList(l => l.filter(x => x.id !== f.id))}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    <input
+                      ref={additionalFileInputRef}
+                      type="file"
+                      className="hidden"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files ?? []);
+                        setAdditionalFilesList(l => [
+                          ...l,
+                          ...files.map(f => ({
+                            id: crypto.randomUUID(),
+                            file: f,
+                            name: f.name,
+                            type: f.name.split(".").pop()?.toLowerCase() ?? "bin",
+                            size: f.size,
+                          })),
+                        ]);
+                        if (e.target) e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full rounded-xl border-dashed"
+                      data-testid="button-add-additional-file"
+                      onClick={() => additionalFileInputRef.current?.click()}
+                    >
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      Прикрепить файл
+                    </Button>
+                  </div>
+                )}
+
+                <Separator />
+
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="text-sm text-muted-foreground">
                     Статус новой записи: <span className="font-semibold">Черновик</span>
@@ -560,6 +629,14 @@ export default function MaterialWizard() {
                             toast({ title: "Предупреждение", description: "Материал создан, но файл не удалось загрузить.", variant: "destructive" });
                           } finally {
                             setUploadProgress(null);
+                          }
+                        }
+                        for (const af of additionalFilesList) {
+                          try {
+                            await api.uploadAdditionalFile(created.id, af.id, af.file, () => {});
+                          } catch (e) {
+                            console.error("Additional file upload failed:", e);
+                            toast({ title: "Предупреждение", description: `Не удалось загрузить доп. файл: ${af.name}`, variant: "destructive" });
                           }
                         }
                         toast({ title: "Создано", description: "Материал добавлен в Черновики." });

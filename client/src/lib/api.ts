@@ -165,6 +165,7 @@ function dbMaterialToFrontend(
     auditViews,
     auditDownloads,
     auditPreviews,
+    additionalFiles: (dbMat.additionalFiles as any[]) ?? [],
     archivedBy: dbMat.archivedBy ?? undefined,
     archivedAt: dbMat.archivedAt ? (typeof dbMat.archivedAt === "string" ? dbMat.archivedAt : new Date(dbMat.archivedAt).toISOString()) : undefined,
     approvalStep: (dbMat.approvalStep ?? undefined) as "material_owner" | "section_owner" | undefined,
@@ -253,6 +254,55 @@ function dbNotificationToFrontend(dbNotif: any): NotificationLog {
     },
     status: dbNotif.status,
   };
+}
+
+async function uploadFileChunked(
+  chunkUrl: string,
+  fallbackPutUrl: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+  encodedName?: string,
+  type?: string,
+): Promise<void> {
+  const authHeaders = getAuthHeaders();
+  const name = encodedName ?? encodeURIComponent(file.name);
+  const CHUNK_SIZE = 4 * 1024 * 1024;
+  const CONCURRENCY = 3;
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
+
+  if (file.size <= CHUNK_SIZE) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", `${fallbackPutUrl}?name=${name}&type=${type}`);
+      Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
+      if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+      xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+      xhr.onerror = () => reject(new Error("Ошибка сети при загрузке файла"));
+      xhr.send(file);
+    });
+  }
+
+  let completedChunks = 0;
+  const uploadChunk = (i: number): Promise<void> => new Promise((resolve, reject) => {
+    const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${chunkUrl}?index=${i}&total=${totalChunks}&name=${name}&type=${type}`);
+    Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        completedChunks++;
+        if (onProgress) onProgress(Math.round((completedChunks / totalChunks) * 100));
+        resolve();
+      } else reject(new Error(`Chunk ${i + 1}/${totalChunks} failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error(`Ошибка сети на чанке ${i + 1}/${totalChunks}`));
+    xhr.send(chunk);
+  });
+
+  for (let start = 0; start < totalChunks; start += CONCURRENCY) {
+    const batch = Array.from({ length: Math.min(CONCURRENCY, totalChunks - start) }, (_, j) => uploadChunk(start + j));
+    await Promise.all(batch);
+  }
 }
 
 export const api = {
@@ -354,50 +404,31 @@ export const api = {
   },
 
   async uploadMaterialFile(versionId: string, file: File, onProgress?: (pct: number) => void): Promise<void> {
+    return uploadFileChunked(`/api/material-versions/${versionId}/file-chunk`, `/api/material-versions/${versionId}/file-data`, file, onProgress, encodeURIComponent(file.name), file.name.split(".").pop()?.toLowerCase() === "docx" ? "docx" : "pdf");
+  },
+
+  async uploadAdditionalFile(versionId: string, fileId: string, file: File, onProgress?: (pct: number) => void): Promise<void> {
     const authHeaders = getAuthHeaders();
     const name = encodeURIComponent(file.name);
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    const type = ext === "docx" ? "docx" : "pdf";
-    const CHUNK_SIZE = 2 * 1024 * 1024; // 2 MB — safe below any proxy limit
-
-    if (file.size <= CHUNK_SIZE) {
-      // Small file: single PUT (unchanged behaviour)
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", `/api/material-versions/${versionId}/file-data?name=${name}&type=${type}`);
-        Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-        if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
-        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`File upload failed: ${xhr.status}`));
-        xhr.onerror = () => reject(new Error("Ошибка сети при загрузке файла"));
-        xhr.send(file);
-      });
-    }
-
-    // Large file: chunked POST
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const type = encodeURIComponent(file.name.split(".").pop()?.toLowerCase() ?? "bin");
+    const CHUNK_SIZE = 4 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
     for (let i = 0; i < totalChunks; i++) {
       const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", `/api/material-versions/${versionId}/file-chunk?index=${i}&total=${totalChunks}&name=${name}&type=${type}`);
+        xhr.open("POST", `/api/material-versions/${versionId}/additional-file-chunk?fileId=${fileId}&index=${i}&total=${totalChunks}&name=${name}&type=${type}&size=${file.size}`);
         Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable && onProgress) {
-            onProgress(Math.round(((i + e.loaded / e.total) / totalChunks) * 100));
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 100));
-            resolve();
-          } else {
-            reject(new Error(`Chunk ${i + 1}/${totalChunks} failed: ${xhr.status}`));
-          }
-        };
-        xhr.onerror = () => reject(new Error(`Ошибка сети на чанке ${i + 1}/${totalChunks}`));
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round(((i + e.loaded / e.total) / totalChunks) * 100)); };
+        xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) { if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 100)); resolve(); } else reject(new Error(`Additional file chunk failed: ${xhr.status}`)); };
+        xhr.onerror = () => reject(new Error("Ошибка сети при загрузке доп. файла"));
         xhr.send(chunk);
       });
     }
+  },
+
+  async deleteAdditionalFile(versionId: string, fileId: string): Promise<void> {
+    await deleteJson(`/api/material-versions/${versionId}/additional-file/${fileId}`);
   },
 
   async getSubscribers(materialId: string): Promise<string[]> {

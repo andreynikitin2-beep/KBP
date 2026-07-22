@@ -90,6 +90,13 @@ export type NewHireAssignment = {
   acknowledgedVersionId?: string;
 };
 
+export type AdditionalFileInfo = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+};
+
 export type MaterialVersion = {
   id: string;
   materialId: string;
@@ -104,6 +111,7 @@ export type MaterialVersion = {
     file?: { name: string; type: "pdf" | "docx"; extractedText?: string; dataBase64?: string };
     page?: { html: string };
   };
+  additionalFiles?: AdditionalFileInfo[];
   subscribers: string[];
   discussionsEnabled: boolean;
   discussionVisibility: "Все" | "Только сотрудники раздела" | "Только владелец/заместитель";
