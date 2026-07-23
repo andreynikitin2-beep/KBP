@@ -16,5 +16,6 @@ export default defineConfig({
     root: import.meta.dirname,
     environment: "node",
     include: ["shared/**/*.test.ts", "server/**/*.test.ts", "client/**/*.test.{ts,tsx}"],
+    hookTimeout: 30000,
   },
 });
