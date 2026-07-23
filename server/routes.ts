@@ -675,7 +675,7 @@ export async function registerRoutes(
       const session = await verifySession(req);
       if (!session) return res.status(401).json({ error: "Требуется авторизация" });
       const stats = fileStorage.getStorageStats();
-      res.json({ path: fileStorage.STORAGE_DIR, ...stats });
+      res.json({ path: fileStorage.STORAGE_DIR, totalFiles: stats.totalFiles, totalSizeMb: stats.totalBytes / 1024 / 1024 });
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
