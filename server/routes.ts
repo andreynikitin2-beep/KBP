@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer } from "ws";
 import { spawn } from "child_process";
 import crypto from "crypto";
 import { storage } from "./storage";
@@ -2075,6 +2076,67 @@ export async function registerRoutes(
       if (!res.headersSent)
         res.status(500).json({ error: e?.message || "Внутренняя ошибка" });
     }
+  });
+
+  // WebSocket file upload — bypasses per-request proxy overhead
+  const uploadWss = new WebSocketServer({ noServer: true });
+
+  httpServer.on("upgrade", (req: any, socket: any, head: Buffer) => {
+    const pathname = (() => { try { return new URL(req.url ?? "/", "http://x").pathname; } catch { return "/"; } })();
+    if (pathname === "/ws/upload") {
+      uploadWss.handleUpgrade(req, socket, head, (ws) => uploadWss.emit("connection", ws, req));
+    }
+  });
+
+  uploadWss.on("connection", (ws) => {
+    type Meta = { versionId: string; fileName: string; fileType: string; totalSize: number; kind: "content" | "additional"; additionalFileId?: string };
+    let meta: Meta | null = null;
+    const chunks: Buffer[] = [];
+    let received = 0;
+
+    ws.on("message", async (data: any, isBinary: boolean) => {
+      const buf: Buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+
+      if (!meta) {
+        try {
+          const msg = JSON.parse(buf.toString("utf8"));
+          const session = await verifySession({ headers: { authorization: `Bearer ${msg.auth ?? ""}` } });
+          if (!session) { ws.send(JSON.stringify({ type: "error", message: "Unauthorized" })); ws.close(1008, "Unauthorized"); return; }
+          meta = { versionId: msg.versionId, fileName: msg.fileName, fileType: msg.fileType, totalSize: Number(msg.totalSize), kind: msg.kind, additionalFileId: msg.additionalFileId };
+          ws.send(JSON.stringify({ type: "ready" }));
+          if (meta.totalSize === 0) {
+            fileStorage.writeContentFile(meta.versionId, Buffer.alloc(0));
+            ws.send(JSON.stringify({ type: "done" }));
+            ws.close();
+          }
+        } catch (e) { ws.send(JSON.stringify({ type: "error", message: String(e) })); ws.close(); }
+        return;
+      }
+
+      chunks.push(buf);
+      received += buf.length;
+
+      if (received >= meta.totalSize) {
+        const full = Buffer.concat(chunks);
+        try {
+          if (meta.kind === "additional" && meta.additionalFileId) {
+            fileStorage.writeAdditionalFile(meta.versionId, meta.additionalFileId, full);
+            const version = await storage.getMaterialVersion(meta.versionId);
+            if (version) {
+              const files = (version.additionalFiles as any[]) ?? [];
+              const updated = [...files.filter((f: any) => f.id !== meta!.additionalFileId), { id: meta!.additionalFileId, name: meta!.fileName, type: meta!.fileType, size: full.length }];
+              await storage.updateMaterialVersion(meta.versionId, { additionalFiles: updated } as any);
+            }
+          } else {
+            fileStorage.writeContentFile(meta.versionId, full);
+          }
+          ws.send(JSON.stringify({ type: "done" }));
+        } catch (e) { ws.send(JSON.stringify({ type: "error", message: String(e) })); }
+        ws.close();
+      }
+    });
+
+    ws.on("error", (err) => console.error("[ws-upload]", err));
   });
 
   return httpServer;

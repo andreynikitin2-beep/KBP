@@ -256,76 +256,58 @@ function dbNotificationToFrontend(dbNotif: any): NotificationLog {
   };
 }
 
-const CHUNK_SIZE = 1024 * 1024;
-const CHUNK_CONCURRENCY = 6;
-const CHUNK_RETRIES = 3;
-
-function sendChunkXhr(url: string, headers: Record<string, string>, data: Blob): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
-    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
-    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
-    xhr.onerror = () => reject(new Error("network"));
-    xhr.ontimeout = () => reject(new Error("timeout"));
-    xhr.timeout = 180_000;
-    xhr.send(data);
-  });
-}
-
-async function uploadChunkWithRetry(url: string, headers: Record<string, string>, data: Blob, retries = CHUNK_RETRIES): Promise<void> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      await sendChunkXhr(url, headers, data);
-      return;
-    } catch (e) {
-      if (attempt === retries) throw e;
-      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-    }
-  }
-}
-
-async function uploadFileChunked(
-  chunkUrl: string,
-  fallbackPutUrl: string,
+function uploadFileViaWebSocket(
+  versionId: string,
   file: File,
+  kind: "content" | "additional",
   onProgress?: (pct: number) => void,
-  encodedName?: string,
-  type?: string,
+  additionalFileId?: string,
 ): Promise<void> {
-  const authHeaders = getAuthHeaders();
-  const name = encodedName ?? encodeURIComponent(file.name);
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
+  return new Promise((resolve, reject) => {
+    const token = localStorage.getItem("kb_auth_token") ?? "";
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws/upload`);
+    ws.binaryType = "arraybuffer";
 
-  if (file.size <= CHUNK_SIZE) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("PUT", `${fallbackPutUrl}?name=${name}&type=${type}`);
-      Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-      xhr.timeout = 180_000;
-      if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
-      xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
-      xhr.onerror = () => reject(new Error("Ошибка сети при загрузке файла"));
-      xhr.ontimeout = () => reject(new Error("Таймаут загрузки файла"));
-      xhr.send(file);
-    });
-  }
+    const FRAME = 256 * 1024; // 256 KB per frame — smooth progress, low latency
+    let offset = 0;
+    let settled = false;
+    const finish = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
 
-  let completedChunks = 0;
-  const chunkHeaders = { "Content-Type": "application/octet-stream", ...authHeaders } as Record<string, string>;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        auth: token,
+        versionId,
+        fileName: file.name,
+        fileType: file.name.split(".").pop()?.toLowerCase() ?? "bin",
+        totalSize: file.size,
+        kind,
+        additionalFileId,
+      }));
+    };
 
-  const uploadChunk = async (i: number): Promise<void> => {
-    const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
-    const url = `${chunkUrl}?index=${i}&total=${totalChunks}&name=${name}&type=${type}`;
-    await uploadChunkWithRetry(url, chunkHeaders, chunk);
-    completedChunks++;
-    if (onProgress) onProgress(Math.round((completedChunks / totalChunks) * 100));
-  };
+    const stream = async () => {
+      while (offset < file.size && ws.readyState === WebSocket.OPEN) {
+        while (ws.bufferedAmount > FRAME * 4) await new Promise(r => setTimeout(r, 5));
+        const end = Math.min(offset + FRAME, file.size);
+        const buf = await file.slice(offset, end).arrayBuffer();
+        if (ws.readyState !== WebSocket.OPEN) break;
+        ws.send(buf);
+        offset = end;
+        if (onProgress) onProgress(Math.min(99, Math.round((offset / file.size) * 100)));
+      }
+    };
 
-  for (let start = 0; start < totalChunks; start += CHUNK_CONCURRENCY) {
-    const batch = Array.from({ length: Math.min(CHUNK_CONCURRENCY, totalChunks - start) }, (_, j) => uploadChunk(start + j));
-    await Promise.all(batch);
-  }
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data as string);
+      if (msg.type === "ready") { stream().catch(e => finish(() => reject(e))); }
+      else if (msg.type === "done") { if (onProgress) onProgress(100); finish(resolve); }
+      else if (msg.type === "error") { finish(() => reject(new Error(msg.message ?? "Upload error"))); }
+    };
+
+    ws.onerror = () => finish(() => reject(new Error("WebSocket upload error")));
+    ws.onclose = (e) => { if (!e.wasClean && !settled) finish(() => reject(new Error("WebSocket closed unexpectedly"))); };
+  });
 }
 
 export const api = {
@@ -427,29 +409,11 @@ export const api = {
   },
 
   async uploadMaterialFile(versionId: string, file: File, onProgress?: (pct: number) => void): Promise<void> {
-    return uploadFileChunked(`/api/material-versions/${versionId}/file-chunk`, `/api/material-versions/${versionId}/file-data`, file, onProgress, encodeURIComponent(file.name), file.name.split(".").pop()?.toLowerCase() === "docx" ? "docx" : "pdf");
+    return uploadFileViaWebSocket(versionId, file, "content", onProgress);
   },
 
   async uploadAdditionalFile(versionId: string, fileId: string, file: File, onProgress?: (pct: number) => void): Promise<void> {
-    const authHeaders = getAuthHeaders();
-    const name = encodeURIComponent(file.name);
-    const type = encodeURIComponent(file.name.split(".").pop()?.toLowerCase() ?? "bin");
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
-    const chunkHeaders = { "Content-Type": "application/octet-stream", ...authHeaders } as Record<string, string>;
-    let completedChunks = 0;
-
-    const uploadChunk = async (i: number): Promise<void> => {
-      const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
-      const url = `/api/material-versions/${versionId}/additional-file-chunk?fileId=${fileId}&index=${i}&total=${totalChunks}&name=${name}&type=${type}&size=${file.size}`;
-      await uploadChunkWithRetry(url, chunkHeaders, chunk);
-      completedChunks++;
-      if (onProgress) onProgress(Math.round((completedChunks / totalChunks) * 100));
-    };
-
-    for (let start = 0; start < totalChunks; start += CHUNK_CONCURRENCY) {
-      const batch = Array.from({ length: Math.min(CHUNK_CONCURRENCY, totalChunks - start) }, (_, j) => uploadChunk(start + j));
-      await Promise.all(batch);
-    }
+    return uploadFileViaWebSocket(versionId, file, "additional", onProgress, fileId);
   },
 
   async deleteAdditionalFile(versionId: string, fileId: string): Promise<void> {
