@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ArrowRight, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Edit2, FileText, Folder, GitPullRequest, Lock, Plus, PlusCircle, Search, Settings, Tag, Trash2, UserCog, Users } from "lucide-react";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import { ArrowRight, BookOpen, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, Edit2, FileText, Folder, GitPullRequest, Lock, Plus, PlusCircle, Search, Settings, Tag, Trash2, UserCog, Users } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppShell } from "@/components/kb/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -437,6 +439,10 @@ export default function Catalog() {
                                             <Badge className={`text-[10px] px-1.5 py-0 rounded-md ${statusColor[m.status] || ""}`}>
                                               {m.status}
                                             </Badge>
+                                            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded-md">
+                                              <CalendarClock className="h-2.5 w-2.5" />
+                                              {format(new Date(m.createdAt), "d MMM yyyy, HH:mm", { locale: ru })}
+                                            </span>
                                             <Badge className={`text-[10px] px-1.5 py-0 rounded-md ${critColor[m.passport.criticality] || ""}`}>
                                               {m.passport.criticality}
                                             </Badge>
