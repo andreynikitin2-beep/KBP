@@ -266,7 +266,7 @@ async function uploadFileChunked(
 ): Promise<void> {
   const authHeaders = getAuthHeaders();
   const name = encodedName ?? encodeURIComponent(file.name);
-  const CHUNK_SIZE = 4 * 1024 * 1024;
+  const CHUNK_SIZE = 512 * 1024;
   const CONCURRENCY = 3;
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
 
@@ -411,7 +411,7 @@ export const api = {
     const authHeaders = getAuthHeaders();
     const name = encodeURIComponent(file.name);
     const type = encodeURIComponent(file.name.split(".").pop()?.toLowerCase() ?? "bin");
-    const CHUNK_SIZE = 4 * 1024 * 1024;
+    const CHUNK_SIZE = 512 * 1024;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
     for (let i = 0; i < totalChunks; i++) {
       const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
