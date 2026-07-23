@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 import { sanitizeHtml } from "@shared/sanitize";
+import * as fileStorage from "./fileStorage";
 
 function encryptPortalSettings(json: string, password: string): Buffer {
   const salt = crypto.randomBytes(32);
@@ -431,15 +432,23 @@ export async function registerRoutes(
   app.get("/api/material-versions/:id/file", async (req, res) => {
     try {
       const version = await storage.getMaterialVersion(req.params.id);
-      if (!version || !(version as any).contentFileData) {
-        return res.status(404).json({ error: "File not found" });
+      if (!version) return res.status(404).json({ error: "File not found" });
+
+      // Try filesystem first, fall back to legacy base64 in DB
+      let buffer = fileStorage.readContentFile(req.params.id);
+      if (!buffer && (version as any).contentFileData) {
+        buffer = Buffer.from((version as any).contentFileData, "base64");
+        // Lazy-migrate: write to FS and clear DB entry
+        fileStorage.writeContentFile(req.params.id, buffer);
+        await storage.updateMaterialVersion(req.params.id, { contentFileData: null } as any).catch(() => {});
       }
+      if (!buffer) return res.status(404).json({ error: "File not found" });
+
       const fileInfo = version.contentFile as any;
       const mimeType = fileInfo?.type === "pdf"
         ? "application/pdf"
         : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       const fileName = fileInfo?.name || "file";
-      const buffer = Buffer.from((version as any).contentFileData, "base64");
       const isInline = req.query.inline === "true";
       res.setHeader("Content-Type", mimeType);
       res.setHeader(
@@ -489,11 +498,11 @@ export async function registerRoutes(
       const allReceived = entry.chunks.every((c) => c !== null);
       if (allReceived) {
         const full = Buffer.concat(entry.chunks as Buffer[]);
-        const base64 = full.toString("base64");
+        fileStorage.writeContentFile(id, full);
         const version = await storage.getMaterialVersion(id);
         const existingFile = (version?.contentFile as any) || {};
         const updatedFile = { ...existingFile, ...(entry.name ? { name: entry.name } : {}), ...(entry.fileType ? { type: entry.fileType } : {}) };
-        await storage.updateMaterialVersion(id, { contentFileData: base64, contentFile: updatedFile } as any);
+        await storage.updateMaterialVersion(id, { contentFile: updatedFile } as any);
         _chunkStore.delete(id);
         return res.json({ ok: true, done: true });
       }
@@ -512,12 +521,12 @@ export async function registerRoutes(
       if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
         return res.status(400).json({ error: "Empty body" });
       }
-      const base64 = buffer.toString("base64");
+      fileStorage.writeContentFile(req.params.id, buffer);
       const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
       const type = typeof req.query.type === "string" ? req.query.type : undefined;
       const existingFile = (version.contentFile as any) || {};
       const updatedFile = { ...existingFile, ...(name ? { name } : {}), ...(type ? { type } : {}) };
-      await storage.updateMaterialVersion(req.params.id, { contentFileData: base64, contentFile: updatedFile } as any);
+      await storage.updateMaterialVersion(req.params.id, { contentFile: updatedFile } as any);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -554,14 +563,12 @@ export async function registerRoutes(
       entry.ts = Date.now();
       if (entry.chunks.every(c => c !== null)) {
         const full = Buffer.concat(entry.chunks as Buffer[]);
-        const base64 = full.toString("base64");
+        fileStorage.writeAdditionalFile(id, fileId, full);
         const version = await storage.getMaterialVersion(id);
         if (!version) return res.status(404).json({ error: "Версия не найдена" });
         const existingFiles = (version.additionalFiles as any[]) ?? [];
-        const existingData = (version.additionalFilesData as any) ?? {};
         const updatedFiles = [...existingFiles.filter((f: any) => f.id !== fileId), { id: fileId, name: entry.name, type: entry.fileType, size: entry.fileSize }];
-        const updatedData = { ...existingData, [fileId]: base64 };
-        await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles, additionalFilesData: updatedData } as any);
+        await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles } as any);
         _addChunkStore.delete(storeKey);
         return res.json({ ok: true, done: true });
       }
@@ -578,9 +585,11 @@ export async function registerRoutes(
       const { id, fileId } = req.params;
       const version = await storage.getMaterialVersion(id);
       if (!version) return res.status(404).json({ error: "Версия не найдена" });
+      fileStorage.deleteAdditionalFile(id, fileId);
       const existingFiles = (version.additionalFiles as any[]) ?? [];
-      const existingData = (version.additionalFilesData as any) ?? {};
       const updatedFiles = existingFiles.filter((f: any) => f.id !== fileId);
+      // Also clean up any legacy DB entry for this file
+      const existingData = (version.additionalFilesData as any) ?? {};
       const { [fileId]: _removed, ...updatedData } = existingData;
       await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles, additionalFilesData: updatedData } as any);
       res.json({ ok: true });
@@ -593,18 +602,31 @@ export async function registerRoutes(
     try {
       const version = await storage.getMaterialVersion(req.params.id);
       if (!version) return res.status(404).json({ error: "Версия не найдена" });
-      const { fileId } = req.params;
-      const data = ((version.additionalFilesData as any) ?? {})[fileId];
-      if (!data) return res.status(404).json({ error: "Файл не найден" });
+      const { id, fileId } = req.params;
+
+      // Try filesystem first, fall back to legacy base64 in DB
+      let buffer = fileStorage.readAdditionalFile(id, fileId);
+      if (!buffer) {
+        const legacyData = ((version.additionalFilesData as any) ?? {})[fileId];
+        if (legacyData) {
+          buffer = Buffer.from(legacyData, "base64");
+          // Lazy-migrate to FS and remove from DB
+          fileStorage.writeAdditionalFile(id, fileId, buffer);
+          const updatedData = { ...(version.additionalFilesData as any) };
+          delete updatedData[fileId];
+          await storage.updateMaterialVersion(id, { additionalFilesData: updatedData } as any).catch(() => {});
+        }
+      }
+      if (!buffer) return res.status(404).json({ error: "Файл не найден" });
+
       const fileInfo = ((version.additionalFiles as any[]) ?? []).find((f: any) => f.id === fileId);
       const fileName = fileInfo?.name || "file";
-      const buffer = Buffer.from(data, "base64");
       const ext = fileName.split(".").pop()?.toLowerCase();
       const mimeType = ext === "pdf" ? "application/pdf"
         : ext === "docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         : "application/octet-stream";
       res.setHeader("Content-Type", mimeType);
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
       res.setHeader("Content-Length", buffer.length.toString());
       res.send(buffer);
     } catch (e) {
@@ -634,9 +656,26 @@ export async function registerRoutes(
 
   app.delete("/api/materials/:materialId", async (req, res) => {
     try {
+      // Collect version IDs first so we can clean up their files
+      const versions = await storage.getMaterialVersionsByMaterialId(req.params.materialId);
       const deleted = await storage.deleteMaterialByMaterialId(req.params.materialId);
       if (!deleted) return res.status(404).json({ error: "Material not found" });
+      // Delete all files on disk after successful DB deletion
+      for (const v of versions) {
+        fileStorage.deleteVersionFiles(v.id);
+      }
       res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.get("/api/admin/file-storage", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      const stats = fileStorage.getStorageStats();
+      res.json({ path: fileStorage.STORAGE_DIR, ...stats });
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }

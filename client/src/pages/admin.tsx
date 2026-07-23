@@ -17,6 +17,7 @@ import {
   Download,
   Edit2,
   FileText,
+  HardDrive,
   Loader2,
   Mail,
   Plus,
@@ -694,6 +695,15 @@ function AiSettingsTab() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
+
+  const [fileStorageInfo, setFileStorageInfo] = useState<{ path: string; totalFiles: number; totalSizeMb: number } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/file-storage", { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setFileStorageInfo(data); })
+      .catch(() => {});
+  }, []);
 
   const [queryLog, setQueryLog] = useState<any[]>([]);
   const [loadingLog, setLoadingLog] = useState(true);
@@ -3662,6 +3672,30 @@ export default function Admin() {
                         </DialogContent>
                       </Dialog>
                     </div>
+                  </div>
+
+                  <Separator />
+                  <div className="rounded-xl border p-4 flex items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <HardDrive className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-sm font-semibold">Файловое хранилище</div>
+                        {fileStorageInfo ? (
+                          <>
+                            <div className="text-xs text-muted-foreground mt-0.5 font-mono">{fileStorageInfo.path}</div>
+                            <div className="flex gap-4 mt-1.5">
+                              <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{fileStorageInfo.totalFiles}</span> файл{fileStorageInfo.totalFiles === 1 ? "" : fileStorageInfo.totalFiles >= 2 && fileStorageInfo.totalFiles <= 4 ? "а" : "ов"}</span>
+                              <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{fileStorageInfo.totalSizeMb.toFixed(2)}</span> МБ</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-xs text-muted-foreground mt-0.5">Загрузка...</div>
+                        )}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs shrink-0" data-testid="badge-file-storage-status">
+                      {fileStorageInfo ? "Активно" : "—"}
+                    </Badge>
                   </div>
 
                   <Separator />
