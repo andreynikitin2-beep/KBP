@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
 import { useLocation } from "wouter";
-import { AlertTriangle, Code, FilePlus2, FileText, Globe, Loader2, Paperclip, ShieldCheck, Sparkles, Upload, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Code, FilePlus2, FileText, Globe, Loader2, Paperclip, ShieldCheck, Sparkles, Upload, X } from "lucide-react";
 import { AppShell } from "@/components/kb/AppShell";
 import { RichEditor } from "@/components/kb/RichEditor";
 import { AiHtmlGenerator } from "@/components/kb/AiHtmlGenerator";
@@ -405,18 +405,29 @@ export default function MaterialWizard() {
                         className="hidden"
                         onChange={handleFileSelect}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full rounded-xl border-dashed h-16 flex-col gap-1"
-                        data-testid="button-pick-file"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <Upload className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {fileName ? fileName : "Выбрать файл PDF или DOCX…"}
-                        </span>
-                      </Button>
+                      {fileName ? (
+                        <div
+                          className="w-full rounded-xl border h-16 flex items-center gap-3 px-4 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 cursor-pointer"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Clock className="h-5 w-5 text-amber-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-amber-700 dark:text-amber-400 truncate">{fileName}</div>
+                            <div className="text-xs text-amber-600/70 dark:text-amber-500/70">Будет загружен при создании</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full rounded-xl border-dashed h-16 flex-col gap-1"
+                          data-testid="button-pick-file"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Upload className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Выбрать файл PDF или DOCX…</span>
+                        </Button>
+                      )}
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div>
                           <Label>Тип</Label>
@@ -498,8 +509,8 @@ export default function MaterialWizard() {
                 {additionalFilesEnabled && (
                   <div className="space-y-2">
                     {additionalFilesList.map(f => (
-                      <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
-                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                        <Clock className="h-4 w-4 text-amber-500 shrink-0" />
                         <span className="text-sm flex-1 truncate">{f.name}</span>
                         <span className="text-xs text-muted-foreground shrink-0">{f.size >= 1048576 ? `${(f.size / 1048576).toFixed(1)} МБ` : f.size >= 1024 ? `${(f.size / 1024).toFixed(0)} КБ` : `${f.size} Б`}</span>
                         <Button
@@ -631,16 +642,31 @@ export default function MaterialWizard() {
                             setUploadProgress(null);
                           }
                         }
+                        const uploadedAdditionalFiles: typeof additionalFilesList = [];
                         for (const af of additionalFilesList) {
                           try {
                             await api.uploadAdditionalFile(created.id, af.id, af.file, () => {});
+                            uploadedAdditionalFiles.push(af);
                           } catch (e) {
                             console.error("Additional file upload failed:", e);
                             toast({ title: "Предупреждение", description: `Не удалось загрузить доп. файл: ${af.name}`, variant: "destructive" });
                           }
                         }
+                        if (uploadedAdditionalFiles.length > 0) {
+                          setMaterials(prev => prev.map(m =>
+                            m.id !== created.id ? m : {
+                              ...m,
+                              additionalFiles: uploadedAdditionalFiles.map(af => ({
+                                id: af.id,
+                                name: af.name,
+                                type: af.type,
+                                size: af.size,
+                              })),
+                            }
+                          ));
+                        }
                         toast({ title: "Создано", description: "Материал добавлен в Черновики." });
-                        setLocation(`/materials/${created.materialId}`);
+                        setLocation(`/materials/${created.materialId}?tab=content`);
                       } catch (e) {
                         console.error(e);
                         setUploadProgress(null);

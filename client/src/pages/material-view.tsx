@@ -8,8 +8,10 @@ import {
   BadgeCheck,
   Bug,
   CalendarClock,
+  CheckCircle2,
   ChevronDown,
   CircleAlert,
+  Clock,
   Eye,
   FileDown,
   FilePlus2,
@@ -162,7 +164,11 @@ export default function MaterialView() {
     return active || allVersions[0] || null;
   }, [allVersions]);
 
-  const [activeTab, setActiveTab] = useState("passport");
+  const [activeTab, setActiveTab] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("tab");
+    return (t === "content" || t === "versions" || t === "rfc" || t === "discussions" || t === "audit") ? t : "passport";
+  });
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   const accessibleVersions = useMemo(() => {
@@ -242,6 +248,7 @@ export default function MaterialView() {
   const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
   const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null);
+  const [mainFileUploaded, setMainFileUploaded] = useState(false);
   const [fileUploadProgress, setFileUploadProgress] = useState<number | null>(null);
   const [previewDownloadProgress, setPreviewDownloadProgress] = useState<number | null>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
@@ -256,6 +263,7 @@ export default function MaterialView() {
     setEditFileType(detectedType);
     setEditFileName(file.name);
     setEditSelectedFile(file);
+    setMainFileUploaded(false);
     if (detectedType === "docx") {
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -291,6 +299,7 @@ export default function MaterialView() {
       setEditFileType(current.content.file?.type || "pdf");
       setEditExtractedText(current.content.file?.extractedText || "");
       setEditSelectedFile(null);
+      setMainFileUploaded(!!(current.content.file?.name));
     }
   }, [current?.id]);
 
@@ -369,7 +378,7 @@ export default function MaterialView() {
       setEditSelectedFile(null);
       setFileUploadProgress(0);
       api.uploadMaterialFile(current.id, fileToUpload, (pct) => setFileUploadProgress(pct))
-        .then(() => setFileUploadProgress(null))
+        .then(() => { setFileUploadProgress(null); setMainFileUploaded(true); })
         .catch((e) => { console.error(e); setFileUploadProgress(null); });
     }
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
@@ -1492,18 +1501,40 @@ export default function MaterialView() {
                             className="hidden"
                             onChange={handleEditFileSelect}
                           />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full rounded-xl border-dashed h-16 flex-col gap-1"
-                            data-testid="button-pick-edit-file"
-                            onClick={() => editFileInputRef.current?.click()}
-                          >
-                            <Upload className="h-5 w-5 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">
-                              {editFileName ? editFileName : "Выбрать файл PDF или DOCX…"}
-                            </span>
-                          </Button>
+                          {editFileName && mainFileUploaded && !editSelectedFile ? (
+                            <div
+                              className="w-full rounded-xl border h-16 flex items-center gap-3 px-4 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 cursor-pointer"
+                              onClick={() => editFileInputRef.current?.click()}
+                            >
+                              <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-green-700 dark:text-green-400 truncate">{editFileName}</div>
+                                <div className="text-xs text-green-600/70 dark:text-green-500/70">Файл загружен на сервер</div>
+                              </div>
+                            </div>
+                          ) : editFileName && editSelectedFile ? (
+                            <div
+                              className="w-full rounded-xl border h-16 flex items-center gap-3 px-4 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 cursor-pointer"
+                              onClick={() => editFileInputRef.current?.click()}
+                            >
+                              <Clock className="h-5 w-5 text-amber-500 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-amber-700 dark:text-amber-400 truncate">{editFileName}</div>
+                                <div className="text-xs text-amber-600/70 dark:text-amber-500/70">Будет загружен при сохранении</div>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full rounded-xl border-dashed h-16 flex-col gap-1"
+                              data-testid="button-pick-edit-file"
+                              onClick={() => editFileInputRef.current?.click()}
+                            >
+                              <Upload className="h-5 w-5 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">Выбрать файл PDF или DOCX…</span>
+                            </Button>
+                          )}
                           <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <div>
                               <Label>Тип</Label>
@@ -1573,8 +1604,8 @@ export default function MaterialView() {
                             Дополнительные файлы
                           </div>
                           {(dv.additionalFiles ?? []).map(af => (
-                            <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
-                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-green-50/60 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                               <span className="text-sm flex-1 truncate">{af.name}</span>
                               <span className="text-xs text-muted-foreground shrink-0">{af.size >= 1048576 ? `${(af.size / 1048576).toFixed(1)} МБ` : af.size >= 1024 ? `${(af.size / 1024).toFixed(0)} КБ` : `${af.size} Б`}</span>
                               <Button
@@ -1794,8 +1825,8 @@ export default function MaterialView() {
                             Дополнительные файлы
                           </div>
                           {(dv.additionalFiles ?? []).map(af => (
-                            <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
-                              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-green-50/60 dark:bg-green-950/20 border-green-200 dark:border-green-800">
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                               <span className="text-sm flex-1 truncate">{af.name}</span>
                               <span className="text-xs text-muted-foreground shrink-0">{af.size >= 1048576 ? `${(af.size / 1048576).toFixed(1)} МБ` : af.size >= 1024 ? `${(af.size / 1024).toFixed(0)} КБ` : `${af.size} Б`}</span>
                               <Button
