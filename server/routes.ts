@@ -474,7 +474,7 @@ export async function registerRoutes(
     for (const [k, v] of _chunkStore) if (v.ts < cutoff) _chunkStore.delete(k);
   }, 60_000).unref();
 
-  app.post("/api/material-versions/:id/file-chunk", express.raw({ limit: "1mb", type: "application/octet-stream" }), async (req, res) => {
+  app.post("/api/material-versions/:id/file-chunk", express.raw({ limit: "2mb", type: "application/octet-stream" }), async (req, res) => {
     try {
       const session = await verifySession(req);
       if (!session) return res.status(401).json({ error: "Требуется авторизация" });
@@ -540,7 +540,7 @@ export async function registerRoutes(
     for (const [k, v] of _addChunkStore) if (v.ts < cutoff) _addChunkStore.delete(k);
   }, 60_000).unref();
 
-  app.post("/api/material-versions/:id/additional-file-chunk", express.raw({ limit: "1mb", type: "application/octet-stream" }), async (req, res) => {
+  app.post("/api/material-versions/:id/additional-file-chunk", express.raw({ limit: "2mb", type: "application/octet-stream" }), async (req, res) => {
     try {
       const session = await verifySession(req);
       if (!session) return res.status(401).json({ error: "Требуется авторизация" });

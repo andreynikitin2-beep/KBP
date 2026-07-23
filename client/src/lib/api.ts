@@ -256,6 +256,35 @@ function dbNotificationToFrontend(dbNotif: any): NotificationLog {
   };
 }
 
+const CHUNK_SIZE = 1024 * 1024;
+const CHUNK_CONCURRENCY = 6;
+const CHUNK_RETRIES = 3;
+
+function sendChunkXhr(url: string, headers: Record<string, string>, data: Blob): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`HTTP ${xhr.status}`));
+    xhr.onerror = () => reject(new Error("network"));
+    xhr.ontimeout = () => reject(new Error("timeout"));
+    xhr.timeout = 180_000;
+    xhr.send(data);
+  });
+}
+
+async function uploadChunkWithRetry(url: string, headers: Record<string, string>, data: Blob, retries = CHUNK_RETRIES): Promise<void> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      await sendChunkXhr(url, headers, data);
+      return;
+    } catch (e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+}
+
 async function uploadFileChunked(
   chunkUrl: string,
   fallbackPutUrl: string,
@@ -266,8 +295,6 @@ async function uploadFileChunked(
 ): Promise<void> {
   const authHeaders = getAuthHeaders();
   const name = encodedName ?? encodeURIComponent(file.name);
-  const CHUNK_SIZE = 512 * 1024;
-  const CONCURRENCY = 3;
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
 
   if (file.size <= CHUNK_SIZE) {
@@ -275,32 +302,28 @@ async function uploadFileChunked(
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", `${fallbackPutUrl}?name=${name}&type=${type}`);
       Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
+      xhr.timeout = 180_000;
       if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
       xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
       xhr.onerror = () => reject(new Error("Ошибка сети при загрузке файла"));
+      xhr.ontimeout = () => reject(new Error("Таймаут загрузки файла"));
       xhr.send(file);
     });
   }
 
   let completedChunks = 0;
-  const uploadChunk = (i: number): Promise<void> => new Promise((resolve, reject) => {
-    const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${chunkUrl}?index=${i}&total=${totalChunks}&name=${name}&type=${type}`);
-    Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        completedChunks++;
-        if (onProgress) onProgress(Math.round((completedChunks / totalChunks) * 100));
-        resolve();
-      } else reject(new Error(`Chunk ${i + 1}/${totalChunks} failed: ${xhr.status}`));
-    };
-    xhr.onerror = () => reject(new Error(`Ошибка сети на чанке ${i + 1}/${totalChunks}`));
-    xhr.send(chunk);
-  });
+  const chunkHeaders = { "Content-Type": "application/octet-stream", ...authHeaders } as Record<string, string>;
 
-  for (let start = 0; start < totalChunks; start += CONCURRENCY) {
-    const batch = Array.from({ length: Math.min(CONCURRENCY, totalChunks - start) }, (_, j) => uploadChunk(start + j));
+  const uploadChunk = async (i: number): Promise<void> => {
+    const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
+    const url = `${chunkUrl}?index=${i}&total=${totalChunks}&name=${name}&type=${type}`;
+    await uploadChunkWithRetry(url, chunkHeaders, chunk);
+    completedChunks++;
+    if (onProgress) onProgress(Math.round((completedChunks / totalChunks) * 100));
+  };
+
+  for (let start = 0; start < totalChunks; start += CHUNK_CONCURRENCY) {
+    const batch = Array.from({ length: Math.min(CHUNK_CONCURRENCY, totalChunks - start) }, (_, j) => uploadChunk(start + j));
     await Promise.all(batch);
   }
 }
@@ -411,19 +434,21 @@ export const api = {
     const authHeaders = getAuthHeaders();
     const name = encodeURIComponent(file.name);
     const type = encodeURIComponent(file.name.split(".").pop()?.toLowerCase() ?? "bin");
-    const CHUNK_SIZE = 512 * 1024;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
-    for (let i = 0; i < totalChunks; i++) {
+    const chunkHeaders = { "Content-Type": "application/octet-stream", ...authHeaders } as Record<string, string>;
+    let completedChunks = 0;
+
+    const uploadChunk = async (i: number): Promise<void> => {
       const chunk = file.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, file.size));
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `/api/material-versions/${versionId}/additional-file-chunk?fileId=${fileId}&index=${i}&total=${totalChunks}&name=${name}&type=${type}&size=${file.size}`);
-        Object.entries({ "Content-Type": "application/octet-stream", ...authHeaders }).forEach(([k, v]) => xhr.setRequestHeader(k, v as string));
-        xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round(((i + e.loaded / e.total) / totalChunks) * 100)); };
-        xhr.onload = () => { if (xhr.status >= 200 && xhr.status < 300) { if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 100)); resolve(); } else reject(new Error(`Additional file chunk failed: ${xhr.status}`)); };
-        xhr.onerror = () => reject(new Error("Ошибка сети при загрузке доп. файла"));
-        xhr.send(chunk);
-      });
+      const url = `/api/material-versions/${versionId}/additional-file-chunk?fileId=${fileId}&index=${i}&total=${totalChunks}&name=${name}&type=${type}&size=${file.size}`;
+      await uploadChunkWithRetry(url, chunkHeaders, chunk);
+      completedChunks++;
+      if (onProgress) onProgress(Math.round((completedChunks / totalChunks) * 100));
+    };
+
+    for (let start = 0; start < totalChunks; start += CHUNK_CONCURRENCY) {
+      const batch = Array.from({ length: Math.min(CHUNK_CONCURRENCY, totalChunks - start) }, (_, j) => uploadChunk(start + j));
+      await Promise.all(batch);
     }
   },
 
