@@ -696,15 +696,6 @@ function AiSettingsTab() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
 
-  const [fileStorageInfo, setFileStorageInfo] = useState<{ path: string; totalFiles: number; totalSizeMb: number } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/admin/file-storage", { headers: getAuthHeaders() })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setFileStorageInfo(data); })
-      .catch(() => {});
-  }, []);
-
   const [queryLog, setQueryLog] = useState<any[]>([]);
   const [loadingLog, setLoadingLog] = useState(true);
   const [logPeriod, setLogPeriod] = useState<7 | 30 | 90>(30);
@@ -1237,6 +1228,13 @@ export default function Admin() {
   const [settingsImportOpen, setSettingsImportOpen] = useState(false);
   const [settingsImportPwd, setSettingsImportPwd] = useState("");
   const [settingsImportFile, setSettingsImportFile] = useState<File | null>(null);
+  const [fileStorageInfo, setFileStorageInfo] = useState<{ path: string; totalFiles: number; totalSizeMb: number } | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/file-storage", { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setFileStorageInfo(data); })
+      .catch(() => {});
+  }, []);
   const [settingsImportLoading, setSettingsImportLoading] = useState(false);
   const [uselessTopN, setUselessTopN] = useState<number>(3);
   const [userSearch, setUserSearch] = useState("");
