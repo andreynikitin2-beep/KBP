@@ -1723,8 +1723,14 @@ export default function MaterialView() {
                                     setPreviewLoading(true);
                                     try {
                                       if (dv.content.file?.type === "pdf") {
-                                        // Открываем вкладку сразу на клике — до async-работы, иначе popup-blocker заблокирует
+                                        // Открываем вкладку сразу — иначе popup-blocker заблокирует
                                         const newTab = window.open("about:blank", "_blank");
+                                        // Показываем страницу-заглушку с прогресс-баром пока файл скачивается
+                                        if (newTab) {
+                                          const fileName = dv.content.file?.name ?? "документ";
+                                          newTab.document.write(`<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Загрузка — ${fileName}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#333}.card{background:#fff;border-radius:16px;padding:40px 48px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;width:90%;text-align:center}.icon{font-size:48px;margin-bottom:20px}.title{font-size:18px;font-weight:600;margin-bottom:6px}.name{font-size:13px;color:#666;margin-bottom:28px;word-break:break-all}.bar-wrap{width:100%;height:8px;background:#e9ecef;border-radius:99px;overflow:hidden;margin-bottom:12px}.bar{height:100%;background:linear-gradient(90deg,#6366f1,#818cf8);border-radius:99px;transition:width .3s ease;width:0%}.pct{font-size:14px;color:#6366f1;font-weight:600}.hint{margin-top:16px;font-size:12px;color:#aaa}</style></head><body><div class="card"><div class="icon">📄</div><div class="title">Загрузка документа</div><div class="name">${fileName}</div><div class="bar-wrap"><div class="bar" id="bar"></div></div><div class="pct" id="pct">0%</div><div class="hint">Пожалуйста, подождите…</div></div></body></html>`);
+                                          newTab.document.close();
+                                        }
                                         setPreviewDownloadProgress(0);
                                         let blobUrl: string;
                                         try {
@@ -1733,7 +1739,18 @@ export default function MaterialView() {
                                             xhr.open("GET", `/api/material-versions/${dv.id}/file?inline=true`);
                                             xhr.responseType = "blob";
                                             xhr.onprogress = (e) => {
-                                              if (e.lengthComputable) setPreviewDownloadProgress(Math.round((e.loaded / e.total) * 100));
+                                              if (e.lengthComputable) {
+                                                const pct = Math.round((e.loaded / e.total) * 100);
+                                                setPreviewDownloadProgress(pct);
+                                                try {
+                                                  if (newTab && !newTab.closed) {
+                                                    const bar = newTab.document.getElementById("bar");
+                                                    const pctEl = newTab.document.getElementById("pct");
+                                                    if (bar) bar.style.width = pct + "%";
+                                                    if (pctEl) pctEl.textContent = pct + "%";
+                                                  }
+                                                } catch {}
+                                              }
                                             };
                                             xhr.onload = () => {
                                               if (xhr.status >= 200 && xhr.status < 300) resolve(URL.createObjectURL(xhr.response));
