@@ -501,7 +501,7 @@ export default function MaterialWizard() {
                       <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
                         <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                         <span className="text-sm flex-1 truncate">{f.name}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">{(f.size / 1024 / 1024).toFixed(1)} МБ</span>
+                        <span className="text-xs text-muted-foreground shrink-0">{f.size >= 1048576 ? `${(f.size / 1048576).toFixed(1)} МБ` : f.size >= 1024 ? `${(f.size / 1024).toFixed(0)} КБ` : `${f.size} Б`}</span>
                         <Button
                           type="button"
                           variant="ghost"

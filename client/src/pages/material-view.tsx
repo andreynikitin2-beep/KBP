@@ -1576,7 +1576,7 @@ export default function MaterialView() {
                             <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
                               <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="text-sm flex-1 truncate">{af.name}</span>
-                              <span className="text-xs text-muted-foreground shrink-0">{(af.size / 1024 / 1024).toFixed(1)} МБ</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{af.size >= 1048576 ? `${(af.size / 1048576).toFixed(1)} МБ` : af.size >= 1024 ? `${(af.size / 1024).toFixed(0)} КБ` : `${af.size} Б`}</span>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1797,7 +1797,7 @@ export default function MaterialView() {
                             <div key={af.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-muted/30">
                               <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="text-sm flex-1 truncate">{af.name}</span>
-                              <span className="text-xs text-muted-foreground shrink-0">{(af.size / 1024 / 1024).toFixed(1)} МБ</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{af.size >= 1048576 ? `${(af.size / 1048576).toFixed(1)} МБ` : af.size >= 1024 ? `${(af.size / 1024).toFixed(0)} КБ` : `${af.size} Б`}</span>
                               <Button
                                 variant="ghost"
                                 size="sm"
