@@ -40,6 +40,30 @@ services:
       timeout: 5s
       retries: 10
 
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER:-kb}
+      POSTGRES_DB: ${POSTGRES_DB:-kb}
+      BACKUP_DIR: /backups
+      BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-7}
+    volumes:
+      - ./backups:/backups
+      - ./backup-db.sh:/backup-db.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    # Run at 03:00 every day; keep the container alive with crond
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        chmod +x /backup-db.sh
+        echo "0 3 * * * /backup-db.sh >> /backups/backup.log 2>&1" | crontab -
+        crond -f -l 8
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
