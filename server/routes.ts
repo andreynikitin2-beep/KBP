@@ -171,6 +171,11 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // Health check — used by Docker healthcheck and load balancers
+  app.get("/api/health", (_req, res) => {
+    res.json({ ok: true, ts: Date.now() });
+  });
+
   app.get("/api/auth/users-list", async (_req, res) => {
     try {
       const users = await storage.getUsers();
