@@ -274,7 +274,7 @@ async function uploadFileViaHttp(
       const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
       const qs = new URLSearchParams({
         index: String(i), total: String(total),
-        name: encodeURIComponent(file.name), type: fileType,
+        name: file.name, type: fileType,
       });
       const res = await fetch(`/api/material-versions/${versionId}/file-chunk?${qs}`, {
         method: "POST",
@@ -290,7 +290,7 @@ async function uploadFileViaHttp(
       const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
       const qs = new URLSearchParams({
         fileId: additionalFileId, index: String(i), total: String(total),
-        name: encodeURIComponent(file.name), type: fileType, size: String(file.size),
+        name: file.name, type: fileType, size: String(file.size),
       });
       const res = await fetch(`/api/material-versions/${versionId}/additional-file-chunk?${qs}`, {
         method: "POST",

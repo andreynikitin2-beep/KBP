@@ -482,7 +482,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const index = parseInt(req.query.index as string);
       const total = parseInt(req.query.total as string);
-      const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
+      const name = typeof req.query.name === "string" ? req.query.name : undefined;
       const fileType = typeof req.query.type === "string" ? req.query.type : undefined;
       if (isNaN(index) || isNaN(total) || index < 0 || index >= total)
         return res.status(400).json({ error: "Неверные параметры чанка" });
@@ -523,7 +523,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Empty body" });
       }
       fileStorage.writeContentFile(req.params.id, buffer);
-      const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
+      const name = typeof req.query.name === "string" ? req.query.name : undefined;
       const type = typeof req.query.type === "string" ? req.query.type : undefined;
       const existingFile = (version.contentFile as any) || {};
       const updatedFile = { ...existingFile, ...(name ? { name } : {}), ...(type ? { type } : {}) };
@@ -549,8 +549,8 @@ export async function registerRoutes(
       const fileId = typeof req.query.fileId === "string" ? req.query.fileId : null;
       const index = parseInt(req.query.index as string);
       const total = parseInt(req.query.total as string);
-      const name = typeof req.query.name === "string" ? decodeURIComponent(req.query.name) : undefined;
-      const fileType = typeof req.query.type === "string" ? decodeURIComponent(req.query.type) : undefined;
+      const name = typeof req.query.name === "string" ? req.query.name : undefined;
+      const fileType = typeof req.query.type === "string" ? req.query.type : undefined;
       const fileSize = typeof req.query.size === "string" ? parseInt(req.query.size) : undefined;
       if (!fileId) return res.status(400).json({ error: "fileId обязателен" });
       if (isNaN(index) || isNaN(total) || index < 0 || index >= total) return res.status(400).json({ error: "Неверные параметры чанка" });
@@ -568,7 +568,7 @@ export async function registerRoutes(
         const version = await storage.getMaterialVersion(id);
         if (!version) return res.status(404).json({ error: "Версия не найдена" });
         const existingFiles = (version.additionalFiles as any[]) ?? [];
-        const updatedFiles = [...existingFiles.filter((f: any) => f.id !== fileId), { id: fileId, name: entry.name, type: entry.fileType, size: entry.fileSize }];
+        const updatedFiles = [...existingFiles.filter((f: any) => f.id !== fileId), { id: fileId, name: entry.name, type: entry.fileType, size: full.length }];
         await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles } as any);
         _addChunkStore.delete(storeKey);
         return res.json({ ok: true, done: true });
