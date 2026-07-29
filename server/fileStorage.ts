@@ -2,18 +2,38 @@ import fs from "fs";
 import path from "path";
 
 const RAW_PATH = process.env.FILE_STORAGE_PATH;
-export const STORAGE_DIR: string = RAW_PATH
+let _storageDir: string = RAW_PATH
   ? path.resolve(RAW_PATH)
   : path.resolve("uploads");
 
 try {
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
+  fs.mkdirSync(_storageDir, { recursive: true });
 } catch {
   // will surface on first write
 }
 
+/** The current active storage directory (absolute path). */
+export function getStorageDir(): string {
+  return _storageDir;
+}
+
+/**
+ * Override the storage directory at runtime (used by admin settings).
+ * Ignored when FILE_STORAGE_PATH env var is set — env always wins.
+ */
+export function setStorageDir(newPath: string): void {
+  if (process.env.FILE_STORAGE_PATH) return; // env var takes priority
+  if (!newPath || !newPath.trim()) return;
+  const resolved = path.resolve(newPath.trim());
+  fs.mkdirSync(resolved, { recursive: true });
+  _storageDir = resolved;
+}
+
+/** @deprecated use getStorageDir() */
+export const STORAGE_DIR: string = _storageDir; // kept for compat — reflects initial value only
+
 function versionDir(versionId: string): string {
-  return path.join(STORAGE_DIR, versionId);
+  return path.join(_storageDir, versionId);
 }
 
 function contentFilePath(versionId: string): string {
@@ -65,9 +85,10 @@ export function getStorageStats(): { totalFiles: number; totalBytes: number } {
   let totalFiles = 0;
   let totalBytes = 0;
   try {
-    const versionDirs = fs.existsSync(STORAGE_DIR) ? fs.readdirSync(STORAGE_DIR) : [];
+    const storageDir = _storageDir;
+    const versionDirs = fs.existsSync(storageDir) ? fs.readdirSync(storageDir) : [];
     for (const vd of versionDirs) {
-      const vdPath = path.join(STORAGE_DIR, vd);
+      const vdPath = path.join(storageDir, vd);
       try {
         const stat = fs.statSync(vdPath);
         if (!stat.isDirectory()) continue;

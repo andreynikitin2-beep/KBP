@@ -676,7 +676,28 @@ export async function registerRoutes(
       const session = await verifySession(req);
       if (!session) return res.status(401).json({ error: "Требуется авторизация" });
       const stats = fileStorage.getStorageStats();
-      res.json({ path: fileStorage.STORAGE_DIR, totalFiles: stats.totalFiles, totalSizeMb: stats.totalBytes / 1024 / 1024 });
+      const envOverride = !!process.env.FILE_STORAGE_PATH;
+      res.json({ path: fileStorage.getStorageDir(), totalFiles: stats.totalFiles, totalSizeMb: stats.totalBytes / 1024 / 1024, envOverride });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
+  });
+
+  app.put("/api/admin/file-storage", async (req, res) => {
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (!isAdmin(session.user)) return res.status(403).json({ error: "Доступ только для администраторов" });
+      if (process.env.FILE_STORAGE_PATH) {
+        return res.status(400).json({ error: "Путь задан переменной окружения FILE_STORAGE_PATH и не может быть изменён через интерфейс." });
+      }
+      const { path: newPath } = req.body as { path?: string };
+      if (!newPath || !newPath.trim()) return res.status(400).json({ error: "Путь не может быть пустым" });
+      fileStorage.setStorageDir(newPath.trim());
+      const existing = await storage.getAiSettings();
+      await storage.upsertAiSettings({ ...(existing ?? {}), fileStoragePath: newPath.trim(), updatedAt: new Date() } as any);
+      const stats = fileStorage.getStorageStats();
+      res.json({ path: fileStorage.getStorageDir(), totalFiles: stats.totalFiles, totalSizeMb: stats.totalBytes / 1024 / 1024, envOverride: false });
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }

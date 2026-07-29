@@ -340,6 +340,7 @@ export const aiSettings = pgTable("ai_settings", {
   loggingEnabled: boolean("logging_enabled").default(true).notNull(),
   htmlGeneratorEnabled: boolean("html_generator_enabled").default(false).notNull(),
   htmlGeneratorSystemPrompt: text("html_generator_system_prompt").default("").notNull(),
+  fileStoragePath: text("file_storage_path").default("").notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 

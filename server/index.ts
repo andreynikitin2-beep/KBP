@@ -2,7 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { backfillSearchText, ensureFeedbackTemplates } from "./storage";
+import { backfillSearchText, ensureFeedbackTemplates, storage } from "./storage";
+import { setStorageDir } from "./fileStorage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -64,6 +65,13 @@ app.use((req, res, next) => {
 (async () => {
   backfillSearchText().catch((e) => console.error("[search] backfill error:", e));
   ensureFeedbackTemplates().catch((e) => console.error("[email] feedback templates error:", e));
+
+  // Restore file storage path saved via admin UI (skipped when FILE_STORAGE_PATH env var is set)
+  if (!process.env.FILE_STORAGE_PATH) {
+    storage.getAiSettings().then((s) => {
+      if (s?.fileStoragePath) setStorageDir(s.fileStoragePath);
+    }).catch(() => {});
+  }
 
   await registerRoutes(httpServer, app);
 

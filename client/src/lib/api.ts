@@ -256,6 +256,54 @@ function dbNotificationToFrontend(dbNotif: any): NotificationLog {
   };
 }
 
+/** HTTP chunked upload — used as fallback when WebSocket is unavailable (e.g. behind a Docker reverse proxy) */
+async function uploadFileViaHttp(
+  versionId: string,
+  file: File,
+  kind: "content" | "additional",
+  onProgress?: (pct: number) => void,
+  additionalFileId?: string,
+): Promise<void> {
+  const CHUNK = 1024 * 1024; // 1 MB per chunk
+  const total = Math.ceil(file.size / CHUNK) || 1;
+  const headers = getAuthHeaders();
+  const fileType = file.name.split(".").pop()?.toLowerCase() ?? "bin";
+
+  if (kind === "content") {
+    for (let i = 0; i < total; i++) {
+      const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
+      const qs = new URLSearchParams({
+        index: String(i), total: String(total),
+        name: encodeURIComponent(file.name), type: fileType,
+      });
+      const res = await fetch(`/api/material-versions/${versionId}/file-chunk?${qs}`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/octet-stream" },
+        body: blob,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      if (onProgress) onProgress(Math.min(99, Math.round(((i + 1) / total) * 100)));
+    }
+  } else {
+    if (!additionalFileId) throw new Error("additionalFileId required for additional upload");
+    for (let i = 0; i < total; i++) {
+      const blob = file.slice(i * CHUNK, (i + 1) * CHUNK);
+      const qs = new URLSearchParams({
+        fileId: additionalFileId, index: String(i), total: String(total),
+        name: encodeURIComponent(file.name), type: fileType, size: String(file.size),
+      });
+      const res = await fetch(`/api/material-versions/${versionId}/additional-file-chunk?${qs}`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/octet-stream" },
+        body: blob,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      if (onProgress) onProgress(Math.min(99, Math.round(((i + 1) / total) * 100)));
+    }
+  }
+  if (onProgress) onProgress(100);
+}
+
 function uploadFileViaWebSocket(
   versionId: string,
   file: File,
@@ -266,7 +314,22 @@ function uploadFileViaWebSocket(
   return new Promise((resolve, reject) => {
     const token = localStorage.getItem("kb_auth_token") ?? "";
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws/upload`);
+    let wsUrl: string;
+    try {
+      wsUrl = `${proto}//${window.location.host}/ws/upload`;
+    } catch {
+      // Fallback if location is unavailable
+      uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(resolve, reject);
+      return;
+    }
+
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(resolve, reject);
+      return;
+    }
     ws.binaryType = "arraybuffer";
 
     const FRAME = 256 * 1024; // 256 KB per frame — smooth progress, low latency
@@ -274,7 +337,19 @@ function uploadFileViaWebSocket(
     let settled = false;
     const finish = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
 
+    // If WS fails to open within 5 s, fall back to HTTP
+    const wsTimeout = setTimeout(() => {
+      if (!settled) {
+        try { ws.close(); } catch { /* ignore */ }
+        uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
+          () => finish(resolve),
+          (e) => finish(() => reject(e)),
+        );
+      }
+    }, 5000);
+
     ws.onopen = () => {
+      clearTimeout(wsTimeout);
       ws.send(JSON.stringify({
         auth: token,
         versionId,
@@ -305,8 +380,25 @@ function uploadFileViaWebSocket(
       else if (msg.type === "error") { finish(() => reject(new Error(msg.message ?? "Upload error"))); }
     };
 
-    ws.onerror = () => finish(() => reject(new Error("WebSocket upload error")));
-    ws.onclose = (e) => { if (!e.wasClean && !settled) finish(() => reject(new Error("WebSocket closed unexpectedly"))); };
+    ws.onerror = () => {
+      clearTimeout(wsTimeout);
+      if (!settled) {
+        // WS failed (likely reverse proxy doesn't support upgrades) — fall back to HTTP
+        uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
+          () => finish(resolve),
+          (e) => finish(() => reject(e)),
+        );
+      }
+    };
+    ws.onclose = (e) => {
+      clearTimeout(wsTimeout);
+      if (!e.wasClean && !settled) {
+        uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
+          () => finish(resolve),
+          (e2) => finish(() => reject(e2)),
+        );
+      }
+    };
   });
 }
 

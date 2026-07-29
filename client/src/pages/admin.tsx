@@ -1228,13 +1228,17 @@ export default function Admin() {
   const [settingsImportOpen, setSettingsImportOpen] = useState(false);
   const [settingsImportPwd, setSettingsImportPwd] = useState("");
   const [settingsImportFile, setSettingsImportFile] = useState<File | null>(null);
-  const [fileStorageInfo, setFileStorageInfo] = useState<{ path: string; totalFiles: number; totalSizeMb: number } | null>(null);
-  useEffect(() => {
+  const [fileStorageInfo, setFileStorageInfo] = useState<{ path: string; totalFiles: number; totalSizeMb: number; envOverride?: boolean } | null>(null);
+  const [fileStorageEditOpen, setFileStorageEditOpen] = useState(false);
+  const [fileStorageEditPath, setFileStorageEditPath] = useState("");
+  const [fileStorageEditLoading, setFileStorageEditLoading] = useState(false);
+  const loadFileStorageInfo = () => {
     fetch("/api/admin/file-storage", { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) setFileStorageInfo(data); })
       .catch(() => {});
-  }, []);
+  };
+  useEffect(() => { loadFileStorageInfo(); }, []);
   const [settingsImportLoading, setSettingsImportLoading] = useState(false);
   const [uselessTopN, setUselessTopN] = useState<number>(3);
   const [userSearch, setUserSearch] = useState("");
@@ -3680,7 +3684,10 @@ export default function Admin() {
                         <div className="text-sm font-semibold">Файловое хранилище</div>
                         {fileStorageInfo ? (
                           <>
-                            <div className="text-xs text-muted-foreground mt-0.5 font-mono">{fileStorageInfo.path}</div>
+                            <div className="text-xs text-muted-foreground mt-0.5 font-mono break-all">{fileStorageInfo.path}</div>
+                            {fileStorageInfo.envOverride && (
+                              <div className="text-xs text-amber-600 mt-0.5">Путь задан через переменную окружения FILE_STORAGE_PATH</div>
+                            )}
                             <div className="flex gap-4 mt-1.5">
                               <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{fileStorageInfo.totalFiles}</span> файл{fileStorageInfo.totalFiles === 1 ? "" : fileStorageInfo.totalFiles >= 2 && fileStorageInfo.totalFiles <= 4 ? "а" : "ов"}</span>
                               <span className="text-xs text-muted-foreground"><span className="font-medium text-foreground">{fileStorageInfo.totalSizeMb.toFixed(2)}</span> МБ</span>
@@ -3691,9 +3698,71 @@ export default function Admin() {
                         )}
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-xs shrink-0" data-testid="badge-file-storage-status">
-                      {fileStorageInfo ? "Активно" : "—"}
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="outline" className="text-xs" data-testid="badge-file-storage-status">
+                        {fileStorageInfo ? "Активно" : "—"}
+                      </Badge>
+                      {fileStorageInfo && !fileStorageInfo.envOverride && (
+                        <Dialog open={fileStorageEditOpen} onOpenChange={setFileStorageEditOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setFileStorageEditPath(fileStorageInfo.path)}>
+                              Изменить
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Папка файлового хранилища</DialogTitle>
+                              <DialogDescription>
+                                Укажите абсолютный путь к папке на сервере, где будут храниться загруженные файлы материалов. При смене пути существующие файлы нужно перенести вручную.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-3 py-2">
+                              <div className="space-y-1.5">
+                                <Label htmlFor="storage-path-input">Путь к папке</Label>
+                                <Input
+                                  id="storage-path-input"
+                                  value={fileStorageEditPath}
+                                  onChange={e => setFileStorageEditPath(e.target.value)}
+                                  placeholder="/data/uploads"
+                                  className="font-mono text-sm"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Для Docker-развёртывания укажите путь внутри контейнера (например <span className="font-mono">/data/uploads</span>) и смонтируйте его как том: <span className="font-mono">-v /host/uploads:/data/uploads</span>
+                                </p>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setFileStorageEditOpen(false)} disabled={fileStorageEditLoading}>Отмена</Button>
+                              <Button
+                                disabled={fileStorageEditLoading || !fileStorageEditPath.trim()}
+                                onClick={async () => {
+                                  setFileStorageEditLoading(true);
+                                  try {
+                                    const res = await fetch("/api/admin/file-storage", {
+                                      method: "PUT",
+                                      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+                                      body: JSON.stringify({ path: fileStorageEditPath.trim() }),
+                                    });
+                                    const data = await res.json();
+                                    if (!res.ok) throw new Error(data.error ?? "Ошибка");
+                                    setFileStorageInfo(data);
+                                    setFileStorageEditOpen(false);
+                                    toast({ title: "Путь обновлён", description: data.path });
+                                  } catch (e: any) {
+                                    toast({ variant: "destructive", title: "Ошибка", description: e?.message });
+                                  } finally {
+                                    setFileStorageEditLoading(false);
+                                  }
+                                }}
+                              >
+                                {fileStorageEditLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                                Сохранить
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      )}
+                    </div>
                   </div>
 
                   <Separator />
