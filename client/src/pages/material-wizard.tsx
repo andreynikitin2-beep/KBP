@@ -173,7 +173,7 @@ export default function MaterialWizard() {
       actions={<></>}
     >
       <div className="grid gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-10">
+        <div className="lg:col-span-8">
           <Card className="overflow-hidden">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -684,7 +684,7 @@ export default function MaterialWizard() {
           </Card>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-4">
           <Card className="sticky top-[92px]">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Проверка перед публикацией</CardTitle>

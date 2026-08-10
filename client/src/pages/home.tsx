@@ -231,7 +231,7 @@ export default function Home() {
       }
     >
       <div className="grid gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-10 space-y-4">
+        <div className="lg:col-span-8 space-y-4">
 
           {isOwnerOrDeputy && (
             <Card data-testid="card-owner-module">
@@ -526,7 +526,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-4">
           <Card className="sticky top-[92px]">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Мой профиль</CardTitle>

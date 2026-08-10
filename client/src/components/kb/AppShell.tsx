@@ -101,7 +101,7 @@ export function AppShell({
   return (
     <div className="min-h-screen kb-hero-grid kb-noise">
       <header className="sticky top-0 z-40 border-b bg-background/70 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[1800px] items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <div className="flex shrink-0 items-center gap-2">
             <img
               src="/logo.png"
@@ -217,7 +217,7 @@ export function AppShell({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1800px] px-4 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-6">
         {breadcrumbs && breadcrumbs.length > 0 && (
           <nav className="mb-3 flex items-center gap-1 text-sm text-muted-foreground" data-testid="nav-breadcrumbs">
             {breadcrumbs.map((crumb, i) => (
@@ -246,7 +246,7 @@ export function AppShell({
       </main>
 
       <footer className="border-t bg-background/50">
-        <div className="mx-auto w-full max-w-[1800px] px-4 py-6">
+        <div className="mx-auto max-w-7xl px-4 py-6">
           <div className="flex items-center gap-2">
             <img
               src="/logo.png"
