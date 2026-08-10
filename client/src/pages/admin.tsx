@@ -3651,7 +3651,10 @@ export default function Admin() {
                                 setSettingsImportLoading(true);
                                 try {
                                   const ab = await settingsImportFile.arrayBuffer();
-                                  const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
+                                  const bytes = new Uint8Array(ab);
+                                  let binary = "";
+                                  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                                  const b64 = btoa(binary);
                                   const res = await fetch("/api/admin/settings-restore", {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json", ...getAuthHeaders() },

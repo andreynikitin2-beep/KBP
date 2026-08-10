@@ -10,6 +10,7 @@ interface UserListItem {
   id: string;
   username: string;
   displayName: string;
+  email?: string;
   source: string;
   department: string;
   roles: string[];
@@ -272,11 +273,6 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string, token
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Building2 className="h-3.5 w-3.5" />
                     <span>{selectedUser.department}, {selectedUser.source === "ad" ? "Доменная учётная запись" : "Локальная учётная запись"}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedUser.roles.map((r) => (
-                      <Badge key={r} variant="secondary" className="text-xs">{r}</Badge>
-                    ))}
                   </div>
                 </div>
               )}

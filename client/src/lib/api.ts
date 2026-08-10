@@ -806,7 +806,7 @@ export const api = {
     message: string;
     history: Array<{ role: string; content: string }>;
     sessionId?: string;
-  }): Promise<{ answer: string; sources: Array<{ materialId: string; title: string }>; sessionId: string }> {
+  }): Promise<{ answer: string; sources: Array<{ materialId: string; title: string; relatedLinks?: unknown }>; sessionId: string }> {
     return postJson<any>("/api/ai/chat", data);
   },
 
@@ -821,7 +821,7 @@ export const api = {
       sessionId: string;
       role: string;
       content: string;
-      sources: Array<{ materialId: string; title: string }> | null;
+      sources: Array<{ materialId: string; title: string; relatedLinks?: unknown }> | null;
       createdAt: string;
     }>;
   }>> {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
-import { AlertTriangle, ChevronLeft, Clock, Loader2, Plus, Send, Sparkles, Trash2, User as UserIcon, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Clock, Loader2, Plus, Send, Sparkles, Trash2, User as UserIcon, X, GripVertical, Maximize2, Minimize2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  sources?: Array<{ materialId: string; title: string }>;
+  sources?: Array<{ materialId: string; title: string; relatedLinks?: unknown }>;
 };
 
 type ChatSession = {
@@ -27,12 +27,22 @@ type ChatSession = {
     id: string;
     role: string;
     content: string;
-    sources: Array<{ materialId: string; title: string }> | null;
+    sources: Array<{ materialId: string; title: string; relatedLinks?: unknown }> | null;
     createdAt: string;
   }>;
 };
 
 type View = "chat" | "history";
+
+function materialLinks(value: unknown): Array<{ label: string; url: string }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((link: any) => ({
+      label: String(link?.label || link?.title || "Ссылка на инструкцию"),
+      url: String(link?.url || ""),
+    }))
+    .filter((link) => /^https?:\/\//i.test(link.url));
+}
 
 function trimDanglingUserMessages(msgs: Message[]): Message[] {
   let end = msgs.length;
@@ -51,7 +61,13 @@ export function AiChat() {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [chatWidth, setChatWidth] = useState(() => {
+    const saved = Number(localStorage.getItem("ai-chat-width"));
+    return Number.isFinite(saved) && saved >= 360 && saved <= 960 ? saved : 560;
+  });
+  const [resizing, setResizing] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const resizeStartRef = useRef({ x: 0, width: 560 });
 
   useEffect(() => {
     api.getAiStatus().then((s) => setEnabled(s.enabled)).catch(() => {});
@@ -60,6 +76,29 @@ export function AiChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    localStorage.setItem("ai-chat-width", String(chatWidth));
+  }, [chatWidth]);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (event: PointerEvent) => {
+      const next = Math.min(960, Math.max(360, resizeStartRef.current.width + resizeStartRef.current.x - event.clientX));
+      setChatWidth(next);
+    };
+    const onUp = () => setResizing(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [resizing]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -188,18 +227,38 @@ export function AiChat() {
     <>
       <Button
         data-testid="button-ai-chat"
-        variant="ghost"
+        variant="default"
         size="sm"
-        className="gap-1.5 rounded-xl text-muted-foreground hover:text-foreground"
+        className="gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 text-white shadow-md shadow-orange-500/25 hover:from-amber-600 hover:to-orange-600"
         onClick={() => onOpen(true)}
         title="AI-помощник"
       >
-        <Sparkles className="h-4 w-4 text-amber-500" />
-        <span className="hidden sm:inline text-xs font-medium">AI</span>
+        <Sparkles className="h-4 w-4" />
+        <span className="text-xs font-semibold">AI-помощник</span>
       </Button>
 
       <Sheet open={open} onOpenChange={onOpen}>
-        <SheetContent side="right" className="w-[420px] sm:w-[520px] p-0 flex flex-col gap-0 [&>button:first-of-type]:hidden">
+        <SheetContent
+          side="right"
+          className="p-0 flex flex-col gap-0 [&>button:first-of-type]:hidden"
+          style={{ width: `min(${chatWidth}px, 100vw)`, maxWidth: "100vw" }}
+        >
+          <div
+            role="separator"
+            tabIndex={0}
+            aria-label="Изменить ширину чата"
+            title="Потяните, чтобы изменить ширину чата"
+            className="absolute left-0 top-0 z-50 flex h-full w-3 -translate-x-1/2 cursor-ew-resize items-center justify-center group"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              resizeStartRef.current = { x: event.clientX, width: chatWidth };
+              setResizing(true);
+            }}
+          >
+            <span className="flex h-16 w-1 items-center justify-center rounded-full bg-border opacity-0 transition-opacity group-hover:opacity-100">
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </span>
+          </div>
           <div className="flex items-center gap-2 px-4 py-3 border-b shrink-0">
             {view === "history" && (
               <Button
@@ -252,6 +311,16 @@ export function AiChat() {
                 data-testid="button-ai-close"
               >
                 <X className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-lg"
+                onClick={() => setChatWidth((width) => width >= 900 ? 560 : 960)}
+                title={chatWidth >= 900 ? "Сузить чат" : "Расширить чат"}
+                data-testid="button-ai-resize"
+              >
+                {chatWidth >= 900 ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </Button>
             </div>
           </div>
@@ -375,16 +444,30 @@ export function AiChat() {
                           <div className="mt-1.5 flex flex-wrap items-center gap-1">
                             <span className="text-[10px] text-muted-foreground">Источники:</span>
                             {msg.sources.map((s) => (
-                              <Link key={s.materialId} href={`/materials/${s.materialId}`}>
-                                <Badge
-                                  variant="secondary"
-                                  className="text-[10px] cursor-pointer hover:bg-accent transition-colors"
-                                  onClick={() => setOpen(false)}
-                                  data-testid={`ai-source-${s.materialId}`}
-                                >
-                                  {s.title}
-                                </Badge>
-                              </Link>
+                              <span key={s.materialId} className="inline-flex flex-wrap items-center gap-1">
+                                <Link href={`/materials/${s.materialId}`}>
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] cursor-pointer hover:bg-accent transition-colors"
+                                    onClick={() => setOpen(false)}
+                                    data-testid={`ai-source-${s.materialId}`}
+                                  >
+                                    {s.title}
+                                  </Badge>
+                                </Link>
+                                {materialLinks(s.relatedLinks).map((link) => (
+                                  <a
+                                    key={`${s.materialId}-${link.url}`}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[10px] text-primary underline underline-offset-2 hover:text-primary/80"
+                                    title={link.label}
+                                  >
+                                    {link.label}
+                                  </a>
+                                ))}
+                              </span>
                             ))}
                           </div>
                         )}

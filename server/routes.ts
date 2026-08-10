@@ -166,6 +166,17 @@ function buildChatEndpoint(baseUrl?: string | null): string {
   return `${base}/chat/completions`;
 }
 
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  try {
+    const result = await parser.getText();
+    return result.text || "";
+  } finally {
+    await parser.destroy().catch(() => {});
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -477,7 +488,7 @@ export async function registerRoutes(
   const _chunkStore = new Map<string, { chunks: (Buffer | null)[]; total: number; name?: string; fileType?: string; ts: number }>();
   setInterval(() => {
     const cutoff = Date.now() - 3600_000;
-    for (const [k, v] of _chunkStore) if (v.ts < cutoff) _chunkStore.delete(k);
+    for (const [k, v] of Array.from(_chunkStore.entries())) if (v.ts < cutoff) _chunkStore.delete(k);
   }, 60_000).unref();
 
   app.post("/api/material-versions/:id/file-chunk", express.raw({ limit: "2mb", type: "application/octet-stream" }), async (req, res) => {
@@ -508,6 +519,14 @@ export async function registerRoutes(
         const version = await storage.getMaterialVersion(id);
         const existingFile = (version?.contentFile as any) || {};
         const updatedFile = { ...existingFile, ...(entry.name ? { name: entry.name } : {}), ...(entry.fileType ? { type: entry.fileType } : {}) };
+        if (entry.fileType === "pdf") {
+          try {
+            const extractedText = await extractPdfText(full);
+            if (extractedText.trim()) updatedFile.extractedText = extractedText;
+          } catch (error) {
+            console.warn("[file-upload] PDF text extraction failed:", error);
+          }
+        }
         await storage.updateMaterialVersion(id, { contentFile: updatedFile } as any);
         _chunkStore.delete(id);
         return res.json({ ok: true, done: true });
@@ -532,6 +551,14 @@ export async function registerRoutes(
       const type = typeof req.query.type === "string" ? req.query.type : undefined;
       const existingFile = (version.contentFile as any) || {};
       const updatedFile = { ...existingFile, ...(name ? { name } : {}), ...(type ? { type } : {}) };
+      if (type === "pdf") {
+        try {
+          const extractedText = await extractPdfText(buffer);
+          if (extractedText.trim()) updatedFile.extractedText = extractedText;
+        } catch (error) {
+          console.warn("[file-upload] PDF text extraction failed:", error);
+        }
+      }
       await storage.updateMaterialVersion(req.params.id, { contentFile: updatedFile } as any);
       res.json({ ok: true });
     } catch (e) {
@@ -543,7 +570,7 @@ export async function registerRoutes(
   const _addChunkStore = new Map<string, { chunks: (Buffer | null)[]; total: number; name?: string; fileType?: string; fileSize?: number; ts: number }>();
   setInterval(() => {
     const cutoff = Date.now() - 3_600_000;
-    for (const [k, v] of _addChunkStore) if (v.ts < cutoff) _addChunkStore.delete(k);
+    for (const [k, v] of Array.from(_addChunkStore.entries())) if (v.ts < cutoff) _addChunkStore.delete(k);
   }, 60_000).unref();
 
   app.post("/api/material-versions/:id/additional-file-chunk", express.raw({ limit: "2mb", type: "application/octet-stream" }), async (req, res) => {
@@ -1010,7 +1037,7 @@ export async function registerRoutes(
 
     const allUsers = await storage.getUsers();
     const reporter = allUsers.find((u) => u.id === opts.reporterUserId);
-    const owner = allUsers.find((u) => u.id === (current.passport as any)?.ownerId);
+    const owner = allUsers.find((u) => u.id === current.ownerId);
     const admins = allUsers.filter((u) => (u.roles as string[]).includes("Администратор"));
 
     const recipientEmails = Array.from(
@@ -1025,7 +1052,7 @@ export async function registerRoutes(
     if (!config?.smtpHost) return { emailSent: false, reason: "smtp_not_configured" };
 
     const template = await storage.getEmailTemplateByKey(opts.templateKey);
-    const title = (current.passport as any)?.title ?? current.title ?? opts.materialId;
+    const title = current.title ?? opts.materialId;
     const link = `${process.env.PUBLIC_URL || ""}` + `/materials/${opts.materialId}`;
     const ownerName = owner?.displayName ?? "Владелец";
 
@@ -1352,7 +1379,7 @@ export async function registerRoutes(
     }
   });
 
-  async function verifySession(req: any): Promise<{ user: Awaited<ReturnType<typeof storage.getUser>>; token: string } | null> {
+  async function verifySession(req: any): Promise<{ user: NonNullable<Awaited<ReturnType<typeof storage.getUser>>>; token: string } | null> {
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     if (token) {
@@ -1950,12 +1977,39 @@ export async function registerRoutes(
               .replace(/\s+/g, " ")
               .trim();
           }
-          return { materialId: v.materialId, title: v.title, text, rank: (v as any).rank ?? 0 };
+          const titleText = String(v.title || "").toLowerCase();
+          const queryTokens = String(message)
+            .toLowerCase()
+            .match(/[а-яёa-z0-9]{3,}/g) || [];
+          const uniqueQueryTokens = Array.from(new Set(queryTokens));
+          const normalizedText = text.toLowerCase();
+          const titleHits = uniqueQueryTokens.filter((token) => titleText.includes(token)).length;
+          const bodyHits = uniqueQueryTokens.filter((token) => normalizedText.includes(token)).length;
+          const exactPhraseBonus = normalizedText.includes(String(message).toLowerCase().trim()) ? 2 : 0;
+          // PostgreSQL FTS is the first signal. Token overlap makes PDF/file
+          // materials competitive even when their extracted text has unusual
+          // line breaks or spelling forms.
+          const lexicalScore = uniqueQueryTokens.length
+            ? (titleHits * 4 + bodyHits) / uniqueQueryTokens.length
+            : 0;
+          const retrievalScore = ((v as any).rank ?? 0) + lexicalScore + exactPhraseBonus;
+          return {
+            materialId: v.materialId,
+            title: v.title,
+            text,
+            rank: (v as any).rank ?? 0,
+            retrievalScore,
+            relatedLinks: v.relatedLinks ?? [],
+          };
         })
         .filter((m: any) => m.text.length > 50);
 
-      // Sort by FTS rank DESC; include both ranked and unranked (page/html may have rank=0)
-      const sorted = [...materialsWithText].sort((a: any, b: any) => b.rank - a.rank);
+      // Combine FTS with lexical evidence and keep the strongest candidates.
+      // This prevents a generic instruction from replacing an exact PDF match.
+      const sorted = [...materialsWithText].sort((a: any, b: any) => {
+        if (b.retrievalScore !== a.retrievalScore) return b.retrievalScore - a.retrievalScore;
+        return b.rank - a.rank;
+      });
       const contextMaterials = sorted.slice(0, 8);
 
       if (contextMaterials.length === 0) {
@@ -1974,7 +2028,7 @@ export async function registerRoutes(
         )
         .join("\n\n---\n\n");
 
-      const systemPrompt = `Ты — AI-помощник внутреннего портала знаний «Центр знаний ЦОС». Отвечай на вопросы сотрудников полно и развёрнуто, опираясь СТРОГО на предоставленные фрагменты из базы знаний. Если ответа нет в предоставленных материалах — честно сообщи об этом. Не придумывай информацию. Отвечай на русском языке. Не перечисляй источники в конце ответа — они будут добавлены автоматически.\n\nДоступные материалы из базы знаний:\n---\n${contextBlocks}\n---`;
+      const systemPrompt = `Ты — AI-помощник внутреннего портала знаний «Центр знаний ЦОС». Отвечай на вопросы сотрудников полно и развёрнуто, опираясь СТРОГО на предоставленные фрагменты из базы знаний. Если ответа нет в предоставленных материалах — честно сообщи об этом. Не придумывай информацию. Отвечай на русском языке. Не перечисляй источники в конце ответа — они будут добавлены автоматически.\n\nПравила выбора источника:\n- В первую очередь используй материал, который точнее всего отвечает на вопрос, а не просто содержит отдельные похожие слова.\n- Если один источник содержит конкретную процедуру, название, номер шага или формулировку из вопроса, считай его основным источником.\n- Не подменяй точный источник общим материалом. Если источники противоречат друг другу, укажи это.\n\nДоступные материалы из базы знаний:\n---\n${contextBlocks}\n---`;
 
       const chatHistory = (history as any[]).map((h) => ({
         role: h.role,
@@ -2040,10 +2094,10 @@ export async function registerRoutes(
 
       // Determine which materials were actually used by lexical overlap with the answer.
       // Tokenise answer into significant lowercase words (≥4 chars, Cyrillic/Latin).
-      function tokenize(text: string): Set<string> {
+      const tokenize = (text: string): Set<string> => {
         const words = text.toLowerCase().match(/[а-яёa-z]{4,}/g) || [];
         return new Set(words);
-      }
+      };
       const answerTokens = tokenize(answer);
       const STOP = new Set(["этот","этого","этому","этим","этих","что","как","для","при","или","все","они","его","её","или","над","под","без","про","через","после","перед","между","которые","который","которая","которого"]);
       answerTokens.forEach((w) => { if (STOP.has(w)) answerTokens.delete(w); });
@@ -2052,22 +2106,27 @@ export async function registerRoutes(
         const matTokens = tokenize(m.text);
         let hits = 0;
         answerTokens.forEach((w) => { if (matTokens.has(w)) hits++; });
-        const score = answerTokens.size > 0 ? hits / answerTokens.size : 0;
-        return { ...m, score };
+        const answerOverlap = answerTokens.size > 0 ? hits / answerTokens.size : 0;
+        return { ...m, score: answerOverlap };
       });
 
-      // Keep materials where ≥8% of answer words appear in the material text, or top-1 if none qualify
-      const THRESHOLD = 0.08;
-      let usedMaterials = scoredMaterials.filter((m: any) => m.score >= THRESHOLD);
-      if (usedMaterials.length === 0 && scoredMaterials.length > 0) {
-        // Fallback: top-1 by score
-        const best = scoredMaterials.reduce((a: any, b: any) => a.score >= b.score ? a : b);
-        if (best.score > 0) usedMaterials = [best];
-      }
+      // Preserve the strongest retrieved source even when the model uses
+      // different wording. Additional sources must have meaningful overlap
+      // with the answer and cannot outrank a much better exact match.
+      const bestRetrieval = scoredMaterials[0];
+      const answerRelevant = scoredMaterials.filter((m: any) => m.score >= 0.08);
+      let usedMaterials = Array.from(new Map(
+        [bestRetrieval, ...answerRelevant]
+          .filter(Boolean)
+          .sort((a: any, b: any) => b.retrievalScore - a.retrievalScore)
+          .slice(0, 4)
+          .map((m: any) => [m.materialId, m]),
+      ).values());
 
       const sources = usedMaterials.map((m: any) => ({
         materialId: m.materialId,
         title: m.title,
+        relatedLinks: m.relatedLinks,
       }));
 
       if (aiConfig.loggingEnabled !== false) {

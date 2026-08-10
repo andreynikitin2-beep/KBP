@@ -955,7 +955,7 @@ export default function MaterialView() {
         </Card>
       )}
       <div className="grid gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-8">
+         <div className="lg:col-span-10">
           <Card className="overflow-hidden relative">
             {isViewingOldVersion && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden" aria-hidden="true">
@@ -2354,7 +2354,7 @@ export default function MaterialView() {
           </Card>
         </div>
 
-        <div className="lg:col-span-4">
+         <div className="lg:col-span-2">
           <Card className="sticky top-[92px]">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Полезность</CardTitle>

@@ -260,7 +260,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateMaterialVersion(id: string, data: Partial<schema.InsertMaterialVersion>): Promise<schema.MaterialVersion | undefined> {
-    const payload: Partial<schema.InsertMaterialVersion> & { searchText?: string } = { ...data };
+    const payload: Partial<schema.InsertMaterialVersion> & { searchText?: string | null } = { ...data };
     if (data.contentKind !== undefined || data.contentPage !== undefined || data.contentFile !== undefined) {
       const existing = await this.getMaterialVersion(id);
       if (existing) {
@@ -654,6 +654,7 @@ export class DatabaseStorage implements IStorage {
     contentKind: string;
     contentFile: unknown;
     contentPage: unknown;
+    relatedLinks: unknown;
     visibilityGroupIds: string[];
     rank: number;
   }>> {
@@ -669,6 +670,7 @@ export class DatabaseStorage implements IStorage {
       contentKind: schema.materialVersions.contentKind,
       contentFile: schema.materialVersions.contentFile,
       contentPage: schema.materialVersions.contentPage,
+      relatedLinks: schema.materialVersions.relatedLinks,
       visibilityGroupIds: schema.materialVersions.visibilityGroupIds,
       rank: sql<number>`ts_rank_cd(${tsVector}, ${tsQuery})`,
     })

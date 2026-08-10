@@ -209,7 +209,6 @@ export async function performLdapSync(): Promise<{
     });
 
     await storage.createAdSyncLog({
-      syncedAt: now,
       status: "success",
       usersTotal: ldapUsers.length,
       usersUpdated,
@@ -235,7 +234,6 @@ export async function performLdapSync(): Promise<{
     });
 
     await storage.createAdSyncLog({
-      syncedAt: new Date(),
       status: "error",
       usersTotal: 0,
       usersUpdated: 0,
@@ -284,7 +282,7 @@ function searchLdapUsers(config: LdapConfig, accountName?: string): Promise<Ldap
         ? `(&(objectClass=user)(objectCategory=person)(sAMAccountName=${accountName.replace(/[*()\\\0]/g, "\\$&")}))`
         : "(&(objectClass=user)(objectCategory=person))";
 
-      const searchOpts: ldap.SearchOptions = {
+      const searchOpts = {
         filter: baseFilter,
         scope: "sub",
         attributes: [
@@ -383,7 +381,7 @@ export async function syncSingleLdapUser(accountName: string): Promise<{
         isAvailable: true,
       });
       await storage.createAdSyncLog({
-        syncedAt: now, status: "success",
+        status: "success",
         usersTotal: 1, usersUpdated: 1, usersDeactivated: 0,
         message: `Точечная синхронизация: обновлён аккаунт ${ldapUser.sAMAccountName}`,
       });
@@ -414,7 +412,7 @@ export async function syncSingleLdapUser(accountName: string): Promise<{
         deactivatedAt: null,
       });
       await storage.createAdSyncLog({
-        syncedAt: now, status: "success",
+        status: "success",
         usersTotal: 1, usersUpdated: 0, usersDeactivated: 0,
         message: `Точечная синхронизация: создан аккаунт ${ldapUser.sAMAccountName}`,
       });

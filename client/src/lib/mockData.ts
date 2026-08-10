@@ -107,7 +107,7 @@ export type MaterialVersion = {
   status: Status;
   passport: Passport;
   content: {
-    kind: "file" | "page";
+    kind: "file" | "page" | "html";
     file?: { name: string; type: "pdf" | "docx"; extractedText?: string; dataBase64?: string };
     page?: { html: string };
   };

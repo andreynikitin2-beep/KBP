@@ -6,7 +6,7 @@
 #   ./generate-certs.sh                        # uses defaults
 #   ./generate-certs.sh mycompany.internal      # custom CN
 #
-# Output: certs/cert.pem  certs/key.pem
+# Output: certs/knowledge_ssl.cer  certs/server.key
 # Run once before "docker compose up -d". Re-run to renew.
 
 set -e
@@ -21,15 +21,15 @@ echo "[certs] Generating RSA-4096 self-signed certificate for CN=$CN (valid $DAY
 
 openssl req -x509 \
   -newkey rsa:4096 \
-  -keyout "$CERTS_DIR/key.pem" \
-  -out    "$CERTS_DIR/cert.pem" \
+  -keyout "$CERTS_DIR/server.key" \
+  -out    "$CERTS_DIR/knowledge_ssl.cer" \
   -days   "$DAYS" \
   -nodes \
   -subj   "/CN=$CN/O=KB Portal/OU=IT" \
   -addext "subjectAltName=DNS:$CN,DNS:localhost,IP:127.0.0.1"
 
 echo "[certs] Done."
-echo "  cert: $CERTS_DIR/cert.pem"
-echo "  key:  $CERTS_DIR/key.pem"
+echo "  cert: $CERTS_DIR/knowledge_ssl.cer"
+echo "  key:  $CERTS_DIR/server.key"
 echo ""
 echo "Run 'docker compose up -d' to start the portal."
