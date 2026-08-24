@@ -1,0 +1,1 @@
+- [AI source attribution](ai-source-attribution.md) — показывать только материалы, подтверждённые текущим контекстом и ответом AI.

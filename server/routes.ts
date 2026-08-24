@@ -2028,7 +2028,7 @@ export async function registerRoutes(
         )
         .join("\n\n---\n\n");
 
-      const systemPrompt = `Ты — AI-помощник внутреннего портала знаний «Центр знаний ЦОС». Отвечай на вопросы сотрудников полно и развёрнуто, опираясь СТРОГО на предоставленные фрагменты из базы знаний. Если ответа нет в предоставленных материалах — честно сообщи об этом. Не придумывай информацию. Отвечай на русском языке. Не перечисляй источники в конце ответа — они будут добавлены автоматически.\n\nПравила выбора источника:\n- В первую очередь используй материал, который точнее всего отвечает на вопрос, а не просто содержит отдельные похожие слова.\n- Если один источник содержит конкретную процедуру, название, номер шага или формулировку из вопроса, считай его основным источником.\n- Не подменяй точный источник общим материалом. Если источники противоречат друг другу, укажи это.\n\nДоступные материалы из базы знаний:\n---\n${contextBlocks}\n---`;
+      const systemPrompt = `Ты — AI-помощник внутреннего портала знаний «Центр знаний ЦОС». Отвечай на вопросы сотрудников полно и развёрнуто, опираясь СТРОГО на предоставленные фрагменты из базы знаний. Если ответа нет в предоставленных материалах — честно сообщи об этом. Не придумывай информацию. Отвечай на русском языке. Не перечисляй источники в конце ответа — они будут добавлены автоматически.\n\nПравила выбора источника:\n- В первую очередь используй материал, который точнее всего отвечает на вопрос, а не просто содержит отдельные похожие слова.\n- Если один источник содержит конкретную процедуру, название, номер шага или формулировку из вопроса, считай его основным источником.\n- Не подменяй точный источник общим материалом. Если источники противоречат друг другу, укажи это.\n- В конце ответа добавь служебные маркеры только тех материалов, по которым ты действительно составил ответ, в формате [SOURCE:точный_ID_материала].\n- ID можно брать только из предоставленного контекста. Не придумывай ID и не указывай материалы, которые не использовал.\n- Если ответа в материалах нет, напиши об этом и не добавляй SOURCE-маркеры.\n\nДоступные материалы из базы знаний:\n---\n${contextBlocks}\n---`;
 
       const chatHistory = (history as any[]).map((h) => ({
         role: h.role,
@@ -2089,10 +2089,22 @@ export async function registerRoutes(
             .json({ error: err?.error?.message || "Ошибка LLM" });
         }
         const data: any = await r.json();
-        answer = data.choices?.[0]?.message?.content || "";
+          answer = data.choices?.[0]?.message?.content || "";
       }
 
-      // Determine which materials were actually used by lexical overlap with the answer.
+      // Accept source IDs only when the model explicitly cites IDs that were
+      // present in the retrieved context. This prevents a generic top result
+      // from being shown as the source for an answer based on another document.
+      const citedIds = Array.from(new Set(
+        Array.from(answer.matchAll(/\[SOURCE:([^\]\s]+)\]/gi), (match) => match[1])
+          .filter((id) => contextMaterials.some((m: any) => m.materialId === id)),
+      ));
+      answer = answer.replace(/\s*\[SOURCE:[^\]]+\]/gi, "").trim();
+
+      const citedMaterials = contextMaterials.filter((m: any) => citedIds.includes(m.materialId));
+
+      // Fallback only when the model omitted the marker: retain materials with
+      // meaningful answer overlap, but never force the first retrieved result.
       // Tokenise answer into significant lowercase words (≥4 chars, Cyrillic/Latin).
       const tokenize = (text: string): Set<string> => {
         const words = text.toLowerCase().match(/[а-яёa-z]{4,}/g) || [];
@@ -2110,18 +2122,12 @@ export async function registerRoutes(
         return { ...m, score: answerOverlap };
       });
 
-      // Preserve the strongest retrieved source even when the model uses
-      // different wording. Additional sources must have meaningful overlap
-      // with the answer and cannot outrank a much better exact match.
-      const bestRetrieval = scoredMaterials[0];
-      const answerRelevant = scoredMaterials.filter((m: any) => m.score >= 0.08);
-      let usedMaterials = Array.from(new Map(
-        [bestRetrieval, ...answerRelevant]
-          .filter(Boolean)
-          .sort((a: any, b: any) => b.retrievalScore - a.retrievalScore)
-          .slice(0, 4)
-          .map((m: any) => [m.materialId, m]),
-      ).values());
+      const answerRelevant = scoredMaterials
+        .filter((m: any) => m.score >= 0.12)
+        .sort((a: any, b: any) => b.score - a.score || b.retrievalScore - a.retrievalScore);
+      const usedMaterials = citedMaterials.length > 0
+        ? citedMaterials
+        : answerRelevant.slice(0, 4);
 
       const sources = usedMaterials.map((m: any) => ({
         materialId: m.materialId,
