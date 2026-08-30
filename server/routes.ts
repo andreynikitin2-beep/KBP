@@ -451,17 +451,37 @@ export async function registerRoutes(
       const version = await storage.getMaterialVersion(req.params.id);
       if (!version) return res.status(404).json({ error: "File not found" });
 
-      // Try filesystem first, fall back to legacy base64 in DB
+      // Try filesystem first, then support both legacy inline storage formats.
+      // Older records may have kept the base64 payload in contentFileData or
+      // inside contentFile before the filesystem migration.
       let buffer = fileStorage.readContentFile(req.params.id);
-      if (!buffer && (version as any).contentFileData) {
-        buffer = Buffer.from((version as any).contentFileData, "base64");
-        // Lazy-migrate: write to FS and clear DB entry
+      const contentFile = (version.contentFile as any) || {};
+      const legacyBase64Candidates = [
+        (version as any).contentFileData,
+        contentFile.dataBase64,
+        contentFile.base64,
+      ];
+      const legacyBase64 = legacyBase64Candidates.find(
+        (value) => typeof value === "string" && value.length > 0,
+      );
+
+      if (!buffer && legacyBase64) {
+        buffer = Buffer.from(legacyBase64, "base64");
+        // Lazy-migrate: write to FS and remove all inline payload copies.
         fileStorage.writeContentFile(req.params.id, buffer);
-        await storage.updateMaterialVersion(req.params.id, { contentFileData: null } as any).catch(() => {});
+        const {
+          dataBase64: _dataBase64,
+          base64: _base64,
+          ...fileMetadata
+        } = contentFile;
+        await storage.updateMaterialVersion(req.params.id, {
+          contentFileData: null,
+          contentFile: fileMetadata,
+        } as any).catch(() => {});
       }
       if (!buffer) return res.status(404).json({ error: "File not found" });
 
-      const fileInfo = version.contentFile as any;
+      const fileInfo = contentFile;
       const mimeType = fileInfo?.type === "pdf"
         ? "application/pdf"
         : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

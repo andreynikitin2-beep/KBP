@@ -1,1 +1,2 @@
 - [AI source attribution](ai-source-attribution.md) — показывать только материалы, подтверждённые текущим контекстом и ответом AI.
+- [File storage migration](file-storage-migration.md) — при миграции проверять legacy-данные и восстанавливать путь до приёма загрузок.

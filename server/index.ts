@@ -68,7 +68,7 @@ app.use((req, res, next) => {
 
   // Restore file storage path saved via admin UI (skipped when FILE_STORAGE_PATH env var is set)
   if (!process.env.FILE_STORAGE_PATH) {
-    storage.getAiSettings().then((s) => {
+    await storage.getAiSettings().then((s) => {
       if (s?.fileStoragePath) setStorageDir(s.fileStoragePath);
     }).catch(() => {});
   }
