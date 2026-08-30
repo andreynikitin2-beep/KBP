@@ -22,6 +22,28 @@ interface LdapUserEntry {
   legalEntity: string;
 }
 
+async function ensureBaseVisibilityGroupMember(userId: string): Promise<void> {
+  const groups = await storage.getVisibilityGroups();
+  const baseGroup = groups.find((group) => group.id === "g-base")
+    ?? groups.find((group) => group.isSystem && group.title.trim().toLocaleLowerCase() === "базовая")
+    ?? groups.find((group) => group.title.trim().toLocaleLowerCase() === "базовая");
+
+  if (!baseGroup) {
+    await storage.createVisibilityGroup({
+      title: "Базовая",
+      isSystem: true,
+      memberIds: [userId],
+    });
+    return;
+  }
+
+  if (!baseGroup.memberIds.includes(userId)) {
+    await storage.updateVisibilityGroup(baseGroup.id, {
+      memberIds: [...baseGroup.memberIds, userId],
+    });
+  }
+}
+
 function getAttr(entry: any, attrName: string): string {
   if (!attrName) return "";
   try {
@@ -149,6 +171,7 @@ export async function performLdapSync(): Promise<{
           deactivatedAt: null,
           isAvailable: true,
         });
+        await ensureBaseVisibilityGroupMember(existing.id);
         usersUpdated++;
       } else {
         const username = ldapUser.sAMAccountName;
@@ -165,9 +188,10 @@ export async function performLdapSync(): Promise<{
             deactivatedAt: null,
             isAvailable: true,
           });
+          await ensureBaseVisibilityGroupMember(existingByUsername.id);
           usersUpdated++;
         } else {
-          await storage.createUser({
+          const createdUser = await storage.createUser({
             username: ldapUser.sAMAccountName,
             password: "",
             displayName: ldapUser.displayName || ldapUser.sAMAccountName,
@@ -181,6 +205,7 @@ export async function performLdapSync(): Promise<{
             lastSyncAt: now,
             deactivatedAt: null,
           });
+          await ensureBaseVisibilityGroupMember(createdUser.id);
           usersCreated++;
         }
       }
@@ -380,6 +405,7 @@ export async function syncSingleLdapUser(accountName: string): Promise<{
         deactivatedAt: null,
         isAvailable: true,
       });
+      await ensureBaseVisibilityGroupMember(target.id);
       await storage.createAdSyncLog({
         status: "success",
         usersTotal: 1, usersUpdated: 1, usersDeactivated: 0,
@@ -397,7 +423,7 @@ export async function syncSingleLdapUser(accountName: string): Promise<{
         },
       };
     } else {
-      await storage.createUser({
+      const createdUser = await storage.createUser({
         username: ldapUser.sAMAccountName,
         password: "",
         displayName: ldapUser.displayName || ldapUser.sAMAccountName,
@@ -411,6 +437,7 @@ export async function syncSingleLdapUser(accountName: string): Promise<{
         lastSyncAt: now,
         deactivatedAt: null,
       });
+      await ensureBaseVisibilityGroupMember(createdUser.id);
       await storage.createAdSyncLog({
         status: "success",
         usersTotal: 1, usersUpdated: 0, usersDeactivated: 0,
