@@ -766,7 +766,7 @@ export const api = {
   async generateHtml(data: {
     text?: string;
     fileBase64?: string;
-    fileType?: "pdf" | "docx";
+    fileType?: "pdf" | "doc" | "docx";
     currentHtml?: string;
     instruction?: string;
   }): Promise<{ html: string; warning?: string }> {

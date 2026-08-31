@@ -108,7 +108,7 @@ export type MaterialVersion = {
   passport: Passport;
   content: {
     kind: "file" | "page" | "html";
-    file?: { name: string; type: "pdf" | "docx"; extractedText?: string; dataBase64?: string };
+    file?: { name: string; type: "pdf" | "doc" | "docx"; extractedText?: string; dataBase64?: string };
     page?: { html: string };
   };
   additionalFiles?: AdditionalFileInfo[];

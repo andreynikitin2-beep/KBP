@@ -245,7 +245,7 @@ export default function MaterialView() {
   const [editPageHtml, setEditPageHtml] = useState("");
   const [editRawHtml, setEditRawHtml] = useState("");
   const [editFileName, setEditFileName] = useState("");
-  const [editFileType, setEditFileType] = useState<"pdf" | "docx">("pdf");
+  const [editFileType, setEditFileType] = useState<"pdf" | "doc" | "docx">("pdf");
   const [editExtractedText, setEditExtractedText] = useState("");
   const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null);
   const [mainFileUploaded, setMainFileUploaded] = useState(false);
@@ -259,7 +259,7 @@ export default function MaterialView() {
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.split(".").pop()?.toLowerCase();
-    const detectedType = ext === "docx" ? "docx" : "pdf";
+    const detectedType = ext === "docx" ? "docx" : ext === "doc" ? "doc" : "pdf";
     setEditFileType(detectedType);
     setEditFileName(file.name);
     setEditSelectedFile(file);
@@ -1464,7 +1464,7 @@ export default function MaterialView() {
                           onClick={() => setEditContentKind("file")}
                         >
                           <Upload className="mr-2 h-4 w-4" />
-                          Файл (PDF/DOCX)
+                          Файл (PDF/DOC/DOCX)
                         </Button>
                         <Button
                           data-testid="button-edit-kind-page"
@@ -1497,7 +1497,7 @@ export default function MaterialView() {
                           <input
                             ref={editFileInputRef}
                             type="file"
-                            accept=".pdf,.docx"
+                            accept=".pdf,.doc,.docx"
                             className="hidden"
                             onChange={handleEditFileSelect}
                           />
@@ -1532,16 +1532,17 @@ export default function MaterialView() {
                               onClick={() => editFileInputRef.current?.click()}
                             >
                               <Upload className="h-5 w-5 text-muted-foreground" />
-                              <span className="text-sm text-muted-foreground">Выбрать файл PDF или DOCX…</span>
+                              <span className="text-sm text-muted-foreground">Выбрать файл PDF, DOC или DOCX…</span>
                             </Button>
                           )}
                           <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <div>
                               <Label>Тип</Label>
-                              <Select value={editFileType} onValueChange={v => setEditFileType(v as "pdf" | "docx")}>
+                                <Select value={editFileType} onValueChange={v => setEditFileType(v as "pdf" | "doc" | "docx")}>
                                 <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="pdf">PDF</SelectItem>
+                                  <SelectItem value="doc">DOC</SelectItem>
                                   <SelectItem value="docx">DOCX</SelectItem>
                                 </SelectContent>
                               </Select>

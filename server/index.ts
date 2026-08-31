@@ -63,7 +63,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  backfillSearchText().catch((e) => console.error("[search] backfill error:", e));
   ensureFeedbackTemplates().catch((e) => console.error("[email] feedback templates error:", e));
 
   // Restore file storage path saved via admin UI (skipped when FILE_STORAGE_PATH env var is set)
@@ -72,6 +71,8 @@ app.use((req, res, next) => {
       if (s?.fileStoragePath) setStorageDir(s.fileStoragePath);
     }).catch(() => {});
   }
+
+  await backfillSearchText().catch((e) => console.error("[search] backfill error:", e));
 
   await registerRoutes(httpServer, app);
 

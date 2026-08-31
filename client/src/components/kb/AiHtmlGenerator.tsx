@@ -181,8 +181,8 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
   const handleFilePick = (f: File | undefined | null) => {
     if (!f) return;
     const ext = f.name.split(".").pop()?.toLowerCase();
-    if (ext !== "pdf" && ext !== "docx") {
-      toast({ title: "Неподдерживаемый формат", description: "Загрузите PDF или DOCX", variant: "destructive" });
+    if (ext !== "pdf" && ext !== "doc" && ext !== "docx") {
+      toast({ title: "Неподдерживаемый формат", description: "Загрузите PDF, DOC или DOCX", variant: "destructive" });
       return;
     }
     if (f.size > MAX_FILE_MB * 1024 * 1024) {
@@ -203,9 +203,9 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
     setGenerating(true);
     setChecks(null);
     try {
-      let payload: { text?: string; fileBase64?: string; fileType?: "pdf" | "docx" };
+      let payload: { text?: string; fileBase64?: string; fileType?: "pdf" | "doc" | "docx" };
       if (file) {
-        const ext = file.name.split(".").pop()?.toLowerCase() as "pdf" | "docx";
+        const ext = file.name.split(".").pop()?.toLowerCase() as "pdf" | "doc" | "docx";
         const b64 = await fileToBase64(file);
         payload = { fileBase64: b64, fileType: ext };
       } else {
@@ -474,12 +474,12 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
             <Card className="p-5">
               <div className="mb-3 flex items-center gap-2">
                 <Upload className="h-4 w-4 text-muted-foreground" />
-                <div className="text-sm font-semibold">Загрузите инструкцию (PDF или DOCX)</div>
+                <div className="text-sm font-semibold">Загрузите инструкцию (PDF, DOC или DOCX)</div>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.docx"
+                accept=".pdf,.doc,.docx"
                 className="hidden"
                 onChange={(e) => handleFilePick(e.target.files?.[0])}
               />
@@ -506,7 +506,7 @@ export function AiHtmlGenerator({ onPublish, onClose }: AiHtmlGeneratorProps) {
                 ) : (
                   <>
                     <div className="text-sm text-muted-foreground">Перетащите файл сюда или нажмите для выбора</div>
-                    <div className="text-xs text-muted-foreground">PDF или DOCX, до {MAX_FILE_MB} МБ</div>
+                    <div className="text-xs text-muted-foreground">PDF, DOC или DOCX, до {MAX_FILE_MB} МБ</div>
                   </>
                 )}
               </div>

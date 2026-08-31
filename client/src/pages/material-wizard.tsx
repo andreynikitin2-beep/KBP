@@ -59,7 +59,7 @@ export default function MaterialWizard() {
   const [newHireVisWarning, setNewHireVisWarning] = useState(false);
   const [tags, setTags] = useState("hr, отпуск");
   const [contentKind, setContentKind] = useState<"file" | "page" | "html">("file");
-  const [fileType, setFileType] = useState<"pdf" | "docx">("pdf");
+  const [fileType, setFileType] = useState<"pdf" | "doc" | "docx">("pdf");
   const [fileName, setFileName] = useState("");
   const [extractedText, setExtractedText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -84,7 +84,7 @@ export default function MaterialWizard() {
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.split(".").pop()?.toLowerCase();
-    const detectedType = ext === "docx" ? "docx" : "pdf";
+    const detectedType = ext === "docx" ? "docx" : ext === "doc" ? "doc" : "pdf";
     setFileType(detectedType);
     setFileName(file.name);
 
@@ -368,7 +368,7 @@ export default function MaterialWizard() {
                       onClick={() => setContentKind("file")}
                     >
                       <Upload className="mr-2 h-4 w-4" />
-                      Файл (PDF/DOCX)
+                       Файл (PDF/DOC/DOCX)
                     </Button>
                     <Button
                       data-testid="button-kind-page"
@@ -401,7 +401,7 @@ export default function MaterialWizard() {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf,.docx"
+                         accept=".pdf,.doc,.docx"
                         className="hidden"
                         onChange={handleFileSelect}
                       />
@@ -425,7 +425,7 @@ export default function MaterialWizard() {
                           onClick={() => fileInputRef.current?.click()}
                         >
                           <Upload className="h-5 w-5 text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground">Выбрать файл PDF или DOCX…</span>
+                           <span className="text-sm text-muted-foreground">Выбрать файл PDF, DOC или DOCX…</span>
                         </Button>
                       )}
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -437,6 +437,7 @@ export default function MaterialWizard() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="pdf">PDF</SelectItem>
+                              <SelectItem value="doc">DOC</SelectItem>
                               <SelectItem value="docx">DOCX</SelectItem>
                             </SelectContent>
                           </Select>

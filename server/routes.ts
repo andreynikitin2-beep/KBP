@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 import { sanitizeHtml } from "@shared/sanitize";
 import * as fileStorage from "./fileStorage";
+import { extractDocumentText } from "./documentText";
 
 function encryptPortalSettings(json: string, password: string): Buffer {
   const salt = crypto.randomBytes(32);
@@ -166,15 +167,24 @@ function buildChatEndpoint(baseUrl?: string | null): string {
   return `${base}/chat/completions`;
 }
 
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  const { PDFParse } = await import("pdf-parse");
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
-  try {
-    const result = await parser.getText();
-    return result.text || "";
-  } finally {
-    await parser.destroy().catch(() => {});
-  }
+function contextExcerpt(text: string, query: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+
+  const tokens = Array.from(new Set(
+    query.toLowerCase().match(/[а-яёa-z0-9]{3,}/g) || [],
+  ));
+  const lowerText = text.toLowerCase();
+  const positions = tokens
+    .map((token) => lowerText.indexOf(token))
+    .filter((position) => position >= 0);
+
+  // Keep the beginning when the query has no direct substring hit. Otherwise
+  // center the excerpt near the first matching term so later PDF pages are
+  // available to the model as well.
+  const firstHit = positions.length ? Math.min(...positions) : 0;
+  const start = Math.max(0, Math.min(firstHit - 800, text.length - maxChars));
+  const excerpt = text.slice(start, start + maxChars);
+  return `${start > 0 ? "… " : ""}${excerpt}${start + maxChars < text.length ? " …" : ""}`;
 }
 
 export async function registerRoutes(
@@ -539,13 +549,11 @@ export async function registerRoutes(
         const version = await storage.getMaterialVersion(id);
         const existingFile = (version?.contentFile as any) || {};
         const updatedFile = { ...existingFile, ...(entry.name ? { name: entry.name } : {}), ...(entry.fileType ? { type: entry.fileType } : {}) };
-        if (entry.fileType === "pdf") {
-          try {
-            const extractedText = await extractPdfText(full);
-            if (extractedText.trim()) updatedFile.extractedText = extractedText;
-          } catch (error) {
-            console.warn("[file-upload] PDF text extraction failed:", error);
-          }
+        try {
+          const extractedText = await extractDocumentText(full, entry.fileType, entry.name);
+          if (extractedText) updatedFile.extractedText = extractedText;
+        } catch (error) {
+          console.warn(`[file-upload] ${entry.fileType || "document"} text extraction failed:`, error);
         }
         await storage.updateMaterialVersion(id, { contentFile: updatedFile } as any);
         _chunkStore.delete(id);
@@ -571,13 +579,11 @@ export async function registerRoutes(
       const type = typeof req.query.type === "string" ? req.query.type : undefined;
       const existingFile = (version.contentFile as any) || {};
       const updatedFile = { ...existingFile, ...(name ? { name } : {}), ...(type ? { type } : {}) };
-      if (type === "pdf") {
-        try {
-          const extractedText = await extractPdfText(buffer);
-          if (extractedText.trim()) updatedFile.extractedText = extractedText;
-        } catch (error) {
-          console.warn("[file-upload] PDF text extraction failed:", error);
-        }
+      try {
+        const extractedText = await extractDocumentText(buffer, type, name);
+        if (extractedText) updatedFile.extractedText = extractedText;
+      } catch (error) {
+        console.warn(`[file-upload] ${type || "document"} text extraction failed:`, error);
       }
       await storage.updateMaterialVersion(req.params.id, { contentFile: updatedFile } as any);
       res.json({ ok: true });
@@ -1714,7 +1720,7 @@ export async function registerRoutes(
       const { text, fileBase64, fileType, currentHtml, instruction } = req.body as {
         text?: string;
         fileBase64?: string;
-        fileType?: "pdf" | "docx";
+        fileType?: "pdf" | "doc" | "docx";
         currentHtml?: string;
         instruction?: string;
       };
@@ -1733,20 +1739,9 @@ export async function registerRoutes(
         if (buffer.length > 20 * 1024 * 1024) {
           return res.status(400).json({ error: "Файл превышает 20 МБ" });
         }
-        if (fileType === "docx") {
-          const mammoth = (await import("mammoth")).default;
-          const result = await mammoth.extractRawText({ buffer });
-          sourceText = result.value || "";
-        } else if (fileType === "pdf") {
-          const { PDFParse } = await import("pdf-parse");
-          const parser = new PDFParse({ data: new Uint8Array(buffer) });
-          try {
-            const result = await parser.getText();
-            sourceText = result.text || "";
-          } finally {
-            await parser.destroy().catch(() => {});
-          }
-          if (sourceText.trim().length < 30) {
+        if (fileType === "doc" || fileType === "docx" || fileType === "pdf") {
+          sourceText = await extractDocumentText(buffer, fileType);
+          if (fileType === "pdf" && sourceText.trim().length < 30) {
             warning = "Из PDF извлечено мало текста — возможно, это скан. Распознавание изображений (OCR) не выполняется.";
           }
         } else {
@@ -1993,7 +1988,7 @@ export async function registerRoutes(
               .replace(/\s+/g, " ")
               .trim();
           } else if (v.contentKind === "file" && v.contentFile) {
-            text = ((v.contentFile as any).extractedText || "")
+            text = ((v as any).searchText || (v.contentFile as any).extractedText || "")
               .replace(/\s+/g, " ")
               .trim();
           }
@@ -2040,11 +2035,11 @@ export async function registerRoutes(
         });
       }
 
-      const MAX_CHARS = 3000;
+      const MAX_CHARS = 6000;
       const contextBlocks = contextMaterials
         .map(
           (m: any) =>
-            `[ID: ${m.materialId}] Материал: "${m.title}"\n${m.text.slice(0, MAX_CHARS)}`,
+            `[ID: ${m.materialId}] Материал: "${m.title}"\n${contextExcerpt(m.text, message, MAX_CHARS)}`,
         )
         .join("\n\n---\n\n");
 

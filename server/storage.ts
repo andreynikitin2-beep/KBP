@@ -1,5 +1,7 @@
 import { eq, and, desc, gte, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
+import * as fileStorage from "./fileStorage";
+import { extractDocumentText, extractHtmlText } from "./documentText";
 import * as schema from "@shared/schema";
 
 export interface IStorage {
@@ -151,12 +153,7 @@ function extractTextForSearch(data: {
   contentFile?: unknown;
 }): string {
   if ((data.contentKind === "page" || data.contentKind === "html") && data.contentPage) {
-    return ((data.contentPage as any).html || "")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/&[a-z]+;/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 200000);
+    return extractHtmlText(((data.contentPage as any).html || ""));
   }
   if (data.contentKind === "file" && data.contentFile) {
     return ((data.contentFile as any).extractedText || "")
@@ -670,6 +667,7 @@ export class DatabaseStorage implements IStorage {
       contentKind: schema.materialVersions.contentKind,
       contentFile: schema.materialVersions.contentFile,
       contentPage: schema.materialVersions.contentPage,
+      searchText: schema.materialVersions.searchText,
       relatedLinks: schema.materialVersions.relatedLinks,
       visibilityGroupIds: schema.materialVersions.visibilityGroupIds,
       rank: sql<number>`ts_rank_cd(${tsVector}, ${tsQuery})`,
@@ -765,6 +763,7 @@ export async function backfillSearchText(): Promise<void> {
     contentKind: schema.materialVersions.contentKind,
     contentPage: schema.materialVersions.contentPage,
     contentFile: schema.materialVersions.contentFile,
+    searchText: schema.materialVersions.searchText,
   }).from(schema.materialVersions).where(
     or(
       isNull(schema.materialVersions.searchText),
@@ -776,10 +775,33 @@ export async function backfillSearchText(): Promise<void> {
 
   let updated = 0;
   for (const row of rows) {
-    const searchText = extractTextForSearch(row);
+    let searchText = extractTextForSearch(row);
+    let contentFile = row.contentFile as any;
+
+    // Files uploaded before server-side extraction may have no indexed text.
+    // Read the persisted binary once and populate the same metadata used by
+    // both full-text search and the AI context.
+    if (!searchText && row.contentKind === "file") {
+      const fileInfo = contentFile || {};
+      const buffer = fileStorage.readContentFile(row.id);
+      if (buffer) {
+        try {
+          searchText = await extractDocumentText(buffer, fileInfo.type, fileInfo.name);
+          if (searchText) {
+            contentFile = { ...fileInfo, extractedText: searchText };
+          }
+        } catch (error) {
+          console.warn(`[search] document extraction failed for ${row.id}:`, error);
+        }
+      }
+    }
+
     if (!searchText) continue; // skip if content genuinely empty
     await db.update(schema.materialVersions)
-      .set({ searchText })
+      .set({
+        searchText,
+        ...(contentFile !== row.contentFile ? { contentFile } : {}),
+      })
       .where(eq(schema.materialVersions.id, row.id));
     updated++;
   }
