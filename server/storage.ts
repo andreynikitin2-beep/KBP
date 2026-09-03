@@ -651,6 +651,7 @@ export class DatabaseStorage implements IStorage {
     contentKind: string;
     contentFile: unknown;
     contentPage: unknown;
+    searchText: string | null;
     relatedLinks: unknown;
     visibilityGroupIds: string[];
     rank: number;

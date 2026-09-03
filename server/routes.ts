@@ -1958,6 +1958,20 @@ export async function registerRoutes(
       if (!aiConfig.apiKey)
         return res.status(400).json({ error: "API-ключ не настроен" });
 
+      let activeSessionId = typeof incomingSessionId === "string" && incomingSessionId
+        ? incomingSessionId
+        : undefined;
+      if (activeSessionId) {
+        const existing = await storage.getAiChatSession(activeSessionId);
+        if (!existing || existing.userId !== userId) activeSessionId = undefined;
+      }
+      if (!activeSessionId) {
+        const newSession = await storage.createAiChatSession(userId, message.slice(0, 120));
+        activeSessionId = newSession.id;
+      } else {
+        await storage.touchAiChatSession(activeSessionId);
+      }
+
       const [allVersions, groups] = await Promise.all([
         storage.searchPublishedMaterialsByQuery(message),
         storage.getVisibilityGroups(),
@@ -1980,15 +1994,18 @@ export async function registerRoutes(
 
       const materialsWithText = accessible
         .map((v: any) => {
-          let text = "";
-          if ((v.contentKind === "page" || v.contentKind === "html") && v.contentPage) {
+          // searchText is the canonical server-side index for every material
+          // type. The structured content fields are only a compatibility
+          // fallback for records created before indexing was introduced.
+          let text = typeof v.searchText === "string" ? v.searchText : "";
+          if (!text && (v.contentKind === "page" || v.contentKind === "html") && v.contentPage) {
             text = ((v.contentPage as any).html || "")
               .replace(/<[^>]*>/g, " ")
               .replace(/&[a-z]+;/gi, " ")
               .replace(/\s+/g, " ")
               .trim();
-          } else if (v.contentKind === "file" && v.contentFile) {
-            text = ((v as any).searchText || (v.contentFile as any).extractedText || "")
+          } else if (!text && v.contentKind === "file") {
+            text = ((v.contentFile as any)?.extractedText || "")
               .replace(/\s+/g, " ")
               .trim();
           }
@@ -2028,10 +2045,23 @@ export async function registerRoutes(
       const contextMaterials = sorted.slice(0, 8);
 
       if (contextMaterials.length === 0) {
+        const answer = "К сожалению, в базе знаний не найдено материалов, доступных вам и релевантных вашему вопросу.";
+        await Promise.all([
+          storage.createAiChatMessage({ sessionId: activeSessionId, role: "user", content: message, sources: null }),
+          storage.createAiChatMessage({ sessionId: activeSessionId, role: "assistant", content: answer, sources: [] }),
+        ]);
+        if (aiConfig.loggingEnabled !== false) {
+          storage.createAiQueryLog({
+            userId,
+            question: message,
+            sourcesUsed: [],
+            tokensUsed: null,
+          }).catch(() => {});
+        }
         return res.json({
-          answer:
-            "К сожалению, в базе знаний не найдено материалов, доступных вам и релевантных вашему вопросу.",
+          answer,
           sources: [],
+          sessionId: activeSessionId,
         });
       }
 
@@ -2157,18 +2187,6 @@ export async function registerRoutes(
           sourcesUsed: sources.map((s: any) => s.materialId),
           tokensUsed: null,
         }).catch(() => {});
-      }
-
-      let activeSessionId = incomingSessionId as string | undefined;
-      if (activeSessionId) {
-        const existing = await storage.getAiChatSession(activeSessionId);
-        if (!existing || existing.userId !== userId) activeSessionId = undefined;
-      }
-      if (!activeSessionId) {
-        const newSession = await storage.createAiChatSession(userId, message.slice(0, 120));
-        activeSessionId = newSession.id;
-      } else {
-        storage.touchAiChatSession(activeSessionId).catch(() => {});
       }
 
       await Promise.all([
