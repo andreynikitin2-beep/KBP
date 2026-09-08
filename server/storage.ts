@@ -762,6 +762,7 @@ export async function backfillSearchText(): Promise<void> {
   const rows = await db.select({
     id: schema.materialVersions.id,
     contentKind: schema.materialVersions.contentKind,
+    materialId: schema.materialVersions.materialId,
     contentPage: schema.materialVersions.contentPage,
     contentFile: schema.materialVersions.contentFile,
     searchText: schema.materialVersions.searchText,
@@ -784,9 +785,45 @@ export async function backfillSearchText(): Promise<void> {
     // both full-text search and the AI context.
     if (!searchText && row.contentKind === "file") {
       const fileInfo = contentFile || {};
-      const buffer = fileStorage.readContentFile(row.id);
+      let buffer = fileStorage.readContentFile(row.id);
+      let recoveredFromVersionId: string | undefined;
+
+      // A version can be created before its upload finishes (or after a
+      // transient upload failure). Reuse an earlier attachment only when it
+      // belongs to the same material and has the same filename; this avoids
+      // mixing unrelated documents while repairing an incomplete version.
+      if (!buffer && fileInfo.name) {
+        const previousVersions = await db.select({
+          id: schema.materialVersions.id,
+          contentFile: schema.materialVersions.contentFile,
+          createdAt: schema.materialVersions.createdAt,
+        })
+          .from(schema.materialVersions)
+          .where(and(
+            eq(schema.materialVersions.materialId, row.materialId),
+            eq(schema.materialVersions.contentKind, "file"),
+            sql`${schema.materialVersions.id} <> ${row.id}`,
+          ))
+          .orderBy(desc(schema.materialVersions.createdAt));
+
+        for (const previous of previousVersions) {
+          const previousFile = (previous.contentFile as any) || {};
+          if (previousFile.name !== fileInfo.name) continue;
+          const previousBuffer = fileStorage.readContentFile(previous.id);
+          if (previousBuffer) {
+            buffer = previousBuffer;
+            recoveredFromVersionId = previous.id;
+            break;
+          }
+        }
+      }
+
       if (buffer) {
         try {
+          if (recoveredFromVersionId) {
+            fileStorage.writeContentFile(row.id, buffer);
+            console.log(`[search] Recovered attachment for ${row.id} from ${recoveredFromVersionId}`);
+          }
           searchText = await extractDocumentText(buffer, fileInfo.type, fileInfo.name);
           if (searchText) {
             contentFile = { ...fileInfo, extractedText: searchText };

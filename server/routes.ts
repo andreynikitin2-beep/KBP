@@ -2253,6 +2253,22 @@ export async function registerRoutes(
             }
           } else {
             fileStorage.writeContentFile(meta.versionId, full);
+            const version = await storage.getMaterialVersion(meta.versionId);
+            const existingFile = (version?.contentFile as any) || {};
+            const updatedFile = {
+              ...existingFile,
+              ...(meta.fileName ? { name: meta.fileName } : {}),
+              ...(meta.fileType ? { type: meta.fileType } : {}),
+            };
+            try {
+              const extractedText = await extractDocumentText(full, meta.fileType, meta.fileName);
+              if (extractedText) updatedFile.extractedText = extractedText;
+            } catch (error) {
+              console.warn(`[ws-upload] ${meta.fileType || "document"} text extraction failed:`, error);
+            }
+            if (version) {
+              await storage.updateMaterialVersion(meta.versionId, { contentFile: updatedFile } as any);
+            }
           }
           ws.send(JSON.stringify({ type: "done" }));
         } catch (e) { ws.send(JSON.stringify({ type: "error", message: String(e) })); }
