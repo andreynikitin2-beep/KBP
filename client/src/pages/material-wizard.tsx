@@ -20,7 +20,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
 import type { CatalogNode, Criticality, MaterialVersion } from "@/lib/mockData";
-import { getSectionPath, validatePassport } from "@/lib/kbLogic";
+import { getSectionPath, validatePassport, withinScope } from "@/lib/kbLogic";
 import { api } from "@/lib/api";
 
 function nextVersionLike(prev?: string) {
@@ -105,22 +105,22 @@ export default function MaterialWizard() {
   }
 
   const isAdmin = me.roles.includes("Администратор");
+  const canCreateMaterial = me.roles.some((role) =>
+    role === "Автор" || role === "Владелец" || role === "Заместитель владельца" || role === "Администратор",
+  );
 
   const sectionOptions = useMemo(() => {
-    const matsBySubsection = new Map<string, number>();
-    visibleMaterials.forEach((m) => {
-      matsBySubsection.set(m.passport.sectionId, (matsBySubsection.get(m.passport.sectionId) || 0) + 1);
-    });
     const subs = catalogNodes.filter((n) => {
-      if (n.type !== "subsection") return false;
+      if (n.type !== "subsection" || !canCreateMaterial || !withinScope(me, n)) return false;
       if (isAdmin) return true;
-      return (matsBySubsection.get(n.id) || 0) > 0;
+      const parent = n.parentId ? catalogNodes.find((node) => node.id === n.parentId) : undefined;
+      return !parent || withinScope(me, parent);
     });
     return subs.map((s) => {
       const path = getSectionPath(catalogNodes, s.id).map((x) => x.title).join(" / ");
       return { id: s.id, label: path };
     });
-  }, [catalogNodes, visibleMaterials, isAdmin]);
+  }, [catalogNodes, canCreateMaterial, isAdmin, me]);
 
   const periodRow = useMemo(() => policy.reviewPeriods.find((p) => p.criticality === criticality), [policy, criticality]);
 

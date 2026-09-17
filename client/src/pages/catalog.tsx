@@ -174,6 +174,12 @@ export default function Catalog() {
     return isAdmin || isSectionOwner(section);
   };
 
+  const canAddSubsection = (section: CatalogNode) => {
+    return isAdmin
+      || isSectionOwner(section)
+      || ((isAuthor || isOwner) && allowed.has(section.id));
+  };
+
   return (
     <AppShell
       title="Каталог"
@@ -215,11 +221,11 @@ export default function Catalog() {
             {sections
               .filter((s) => {
                 const subs = byParent.get(s.id) || [];
-                if (!isAdmin) {
-                  // Show section only if user has at least one visible material in any of its subsections
-                  const hasVisible = subs.some((sub) => (materialsBySection.get(sub.id) || []).length > 0);
-                  if (!hasVisible) return false;
-                }
+                 const sAllowed = allowed.has(s.id);
+                 const hasVisible = subs.some((sub) => (materialsBySection.get(sub.id) || []).length > 0);
+                 // Authors and service owners need to reach empty sections to create
+                 // materials. Readers still only see sections with visible content.
+                 if (!hasVisible && !(canCreateMaterial && sAllowed)) return false;
                 if (!qLower) return true;
                 if (matchesStr(s.title)) return true;
                 if (subs.some((sub) => matchesStr(sub.title))) return true;
@@ -229,14 +235,13 @@ export default function Catalog() {
               .map((s) => {
                 const sAllowed = allowed.has(s.id);
                 const subs = (byParent.get(s.id) || []).filter((x) => {
-                  if (!isAdmin) {
-                    // Show subsection only if user has at least one visible material in it
-                    const mats = materialsBySection.get(x.id) || [];
-                    if (mats.length === 0) return false;
-                  }
+                   const subAllowed = sAllowed && allowed.has(x.id);
+                   const mats = materialsBySection.get(x.id) || [];
+                   // Keep empty subsections available to users who can create
+                   // materials in them; do not expose restricted subsections.
+                   if (mats.length === 0 && !(canCreateMaterial && subAllowed)) return false;
                   if (!qLower) return true;
                   if (matchesStr(x.title) || matchesStr(s.title)) return true;
-                  const mats = materialsBySection.get(x.id) || [];
                   return mats.some((m) => matchesStr(m.passport.title) || m.passport.tags.some(matchesStr));
                 });
                 const sectionOwners = (s.ownerIds || []).map((id) => users.find((u) => u.id === id)).filter(Boolean);
@@ -273,34 +278,38 @@ export default function Catalog() {
                           ) : (
                             <Badge className="kb-chip" variant="secondary">Доступно</Badge>
                           )}
-                          {canManageSection(s) && (
+                          {(canManageSection(s) || canAddSubsection(s)) && (
                             <>
-                              <Button
-                                data-testid={`button-owners-${s.id}`}
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Владельцы раздела"
-                                onClick={() => {
-                                  setSelectedOwnerIds(s.ownerIds || []);
-                                  setOwnerDialog(s);
-                                }}
-                              >
-                                <UserCog className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                data-testid={`button-add-sub-${s.id}`}
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Добавить подраздел"
-                                onClick={() => {
-                                  setNewSubTitle("");
-                                  setAddSubDialog(s.id);
-                                }}
-                              >
-                                <Plus className="h-3.5 w-3.5" />
-                              </Button>
+                              {canManageSection(s) && (
+                                <Button
+                                  data-testid={`button-owners-${s.id}`}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Владельцы раздела"
+                                  onClick={() => {
+                                    setSelectedOwnerIds(s.ownerIds || []);
+                                    setOwnerDialog(s);
+                                  }}
+                                >
+                                  <UserCog className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+                              {canAddSubsection(s) && (
+                                <Button
+                                  data-testid={`button-add-sub-${s.id}`}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Добавить подраздел"
+                                  onClick={() => {
+                                    setNewSubTitle("");
+                                    setAddSubDialog(s.id);
+                                  }}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               {isAdmin && (
                                 <>
                                   <Button

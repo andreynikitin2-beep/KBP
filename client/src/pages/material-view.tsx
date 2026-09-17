@@ -53,7 +53,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { useKB } from "@/lib/kbStore";
-import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getApprovalStep, getSectionOwnerIds, getSectionPath, isOverdue, validatePassport } from "@/lib/kbLogic";
+import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewAudit, canViewMaterial, canViewVersion, daysToNextReview, getApprovalStep, getSectionOwnerIds, getSectionPath, isOverdue, validatePassport, withinScope } from "@/lib/kbLogic";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -308,23 +308,24 @@ export default function MaterialView() {
   };
 
   const sectionOptions = useMemo(() => {
-    const matsBySubsection = new Map<string, number>();
-    visibleMaterials.forEach((m) => {
-      matsBySubsection.set(m.passport.sectionId, (matsBySubsection.get(m.passport.sectionId) || 0) + 1);
-    });
     const currentSubId = current?.passport.sectionId;
+    const canCreateMaterial = me.roles.some((role) =>
+      role === "Автор" || role === "Владелец" || role === "Заместитель владельца" || role === "Администратор",
+    );
     const subs = catalogNodes.filter((n) => {
-      if (n.type !== "subsection") return false;
+      if (n.type !== "subsection" || !withinScope(me, n)) return false;
       if (isAdmin) return true;
       // Always include the material's current subsection so the value is preserved
       if (n.id === currentSubId) return true;
-      return (matsBySubsection.get(n.id) || 0) > 0;
+      if (!canCreateMaterial) return false;
+      const parent = n.parentId ? catalogNodes.find((node) => node.id === n.parentId) : undefined;
+      return !parent || withinScope(me, parent);
     });
     return subs.map((s) => {
       const path = getSectionPath(catalogNodes, s.id).map((x) => x.title).join(" / ");
       return { id: s.id, label: path };
     });
-  }, [catalogNodes, visibleMaterials, isAdmin, current?.passport.sectionId]);
+  }, [catalogNodes, isAdmin, me, current?.passport.sectionId]);
 
   const saveDraft = () => {
     if (!current || !isDraft) return;
