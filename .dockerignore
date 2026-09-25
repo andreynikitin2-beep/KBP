@@ -1,0 +1,14 @@
+# Не тащить в контекст сборки то, что не нужно образу
+.git
+node_modules
+dist
+.env
+.env.*
+!.env.docker.example
+certs
+backups
+uploads
+*.dump
+screenshots
+.agents
+docker-compose*.yml
