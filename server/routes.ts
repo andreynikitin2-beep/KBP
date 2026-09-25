@@ -5,6 +5,7 @@ import { spawn } from "child_process";
 import crypto from "crypto";
 import { storage } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
+import { createMailTransport, formatFrom, kickEmailQueue } from "./mailer";
 import { sanitizeHtml } from "@shared/sanitize";
 import * as fileStorage from "./fileStorage";
 import { extractDocumentText } from "./documentText";
@@ -933,7 +934,10 @@ export async function registerRoutes(
 
   app.post("/api/notifications", async (req, res) => {
     try {
-      const notification = await storage.createNotification(coerceDates(req.body));
+      // Статусом управляет сервер: новое уведомление всегда встаёт в очередь на отправку.
+      const { status: _status, attempts: _a, nextAttemptAt: _n, lastError: _e, sentAt: _s, ...data } = coerceDates(req.body);
+      const notification = await storage.createNotification({ ...data, status: "LOGGED" });
+      kickEmailQueue();
       res.json(notification);
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -1006,19 +1010,9 @@ export async function registerRoutes(
       if (!config || !config.smtpHost) {
         return res.status(400).json({ message: "SMTP-сервер не настроен" });
       }
-      const nodemailer = await import("nodemailer");
-      const transporter = nodemailer.createTransport({
-        host: config.smtpHost,
-        port: config.smtpPort || 587,
-        secure: config.smtpUseTls && (config.smtpPort === 465),
-        requireTLS: config.smtpUseTls && (config.smtpPort !== 465),
-        auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPassword || "" } : undefined,
-        connectionTimeout: 8000,
-        greetingTimeout: 5000,
-        tls: { rejectUnauthorized: false },
-      } as any);
+      const transporter = await createMailTransport(config);
       await transporter.sendMail({
-        from: config.senderName ? `"${config.senderName}" <${config.senderAddress}>` : config.senderAddress,
+        from: formatFrom(config),
         to,
         subject: "Тестовое письмо — Центр знаний ЦОС",
         text: "Это тестовое письмо от Портала инструкций. Если вы получили это письмо, настройка почтовой рассылки работает корректно.",
@@ -1094,20 +1088,9 @@ export async function registerRoutes(
     const body = template ? render(template.body) : render(`{{reporter}} написал(а):\n\n{{message}}\n\nМатериал: {{link}}`);
 
     try {
-      const nodemailer = await import("nodemailer");
-      const transporter = nodemailer.createTransport({
-        host: config.smtpHost,
-        port: config.smtpPort || 587,
-        secure: config.smtpUseTls && config.smtpPort === 465,
-        requireTLS: config.smtpUseTls && config.smtpPort !== 465,
-        auth: config.smtpUser ? { user: config.smtpUser, pass: config.smtpPassword || "" } : undefined,
-        connectionTimeout: 8000,
-        greetingTimeout: 5000,
-        tls: { rejectUnauthorized: false },
-      } as any);
+      const transporter = await createMailTransport(config);
 
-      const from = config.senderName ? `"${config.senderName}" <${config.senderAddress}>` : config.senderAddress;
-      await transporter.sendMail({ from, to: recipientEmails.join(", "), subject, text: body });
+      await transporter.sendMail({ from: formatFrom(config), to: recipientEmails.join(", "), subject, text: body });
       return { emailSent: true };
     } catch (smtpErr: any) {
       console.error("[email] Feedback send failed:", smtpErr?.message);

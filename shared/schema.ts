@@ -170,7 +170,12 @@ export const notificationLog = pgTable("notification_log", {
   relatedMaterialId: varchar("related_material_id"),
   relatedVersionId: varchar("related_version_id"),
   relatedRfcId: varchar("related_rfc_id"),
+  // LOGGED — в очереди на отправку, SENT — отправлено, FAILED — не отправлено (см. lastError)
   status: text("status").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  lastError: text("last_error"),
+  sentAt: timestamp("sent_at"),
 });
 
 export const insertNotificationLogSchema = createInsertSchema(notificationLog).omit({ id: true, createdAt: true });

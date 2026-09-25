@@ -153,6 +153,7 @@ export type NotificationLog = {
     | "auto_transition";
   related: { materialId?: string; versionId?: string; rfcId?: string };
   status: "LOGGED" | "SENT" | "FAILED";
+  lastError?: string | null;
 };
 
 export const demoUsers: User[] = [

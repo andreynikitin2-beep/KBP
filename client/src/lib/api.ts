@@ -253,6 +253,7 @@ function dbNotificationToFrontend(dbNotif: any): NotificationLog {
       rfcId: dbNotif.relatedRfcId,
     },
     status: dbNotif.status,
+    lastError: dbNotif.lastError ?? null,
   };
 }
 

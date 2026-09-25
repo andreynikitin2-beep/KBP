@@ -53,6 +53,8 @@ export interface IStorage {
 
   getNotifications(): Promise<schema.NotificationLog[]>;
   createNotification(data: schema.InsertNotificationLog): Promise<schema.NotificationLog>;
+  getDueNotifications(now: Date, limit: number): Promise<schema.NotificationLog[]>;
+  updateNotification(id: string, data: Partial<schema.NotificationLog>): Promise<void>;
 
   getRatings(): Promise<schema.HelpfulRating[]>;
   getRatingsByMaterial(materialId: string): Promise<schema.HelpfulRating[]>;
@@ -386,6 +388,20 @@ export class DatabaseStorage implements IStorage {
   async createNotification(data: schema.InsertNotificationLog): Promise<schema.NotificationLog> {
     const [notification] = await db.insert(schema.notificationLog).values(data).returning();
     return notification;
+  }
+
+  async getDueNotifications(now: Date, limit: number): Promise<schema.NotificationLog[]> {
+    const n = schema.notificationLog;
+    return db
+      .select()
+      .from(n)
+      .where(and(eq(n.status, "LOGGED"), sql`(${n.nextAttemptAt} is null or ${n.nextAttemptAt} <= ${now})`))
+      .orderBy(n.createdAt)
+      .limit(limit);
+  }
+
+  async updateNotification(id: string, data: Partial<schema.NotificationLog>): Promise<void> {
+    await db.update(schema.notificationLog).set(data).where(eq(schema.notificationLog.id, id));
   }
 
   async getRatings(): Promise<schema.HelpfulRating[]> {

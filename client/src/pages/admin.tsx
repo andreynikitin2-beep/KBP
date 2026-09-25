@@ -3409,6 +3409,12 @@ export default function Admin() {
                               {n.status === "SENT" ? "Отправлено" : n.status === "LOGGED" ? "В очереди" : "Ошибка"}
                             </Badge>
                           </div>
+                          {n.lastError && n.status !== "SENT" ? (
+                            <div className="mt-2 break-words text-xs text-muted-foreground" data-testid={`text-mail-error-${n.id}`}>
+                              {n.status === "LOGGED" ? "Последняя попытка не удалась, будет повтор: " : "Причина: "}
+                              {n.lastError}
+                            </div>
+                          ) : null}
                         </div>
                       ))}
                       {!notificationsFiltered.length ? (

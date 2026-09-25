@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { backfillSearchText, ensureFeedbackTemplates, storage } from "./storage";
 import { setStorageDir } from "./fileStorage";
+import { startEmailQueue } from "./mailer";
 
 const app = express();
 const httpServer = createServer(app);
@@ -75,6 +76,7 @@ app.use((req, res, next) => {
   await backfillSearchText().catch((e) => console.error("[search] backfill error:", e));
 
   await registerRoutes(httpServer, app);
+  startEmailQueue();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
