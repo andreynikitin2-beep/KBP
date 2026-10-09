@@ -753,6 +753,10 @@ export async function registerRoutes(
   async function sendPreview(req: any, res: any, request: { versionId: string; fileId?: string; fileName: string; original: Buffer }) {
     try {
       const pdf = await getPreviewPdf(request);
+      // ?check=1: the page asks whether the preview is ready (and makes it
+      // ready) before opening the tab, so errors show in the portal, not in
+      // the new tab. No body.
+      if (req.query.check === "1") return res.status(204).end();
       const pdfName = request.fileName.replace(/\.[^.]+$/, "") + ".pdf";
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(pdfName)}`);
@@ -774,7 +778,9 @@ export async function registerRoutes(
     }
   }
 
-  app.get("/api/material-versions/:id/preview", async (req, res) => {
+  // The optional trailing {/:name} is only for PDF viewers, which show the last
+  // URL segment as the title and use it as the "save as" name.
+  app.get("/api/material-versions/:id/preview{/:name}", async (req, res) => {
     try {
       const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "File not found" });
@@ -787,7 +793,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/material-versions/:id/additional-file/:fileId/preview", async (req, res) => {
+  app.get("/api/material-versions/:id/additional-file/:fileId/preview{/:name}", async (req, res) => {
     try {
       const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "Версия не найдена" });
@@ -802,13 +808,14 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/material-versions/:id/file", async (req, res) => {
+  app.get("/api/material-versions/:id/file{/:name}", async (req, res) => {
     try {
       const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "File not found" });
 
       const buffer = await loadContentFile(version);
       const contentFile = (version.contentFile as any) || {};
+      if (buffer && req.query.check === "1") return res.status(204).end();
       if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
 
       const fileInfo = contentFile;

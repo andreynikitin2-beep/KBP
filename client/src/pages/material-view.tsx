@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
-import { FileFetchError, isPdfName, isPreviewable, openPdfPreview } from "@/lib/filePreview";
+import { FileFetchError, isPdfName, isPreviewable, openPdfPreview, pdfUrlName } from "@/lib/filePreview";
 import { useLocation, useRoute } from "wouter";
 import {
   AlertTriangle,
@@ -500,7 +500,7 @@ export default function MaterialView() {
     setAddFilePreviewing(af.id);
     try {
       const result = await openPdfPreview({
-        url: `/api/material-versions/${dv.id}/additional-file/${af.id}/preview`,
+        url: `/api/material-versions/${dv.id}/additional-file/${af.id}/preview/${pdfUrlName(af.name)}`,
         fileName: af.name,
         preparing: !isPdfName(af.name),
       });
@@ -1889,8 +1889,8 @@ export default function MaterialView() {
                                       try {
                                         const result = await openPdfPreview({
                                           url: asPdf
-                                            ? `/api/material-versions/${dv.id}/file?inline=true`
-                                            : `/api/material-versions/${dv.id}/preview`,
+                                            ? `/api/material-versions/${dv.id}/file/${pdfUrlName(fileName)}?inline=true`
+                                            : `/api/material-versions/${dv.id}/preview/${pdfUrlName(fileName)}`,
                                           fileName,
                                           preparing: !asPdf,
                                           onProgress: setPreviewDownloadProgress,
@@ -1917,7 +1917,7 @@ export default function MaterialView() {
                                   }}
                                 >
                                   {previewLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Eye className="mr-2 h-4 w-4" />}
-                                  {previewDownloadProgress !== null ? `Загрузка ${previewDownloadProgress}%` : "Предпросмотр"}
+                                  {previewDownloadProgress !== null ? "Открытие…" : "Предпросмотр"}
                                 </Button>
                                 <Button
                                   data-testid="button-download"
