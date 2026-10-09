@@ -64,9 +64,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-kb}
       BACKUP_DIR: /backups
       BACKUP_RETAIN_DAYS: ${BACKUP_RETAIN_DAYS:-7}
+      # Ключ шифрования секретов сохраняется рядом с каждым дампом
+      SECRETS_KEY_FILE: /secrets/secrets.key
+      SECRETS_KEY: ${SECRETS_KEY:-}
     volumes:
       - ./backups:/backups
       - ./backup-db.sh:/backup-db.sh:ro
+      - ./secrets:/secrets:ro
     depends_on:
       db:
         condition: service_healthy
