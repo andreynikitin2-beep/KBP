@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { toast } from "@/hooks/use-toast";
 import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NewHireAssignment, NewHireProfile, NewHireStatus, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getApprovalStep, getSectionOwnerIds, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
-import { api } from "./api";
+import { api, getAuthHeaders } from "./api";
 
 const VIEW_DEDUP_MINUTES = 30;
 
@@ -62,7 +62,7 @@ export type PolicyConfig = {
 type Store = {
   me: User;
   isAuthenticated: boolean;
-  setMeId: (id: string, token?: string) => void;
+  setMeId: (id: string) => void;
   logout: () => void;
 
   users: User[];
@@ -241,11 +241,12 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   const [newHireProfiles, setNewHireProfiles] = useState<NewHireProfile[]>([]);
   const [newHireAssignments, setNewHireAssignments] = useState<NewHireAssignment[]>([]);
 
-  const setMeId = (id: string, token?: string) => {
+  const setMeId = (id: string) => {
     setMeIdRaw(id);
+    // Tokens are no longer kept in page storage (HttpOnly cookie instead).
+    localStorage.removeItem('kb_auth_token');
     if (id) {
       localStorage.setItem('kb_auth_user', id);
-      if (token) localStorage.setItem('kb_auth_token', token);
       const now = new Date().toISOString();
       setUsers(prev => prev.map(u => u.id === id ? { ...u, lastLogin: now } : u));
       api.getUserSubscriptions(id).then(subs => {
@@ -258,13 +259,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    const token = localStorage.getItem('kb_auth_token');
-    if (token) {
-      fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-    }
+    // Ends the server session and clears the HttpOnly cookie.
+    fetch('/api/auth/logout', { method: 'POST', headers: getAuthHeaders() }).catch(() => {});
     setMeIdRaw('');
     localStorage.removeItem('kb_auth_user');
     localStorage.removeItem('kb_auth_token');
@@ -397,16 +393,14 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
   }, [loadData]);
 
   useEffect(() => {
-    if (!meId || !localStorage.getItem('kb_auth_token')) {
-      // A stored user id without a token (older sessions) cannot call the API:
-      // show the login page instead of an empty portal.
-      if (meId) {
-        localStorage.removeItem('kb_auth_user');
-        setMeIdRaw('');
-      }
+    // Drop tokens left in page storage by older versions.
+    localStorage.removeItem('kb_auth_token');
+    if (!meId) {
       setLoading(false);
       return;
     }
+    // Without a valid session cookie the first request returns 401 and the
+    // API helpers send the user back to the login page.
     setLoading(true);
     loadData();
   }, [meId, loadData]);

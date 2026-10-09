@@ -12,11 +12,13 @@ import type {
   NewHireAssignment,
 } from "./mockData";
 
+/**
+ * The session lives in an HttpOnly cookie that page scripts cannot read; the
+ * browser attaches it to same-origin requests. This header marks requests as
+ * coming from the portal itself (CSRF protection for state-changing calls).
+ */
 export function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem("kb_auth_token");
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
+  return { "X-KB-Request": "1" };
 }
 
 /** Error carrying the server's message (e.g. "Недостаточно прав") and HTTP status. */
@@ -41,8 +43,9 @@ function handleUnauthorized() {
   window.location.reload();
 }
 
-function shouldHandleUnauthorized(authHeaders: Record<string, string> | Record<string, never>): boolean {
-  return "Authorization" in authHeaders || !!localStorage.getItem("kb_auth_user");
+function shouldHandleUnauthorized(_authHeaders: Record<string, string> | Record<string, never>): boolean {
+  // Only for a signed-in user: the session expired or was ended on the server.
+  return !!localStorage.getItem("kb_auth_user");
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -328,7 +331,6 @@ function uploadFileViaWebSocket(
   additionalFileId?: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const token = localStorage.getItem("kb_auth_token") ?? "";
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     let wsUrl: string;
     try {
@@ -374,8 +376,8 @@ function uploadFileViaWebSocket(
 
     ws.onopen = () => {
       clearTimeout(wsTimeout);
+      // Authenticated by the session cookie sent with the WebSocket handshake.
       ws.send(JSON.stringify({
-        auth: token,
         versionId,
         fileName: file.name,
         fileType: file.name.split(".").pop()?.toLowerCase() ?? "bin",
