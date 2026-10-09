@@ -140,6 +140,12 @@ function computeAccessGain(
   };
 }
 
+class FileFetchError extends Error {
+  constructor(public status: number) {
+    super(`HTTP ${status}`);
+  }
+}
+
 function fmt(iso?: string) {
   if (!iso) return "—";
   return format(new Date(iso), "d MMM yyyy, HH:mm", { locale: ru });
@@ -253,6 +259,8 @@ export default function MaterialView() {
   const [previewDownloadProgress, setPreviewDownloadProgress] = useState<number | null>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
   const addFileInputRef = useRef<HTMLInputElement>(null);
+  const reuploadFileInputRef = useRef<HTMLInputElement>(null);
+  const [reuploadProgress, setReuploadProgress] = useState<number | null>(null);
   const [addFileUploading, setAddFileUploading] = useState<string | null>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -375,15 +383,38 @@ export default function MaterialView() {
       contentPage: editContentKind === "page" ? { html: editPageHtml } : editContentKind === "html" ? { html: editRawHtml } : null,
     }).catch(console.error);
     if (editContentKind === "file" && editSelectedFile) {
+      // Metadata (including extractedText) is already saved, so the AI sees
+      // the document even if the binary never reaches the server. Report
+      // success only after the upload finishes, otherwise preview/download break.
       const fileToUpload = editSelectedFile;
+      const versionId = current.id;
       setEditSelectedFile(null);
       setFileUploadProgress(0);
-      api.uploadMaterialFile(current.id, fileToUpload, (pct) => setFileUploadProgress(pct))
-        .then(() => { setFileUploadProgress(null); setMainFileUploaded(true); })
-        .catch((e) => { console.error(e); setFileUploadProgress(null); });
+      api.uploadMaterialFile(versionId, fileToUpload, (pct) => setFileUploadProgress(pct))
+        .then(() => {
+          setFileUploadProgress(null);
+          setMainFileUploaded(true);
+          setMaterials(prev => prev.map(m => m.id === versionId ? { ...m, contentFileStored: true } : m));
+          toast({ title: "Сохранено", description: "Изменения черновика и файл сохранены." });
+        })
+        .catch((e) => {
+          console.error(e);
+          setFileUploadProgress(null);
+          setEditSelectedFile(fileToUpload);
+          toast({ title: "Файл не загружен", description: "Изменения сохранены, но файл не дошёл до сервера. Нажмите «Сохранить» ещё раз.", variant: "destructive" });
+        });
+      return;
     }
     toast({ title: "Сохранено", description: "Изменения черновика сохранены." });
   };
+
+  // Leaving the page aborts an in-flight upload and leaves the version without its file.
+  useEffect(() => {
+    if (fileUploadProgress === null) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [fileUploadProgress !== null]);
 
   // Fix: ensure pressing back from a material page always lands on /catalog,
   // not a blank page (happens when user refreshes or opens URL directly)
@@ -457,6 +488,38 @@ export default function MaterialView() {
   const allSystem = materialGroups.every(g => g.isSystem);
   const owner = dv ? users.find((u) => u.id === dv.passport.ownerId) : null;
   const deputy = dv ? users.find((u) => u.id === dv.passport.deputyId) : null;
+
+  // The version has file metadata (and AI text) but the binary is missing on the server.
+  const fileMissingOnServer = dv?.content.kind === "file" && dv.contentFileStored === false;
+  const canReuploadFile = !!dv && (
+    isAdmin ||
+    dv.passport.ownerId === me.id ||
+    dv.passport.deputyId === me.id ||
+    (catalogNodes.find((n) => n.id === dv.passport.sectionId)?.ownerIds ?? []).includes(me.id)
+  );
+
+  const handleReuploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !dv) return;
+    const expectedName = dv.content.file?.name;
+    if (expectedName && file.name !== expectedName) {
+      toast({ title: "Другой файл", description: `Выберите исходный файл «${expectedName}».`, variant: "destructive" });
+      return;
+    }
+    const versionId = dv.id;
+    setReuploadProgress(0);
+    try {
+      await api.uploadMaterialFile(versionId, file, (pct) => setReuploadProgress(pct));
+      setMaterials(prev => prev.map(m => m.id === versionId ? { ...m, contentFileStored: true } : m));
+      toast({ title: "Файл загружен", description: "Предпросмотр и скачивание снова доступны." });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Ошибка", description: "Не удалось загрузить файл. Попробуйте ещё раз.", variant: "destructive" });
+    } finally {
+      setReuploadProgress(null);
+    }
+  };
 
   const rfcList = useMemo(() => rfcs.filter((r) => r.materialId === materialId), [rfcs, materialId]);
 
@@ -1319,6 +1382,7 @@ export default function MaterialView() {
                             data-testid="button-save-draft"
                             className="rounded-xl"
                             onClick={saveDraft}
+                            disabled={fileUploadProgress !== null}
                           >
                             <Save className="mr-2 h-4 w-4" />
                             Сохранить черновик
@@ -1692,6 +1756,45 @@ export default function MaterialView() {
                     <>
                       {dv.content.kind === "file" ? (
                         <div className="space-y-3">
+                          {fileMissingOnServer && (
+                            <div
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30"
+                              data-testid="alert-file-missing"
+                            >
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                <div>
+                                  <div className="text-sm font-semibold text-amber-800 dark:text-amber-300">Файл отсутствует на сервере</div>
+                                  <div className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                                    {canReuploadFile
+                                      ? "Загрузка файла не была завершена. Загрузите исходный файл заново."
+                                      : "Загрузка файла не была завершена. Обратитесь к владельцу материала."}
+                                  </div>
+                                </div>
+                              </div>
+                              {canReuploadFile && (
+                                <>
+                                  <input
+                                    ref={reuploadFileInputRef}
+                                    type="file"
+                                    accept=".pdf,.doc,.docx"
+                                    className="hidden"
+                                    onChange={handleReuploadFile}
+                                  />
+                                  <Button
+                                    data-testid="button-reupload-file"
+                                    variant="outline"
+                                    className="rounded-xl"
+                                    disabled={reuploadProgress !== null}
+                                    onClick={() => reuploadFileInputRef.current?.click()}
+                                  >
+                                    {reuploadProgress !== null ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                                    {reuploadProgress !== null ? `Загрузка ${reuploadProgress}%` : "Загрузить заново"}
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          )}
                           <Card className="p-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
@@ -1720,7 +1823,7 @@ export default function MaterialView() {
                                   data-testid="button-preview"
                                   variant="outline"
                                   className="rounded-xl"
-                                  disabled={previewLoading}
+                                  disabled={previewLoading || fileMissingOnServer}
                                   onClick={async () => {
                                     setPreviewLoading(true);
                                     try {
@@ -1756,7 +1859,7 @@ export default function MaterialView() {
                                             };
                                             xhr.onload = () => {
                                               if (xhr.status >= 200 && xhr.status < 300) resolve(URL.createObjectURL(xhr.response));
-                                              else reject(new Error(`HTTP ${xhr.status}`));
+                                              else reject(new FileFetchError(xhr.status));
                                             };
                                             xhr.onerror = () => reject(new Error("Network error"));
                                             xhr.send();
@@ -1782,7 +1885,7 @@ export default function MaterialView() {
                                       } else {
                                         // Для DOCX загружаем blob для извлечения текста через mammoth
                                         const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
-                                        if (!resp.ok) throw new Error("Ошибка загрузки файла");
+                                        if (!resp.ok) throw new FileFetchError(resp.status);
                                         const blob = await resp.blob();
                                         if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
                                         const url = URL.createObjectURL(blob);
@@ -1797,8 +1900,13 @@ export default function MaterialView() {
                                       }
                                       setPreviewOpen(true);
                                       recordPreview(dv.materialId);
-                                    } catch {
-                                      toast({ title: "Ошибка", description: "Не удалось загрузить файл для предпросмотра", variant: "destructive" });
+                                    } catch (err) {
+                                      if (err instanceof FileFetchError && err.status === 404) {
+                                        setMaterials(prev => prev.map(m => m.id === dv.id ? { ...m, contentFileStored: false } : m));
+                                        toast({ title: "Файл отсутствует на сервере", description: "Загрузка файла не была завершена. Загрузите файл заново.", variant: "destructive" });
+                                      } else {
+                                        toast({ title: "Ошибка", description: "Не удалось загрузить файл для предпросмотра", variant: "destructive" });
+                                      }
                                     } finally {
                                       setPreviewLoading(false);
                                     }
@@ -1811,6 +1919,7 @@ export default function MaterialView() {
                                   data-testid="button-download"
                                   variant="secondary"
                                   className="rounded-xl"
+                                  disabled={fileMissingOnServer}
                                   onClick={() => {
                                     const originalName = dv.content.file?.name || "file";
                                     const ext = originalName.includes(".") ? "." + originalName.split(".").pop() : "";

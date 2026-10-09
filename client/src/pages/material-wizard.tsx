@@ -64,6 +64,37 @@ export default function MaterialWizard() {
   const [extractedText, setExtractedText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // Material was created but its main file did not reach the server.
+  const [failedUpload, setFailedUpload] = useState<{ versionId: string; materialId: string } | null>(null);
+
+  // Leaving the page aborts an in-flight upload and leaves the version without its file.
+  useEffect(() => {
+    if (uploadProgress === null) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [uploadProgress !== null]);
+
+  const markFileStored = (versionId: string) =>
+    setMaterials((prev) => prev.map((m) => (m.id === versionId ? { ...m, contentFileStored: true } : m)));
+
+  const retryMainUpload = async () => {
+    if (!failedUpload || !selectedFile) return;
+    try {
+      setUploadProgress(0);
+      await api.uploadMaterialFile(failedUpload.versionId, selectedFile, (pct) => setUploadProgress(pct));
+      markFileStored(failedUpload.versionId);
+      const { materialId } = failedUpload;
+      setFailedUpload(null);
+      toast({ title: "Файл загружен", description: "Материал добавлен в Черновики." });
+      setLocation(`/materials/${materialId}?tab=content`);
+    } catch (e) {
+      console.error(e);
+      toast({ title: "Файл не загружен", description: "Проверьте соединение и повторите попытку.", variant: "destructive" });
+    } finally {
+      setUploadProgress(null);
+    }
+  };
   const [pageHtml, setPageHtml] = useState("<h1>Заголовок</h1><p>Абзац с описанием процесса…</p><ol><li>Шаг 1</li><li>Шаг 2</li><li>Шаг 3</li></ol>");
   const [rawHtml, setRawHtml] = useState("<h1>Заголовок</h1>\n<p>Описание материала.</p>");
   const [aiGeneratorOpen, setAiGeneratorOpen] = useState(false);
@@ -577,6 +608,34 @@ export default function MaterialWizard() {
                       <Progress value={uploadProgress} className="h-1.5" />
                     </div>
                   )}
+                  {failedUpload ? (
+                  <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30" data-testid="alert-upload-failed">
+                    <div className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      Материал создан, но файл не загружен на сервер. Без файла не будут работать предпросмотр и скачивание.
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        data-testid="button-open-created"
+                        variant="outline"
+                        className="rounded-xl"
+                        disabled={uploadProgress !== null}
+                        onClick={() => setLocation(`/materials/${failedUpload.materialId}?tab=content`)}
+                      >
+                        Открыть материал
+                      </Button>
+                      <Button
+                        data-testid="button-retry-upload"
+                        className="rounded-xl"
+                        disabled={uploadProgress !== null}
+                        onClick={retryMainUpload}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Повторить загрузку
+                      </Button>
+                    </div>
+                  </div>
+                  ) : (
                   <div className="flex items-center gap-2">
                   <Button
                     data-testid="button-cancel-create"
@@ -633,13 +692,15 @@ export default function MaterialWizard() {
                       try {
                         const created = await api.createMaterialVersion(version);
                         setMaterials((p) => [created, ...p]);
+                        let mainUploadFailed = false;
                         if (contentKind === "file" && selectedFile) {
                           try {
                             setUploadProgress(0);
                             await api.uploadMaterialFile(created.id, selectedFile, (pct) => setUploadProgress(pct));
+                            markFileStored(created.id);
                           } catch (uploadErr) {
                             console.error(uploadErr);
-                            toast({ title: "Предупреждение", description: "Материал создан, но файл не удалось загрузить.", variant: "destructive" });
+                            mainUploadFailed = true;
                           } finally {
                             setUploadProgress(null);
                           }
@@ -667,6 +728,12 @@ export default function MaterialWizard() {
                             }
                           ));
                         }
+                        if (mainUploadFailed) {
+                          // Stay here: the selected file is still in memory, so the user can retry.
+                          setFailedUpload({ versionId: created.id, materialId: created.materialId });
+                          toast({ title: "Файл не загружен", description: "Материал создан, но файл не дошёл до сервера. Нажмите «Повторить загрузку».", variant: "destructive" });
+                          return;
+                        }
                         toast({ title: "Создано", description: "Материал добавлен в Черновики." });
                         setLocation(`/materials/${created.materialId}?tab=content`);
                       } catch (e) {
@@ -679,6 +746,7 @@ export default function MaterialWizard() {
                     Создать
                   </Button>
                   </div>
+                  )}
                 </div>
               </div>
             </CardContent>

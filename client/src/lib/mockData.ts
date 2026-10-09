@@ -112,6 +112,8 @@ export type MaterialVersion = {
     page?: { html: string };
   };
   additionalFiles?: AdditionalFileInfo[];
+  /** false when the server has file metadata but no binary for this version */
+  contentFileStored?: boolean;
   subscribers: string[];
   discussionsEnabled: boolean;
   discussionVisibility: "Все" | "Только сотрудники раздела" | "Только владелец/заместитель";
