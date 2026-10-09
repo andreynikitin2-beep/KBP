@@ -9,10 +9,26 @@ import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
 
 // Hoisted spies so we can capture exactly what the route hands to storage.
-const { createMaterialVersion, updateMaterialVersion } = vi.hoisted(() => ({
+const { createMaterialVersion, updateMaterialVersion, getSessionUser, getMaterialVersion } = vi.hoisted(() => ({
   createMaterialVersion: vi.fn(),
   updateMaterialVersion: vi.fn(),
+  getSessionUser: vi.fn(),
+  getMaterialVersion: vi.fn(),
 }));
+
+// The signed-in author's own draft: access checks allow editing it.
+const DRAFT = {
+  id: "v1",
+  materialId: "m1",
+  createdBy: "u1",
+  ownerId: "u1",
+  deputyId: null,
+  sectionId: "s1",
+  visibilityGroupIds: [],
+  status: "Черновик",
+  approvalStep: null,
+  nextReviewAt: null,
+};
 
 // Mock the storage layer so the routes never touch a real database. The routes
 // still run their real sanitization logic before calling storage.
@@ -20,8 +36,18 @@ vi.mock("./storage", () => ({
   storage: {
     createMaterialVersion,
     updateMaterialVersion,
+    getSessionUser,
+    getMaterialVersion,
+    getMaterialVersionsByMaterialId: vi.fn(async (materialId: string) => (materialId === "m1" ? [DRAFT] : [])),
+    getVisibilityGroups: vi.fn(async () => []),
+    getCatalogNodes: vi.fn(async () => []),
+    getEffectiveVisGroupMap: vi.fn(async () => []),
   },
+  recoverContentFile: vi.fn(async () => null),
+  recoverAdditionalFile: vi.fn(async () => null),
 }));
+
+const AUTH = { Authorization: "Bearer test-token" };
 
 let server: Server;
 let baseUrl: string;
@@ -54,6 +80,39 @@ beforeEach(() => {
   updateMaterialVersion.mockReset();
   createMaterialVersion.mockImplementation(async (data: any) => ({ id: "v1", ...data }));
   updateMaterialVersion.mockImplementation(async (_id: string, data: any) => ({ id: _id, ...data }));
+  getMaterialVersion.mockReset();
+  getMaterialVersion.mockImplementation(async (id: string) => (id === "v1" ? DRAFT : undefined));
+  getSessionUser.mockReset();
+  getSessionUser.mockImplementation(async (token: string) =>
+    token === "test-token" ? { id: "u1", roles: ["Автор"] } : undefined,
+  );
+});
+
+describe("API requires a session", () => {
+  const patch = (headers: Record<string, string>) =>
+    fetch(`${baseUrl}/api/material-versions/v1`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ contentKind: "page", contentPage: { html: "<p>x</p>" } }),
+    });
+
+  it("rejects writes without a Bearer token and never reaches storage", async () => {
+    expect((await patch({})).status).toBe(401);
+    expect(updateMaterialVersion).not.toHaveBeenCalled();
+  });
+
+  it("ignores the legacy X-User-Id header", async () => {
+    expect((await patch({ "X-User-Id": "u-admin" })).status).toBe(401);
+  });
+
+  it("does not accept the session cookie for writes", async () => {
+    expect((await patch({ Cookie: "kb_session=test-token" })).status).toBe(401);
+  });
+
+  it("forbids admin routes to non-admins", async () => {
+    const res = await fetch(`${baseUrl}/api/email-config`, { headers: AUTH });
+    expect(res.status).toBe(403);
+  });
 });
 
 function assertSanitized(html: string) {
@@ -72,9 +131,10 @@ describe("POST /api/material-versions — sanitizes stored HTML", () => {
   it("strips <script>, javascript: links and event handlers before storage", async () => {
     const res = await fetch(`${baseUrl}/api/material-versions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...AUTH },
       body: JSON.stringify({
         materialId: "m1",
+        status: "Черновик",
         contentKind: "page",
         contentPage: { html: MALICIOUS_HTML },
       }),
@@ -96,7 +156,7 @@ describe("PATCH /api/material-versions/:id — sanitizes stored HTML", () => {
   it("strips <script>, javascript: links and event handlers before storage", async () => {
     const res = await fetch(`${baseUrl}/api/material-versions/v1`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...AUTH },
       body: JSON.stringify({
         contentKind: "page",
         contentPage: { html: MALICIOUS_HTML },

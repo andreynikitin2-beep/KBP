@@ -3,12 +3,64 @@ import { createServer, type Server } from "http";
 import { WebSocketServer } from "ws";
 import { spawn } from "child_process";
 import crypto from "crypto";
-import { storage } from "./storage";
+import { storage, recoverContentFile, recoverAdditionalFile } from "./storage";
 import { performLdapSync, syncSingleLdapUser } from "./ldapSync";
 import { createMailTransport, formatFrom, kickEmailQueue } from "./mailer";
 import { sanitizeHtml } from "@shared/sanitize";
 import * as fileStorage from "./fileStorage";
 import { extractDocumentText } from "./documentText";
+import { isMaskedOrEmpty, maskSecret, verifyPassword } from "./secrets";
+import { canChangeCatalogNode, hasAdminRole, isAdminRoute, isPublicRoute } from "./apiAccess";
+import {
+  canCreateVersion,
+  canUpdateVersion,
+  canViewVersion,
+  isMaterialManager,
+  type AccessContext,
+  type VersionRow,
+} from "@shared/materialAccess";
+
+const SESSION_COOKIE = "kb_session";
+const MIN_PASSWORD_LENGTH = 8;
+// Same window as the client: repeated opens within it count as one view.
+const VIEW_DEDUP_MINUTES = 30;
+
+/** YYYY-MM-DD in Moscow time — the portal's day for "one rating per day". */
+function moscowDateString(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+// Uploads are buffered in memory until complete; same limit as nginx (512m).
+const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
+const MAX_UPLOAD_CHUNKS = 512; // HTTP fallback sends 1 MB chunks
+const SAFE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const SESSION_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function readCookie(req: any, name: string): string {
+  const header: string = req.headers?.cookie || "";
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    if (part.slice(0, eq).trim() === name) {
+      try { return decodeURIComponent(part.slice(eq + 1).trim()); } catch { return ""; }
+    }
+  }
+  return "";
+}
+
+/**
+ * Links, <img> and the PDF preview cannot send the Authorization header, so
+ * the session token is mirrored into an HttpOnly cookie. It is accepted only
+ * for GET requests (see verifySession); SameSite=Strict blocks cross-site use.
+ */
+function setSessionCookie(req: any, res: any, token: string): void {
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: req.secure || req.headers["x-forwarded-proto"] === "https",
+    path: "/api",
+    maxAge: SESSION_COOKIE_MAX_AGE_MS,
+  });
+}
 
 function encryptPortalSettings(json: string, password: string): Buffer {
   const salt = crypto.randomBytes(32);
@@ -141,6 +193,27 @@ const TIMESTAMP_FIELDS = [
   "lastLoginAt", "expiresAt", "lastTestedAt"
 ];
 
+/**
+ * Unexpected failures: log the details, send the client a neutral message so
+ * database errors, paths and stack details do not leak.
+ */
+function sendServerError(req: any, res: any, e: unknown): void {
+  console.error(`[api] ${req?.method} ${req?.originalUrl?.split("?")[0]} failed:`, e);
+  if (!res.headersSent) res.status(500).json({ error: "Внутренняя ошибка сервера" });
+}
+
+/** Never send password hashes to the client. */
+function toPublicUser<T extends { password?: unknown }>(user: T): Omit<T, "password"> {
+  const { password: _password, ...rest } = user;
+  return rest;
+}
+
+/** Tell the client whether a file version's binary actually exists on disk. */
+function withFileStatus<T extends { id: string; contentKind?: string | null }>(version: T): T & { contentFileStored?: boolean } {
+  if (version.contentKind !== "file") return version;
+  return { ...version, contentFileStored: fileStorage.hasContentFile(version.id) };
+}
+
 function coerceDates(data: any): any {
   if (!data || typeof data !== "object") return data;
   const result = { ...data };
@@ -193,26 +266,43 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // Every /api route requires a session; admin routes also require the role.
+  app.use("/api", async (req, res, next) => {
+    const path = req.originalUrl.split("?")[0];
+    if (isPublicRoute(req.method, path)) return next();
+    try {
+      const session = await verifySession(req);
+      if (!session) return res.status(401).json({ error: "Требуется авторизация" });
+      if (isAdminRoute(req.method, path) && !hasAdminRole(session.user)) {
+        return res.status(403).json({ error: "Доступ только для администраторов" });
+      }
+      (req as any).auth = session;
+      // Sessions created before the cookie existed: give the browser one so
+      // downloads and images keep working.
+      if (session.token && readCookie(req, SESSION_COOKIE) !== session.token) {
+        setSessionCookie(req, res, session.token);
+      }
+      next();
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // Health check — used by Docker healthcheck and load balancers
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, ts: Date.now() });
   });
 
-  app.get("/api/auth/users-list", async (_req, res) => {
+  app.get("/api/auth/users-list", async (req, res) => {
     try {
+      // Public (login form): only who can sign in, and only their name —
+      // no logins, departments, roles or account status.
       const users = await storage.getUsers();
-      res.json(users.map(u => ({
-        id: u.id,
-        username: u.username,
-        displayName: u.displayName,
-        source: u.source,
-        department: u.department,
-        roles: u.roles,
-        isAvailable: u.isAvailable,
-        deactivatedAt: u.deactivatedAt,
-      })));
+      res.json(users
+        .filter((u) => !u.deactivatedAt && u.isAvailable)
+        .map((u) => ({ id: u.id, displayName: u.displayName })));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -226,7 +316,11 @@ export async function registerRoutes(
       if (!user) {
         return res.status(401).json({ error: "Пользователь не найден" });
       }
+      if (user.deactivatedAt) {
+        return res.status(403).json({ error: "Учётная запись отключена" });
+      }
 
+      let passwordToRehash: string | undefined;
       if (user.source === "ad") {
         const adConfig = await storage.getAdIntegrationConfig();
         if (adConfig && adConfig.enabled && adConfig.mode === "LDAP" && adConfig.ssoUrl && adConfig.baseDn) {
@@ -241,22 +335,33 @@ export async function registerRoutes(
             return res.status(401).json({ error: ldapResult.message });
           }
         } else {
-          if (user.password && user.password !== password) {
+          // LDAP is off: only a local password can authenticate. An AD user
+          // without one must not get in with an arbitrary password.
+          const check = verifyPassword(password, user.password);
+          if (!check.ok) {
             return res.status(401).json({ error: "Неверный пароль" });
           }
+          if (check.needsRehash) passwordToRehash = password;
         }
       } else {
-        if (user.password !== password) {
+        const check = verifyPassword(password, user.password);
+        if (!check.ok) {
           return res.status(401).json({ error: "Неверный пароль" });
         }
+        if (check.needsRehash) passwordToRehash = password;
       }
 
-      await storage.updateUser(user.id, { lastLoginAt: new Date() });
+      // Legacy plaintext password matched — replace it with a hash.
+      await storage.updateUser(user.id, {
+        lastLoginAt: new Date(),
+        ...(passwordToRehash ? { password: passwordToRehash } : {}),
+      });
       const token = await storage.createSession(user.id);
+      setSessionCookie(req, res, token);
       const { password: _p, ...safeUser } = user;
       res.json({ ok: true, user: { ...safeUser, lastLoginAt: new Date().toISOString() }, token });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -265,6 +370,7 @@ export async function registerRoutes(
       const authHeader = req.headers.authorization || "";
       const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
       if (token) await storage.deleteSession(token);
+      res.clearCookie(SESSION_COOKIE, { path: "/api" });
       res.json({ ok: true });
     } catch {
       res.json({ ok: true });
@@ -272,12 +378,12 @@ export async function registerRoutes(
   });
 
   // USERS
-  app.get("/api/users", async (_req, res) => {
+  app.get("/api/users", async (req, res) => {
     try {
       const users = await storage.getUsers();
-      res.json(users);
+      res.json(users.map(toPublicUser));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -285,18 +391,22 @@ export async function registerRoutes(
     try {
       const user = await storage.getUser(req.params.id);
       if (!user) return res.status(404).json({ error: "User not found" });
-      res.json(user);
+      res.json(toPublicUser(user));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.post("/api/users", async (req, res) => {
     try {
-      const user = await storage.createUser(coerceDates(req.body));
-      res.json(user);
+      const body = req.body ?? {};
+      if (body.source !== "ad" && (typeof body.password !== "string" || body.password.length < MIN_PASSWORD_LENGTH)) {
+        return res.status(400).json({ error: `Пароль должен быть не короче ${MIN_PASSWORD_LENGTH} символов` });
+      }
+      const user = await storage.createUser(coerceDates(body));
+      res.json(toPublicUser(user));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -304,68 +414,79 @@ export async function registerRoutes(
     try {
       const user = await storage.updateUser(req.params.id, coerceDates(req.body));
       if (!user) return res.status(404).json({ error: "User not found" });
-      res.json(user);
+      res.json(toPublicUser(user));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // USER SUBSCRIPTIONS
   app.get("/api/users/:userId/subscriptions", async (req, res) => {
     try {
+      if (!isSelfOrAdmin(req, req.params.userId)) return res.status(403).json({ error: "Недостаточно прав" });
       const subs = await storage.getSubscriptionsByUser(req.params.userId);
       res.json(subs);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // CATALOG NODES
-  app.get("/api/catalog-nodes", async (_req, res) => {
+  app.get("/api/catalog-nodes", async (req, res) => {
     try {
       const nodes = await storage.getCatalogNodes();
       res.json(nodes);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
+  async function catalogChangeAllowed(req: any, nodeId?: string): Promise<boolean> {
+    const node = nodeId ? await storage.getCatalogNode(nodeId) : undefined;
+    const parentId = nodeId ? node?.parentId : req.body?.parentId;
+    const parent = parentId ? await storage.getCatalogNode(parentId) : undefined;
+    return canChangeCatalogNode({ user: req.auth.user, method: req.method, body: req.body, node, parent });
+  }
+
   app.post("/api/catalog-nodes", async (req, res) => {
     try {
+      if (!(await catalogChangeAllowed(req))) return res.status(403).json({ error: "Недостаточно прав" });
       const node = await storage.createCatalogNode(req.body);
       res.json(node);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.patch("/api/catalog-nodes/:id", async (req, res) => {
     try {
+      if (!(await catalogChangeAllowed(req, req.params.id))) return res.status(403).json({ error: "Недостаточно прав" });
       const node = await storage.updateCatalogNode(req.params.id, req.body);
       if (!node) return res.status(404).json({ error: "Catalog node not found" });
       res.json(node);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.delete("/api/catalog-nodes/:id", async (req, res) => {
     try {
+      if (!(await catalogChangeAllowed(req, req.params.id))) return res.status(403).json({ error: "Недостаточно прав" });
       const deleted = await storage.deleteCatalogNode(req.params.id);
       if (!deleted) return res.status(404).json({ error: "Catalog node not found" });
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // VISIBILITY GROUPS
-  app.get("/api/visibility-groups", async (_req, res) => {
+  app.get("/api/visibility-groups", async (req, res) => {
     try {
       const groups = await storage.getVisibilityGroups();
       res.json(groups);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -374,7 +495,7 @@ export async function registerRoutes(
       const group = await storage.createVisibilityGroup(req.body);
       res.json(group);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -384,7 +505,7 @@ export async function registerRoutes(
       if (!group) return res.status(404).json({ error: "Visibility group not found" });
       res.json(group);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -394,7 +515,7 @@ export async function registerRoutes(
       if (!deleted) return res.status(404).json({ error: "Visibility group not found" });
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -411,13 +532,14 @@ export async function registerRoutes(
       }
       const mimeType = match[1];
       const data = match[2];
-      if (!mimeType.startsWith("image/")) {
-        return res.status(400).json({ error: "Only image uploads are allowed" });
+      // Raster formats only: SVG can carry scripts that run on our origin.
+      if (!SAFE_IMAGE_TYPES.has(mimeType.toLowerCase())) {
+        return res.status(400).json({ error: "Допустимы только изображения PNG, JPEG, GIF или WebP" });
       }
       const image = await storage.createImage({ data, mimeType });
       res.json({ id: image.id, url: `/api/images/${image.id}` });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -426,40 +548,111 @@ export async function registerRoutes(
       const image = await storage.getImage(req.params.id);
       if (!image) return res.status(404).json({ error: "Image not found" });
       const buffer = Buffer.from(image.data, "base64");
-      res.setHeader("Content-Type", image.mimeType);
+      const safe = SAFE_IMAGE_TYPES.has(String(image.mimeType).toLowerCase());
+      // Images stored before the whitelist (e.g. SVG) are served as downloads
+      // and sandboxed, so opening them directly cannot run scripts.
+      res.setHeader("Content-Type", safe ? image.mimeType : "application/octet-stream");
+      if (!safe) res.setHeader("Content-Disposition", "attachment");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
       res.setHeader("Content-Length", buffer.length);
       res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.send(buffer);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
+  // MATERIAL ACCESS — visibility and edit rights are checked here, not only in the UI.
+  async function loadAccessContext(): Promise<AccessContext> {
+    const [groups, nodes, effective] = await Promise.all([
+      storage.getVisibilityGroups(),
+      storage.getCatalogNodes(),
+      storage.getEffectiveVisGroupMap(),
+    ]);
+    return {
+      groups: groups as any,
+      nodes: nodes as any,
+      effectiveGroupIds: Object.fromEntries(effective.map((e: any) => [e.materialId, e.visibilityGroupIds as string[]])),
+    };
+  }
+
+  /** The version if the current user may see it; otherwise null (callers answer 404, not 403, to avoid leaking existence). */
+  async function getVisibleVersion(req: any, versionId: string) {
+    const version = await storage.getMaterialVersion(versionId);
+    if (!version) return null;
+    const ctx = await loadAccessContext();
+    return canViewVersion(req.auth.user, version as VersionRow, ctx) ? version : null;
+  }
+
+  async function canViewMaterialId(req: any, materialId: string): Promise<boolean> {
+    const versions = await storage.getMaterialVersionsByMaterialId(materialId);
+    if (versions.length === 0) return false;
+    const ctx = await loadAccessContext();
+    return versions.some((v) => canViewVersion(req.auth.user, v as VersionRow, ctx));
+  }
+
+  /** Material ids the user may see (any visible version). */
+  async function visibleMaterialIds(user: any): Promise<Set<string>> {
+    const [versions, ctx] = await Promise.all([storage.getMaterialVersions(), loadAccessContext()]);
+    const ids = new Set<string>();
+    for (const v of versions) {
+      if (!ids.has(v.materialId) && canViewVersion(user, v as VersionRow, ctx)) ids.add(v.materialId);
+    }
+    return ids;
+  }
+
+  /** Requests about another user's data: only that user or an admin. */
+  function isSelfOrAdmin(req: any, userId: unknown): boolean {
+    const me = req.auth.user;
+    return userId === me.id || hasAdminRole(me);
+  }
+
+  async function canManageMaterialId(user: any, materialId: string): Promise<boolean> {
+    const [all, ctx] = await Promise.all([storage.getMaterialVersionsByMaterialId(materialId), loadAccessContext()]);
+    return all.some((v) => isMaterialManager(user, v as VersionRow, all as VersionRow[], ctx));
+  }
+
+  /** Uploading or deleting a material's files: the same people who may edit it. */
+  async function canManageVersionFiles(user: any, versionId: string): Promise<boolean> {
+    const version = await storage.getMaterialVersion(versionId);
+    if (!version) return false;
+    const [all, ctx] = await Promise.all([
+      storage.getMaterialVersionsByMaterialId(version.materialId),
+      loadAccessContext(),
+    ]);
+    return isMaterialManager(user, version as VersionRow, all as VersionRow[], ctx);
+  }
+
   // MATERIAL VERSIONS
-  app.get("/api/material-versions", async (_req, res) => {
+  app.get("/api/material-versions", async (req, res) => {
     try {
-      const versions = await storage.getMaterialVersions();
-      res.json(versions.map(({ contentFileData: _cfd, additionalFilesData: _afd, ...rest }: any) => rest));
+      const [versions, ctx] = await Promise.all([storage.getMaterialVersions(), loadAccessContext()]);
+      const user = (req as any).auth.user;
+      res.json(
+        versions
+          .filter((v) => canViewVersion(user, v as VersionRow, ctx))
+          .map(({ contentFileData: _cfd, additionalFilesData: _afd, ...rest }: any) => withFileStatus(rest)),
+      );
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/material-versions/:id", async (req, res) => {
     try {
-      const version = await storage.getMaterialVersion(req.params.id);
+      const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "Material version not found" });
       const { contentFileData: _cfd, additionalFilesData: _afd, ...rest } = version as any;
-      res.json(rest);
+      res.json(withFileStatus(rest));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/material-versions/:id/file", async (req, res) => {
     try {
-      const version = await storage.getMaterialVersion(req.params.id);
+      const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "File not found" });
 
       // Try filesystem first, then support both legacy inline storage formats.
@@ -490,7 +683,16 @@ export async function registerRoutes(
           contentFile: fileMetadata,
         } as any).catch(() => {});
       }
-      if (!buffer) return res.status(404).json({ error: "File not found" });
+      if (!buffer) {
+        // A copied version (or one whose upload was interrupted) may lack the
+        // binary while an earlier version of the same material still has it.
+        const recovered = await recoverContentFile(req.params.id, version.materialId, contentFile.name);
+        if (recovered) {
+          buffer = recovered.buffer;
+          console.log(`[file] Recovered attachment for ${req.params.id} from ${recovered.sourceVersionId}`);
+        }
+      }
+      if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
 
       const fileInfo = contentFile;
       const mimeType = fileInfo?.type === "pdf"
@@ -511,7 +713,7 @@ export async function registerRoutes(
       res.setHeader("Content-Security-Policy", "frame-ancestors 'self'");
       res.send(buffer);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -531,12 +733,19 @@ export async function registerRoutes(
       const total = parseInt(req.query.total as string);
       const name = typeof req.query.name === "string" ? req.query.name : undefined;
       const fileType = typeof req.query.type === "string" ? req.query.type : undefined;
-      if (isNaN(index) || isNaN(total) || index < 0 || index >= total)
+      if (isNaN(index) || isNaN(total) || index < 0 || index >= total || total > MAX_UPLOAD_CHUNKS)
         return res.status(400).json({ error: "Неверные параметры чанка" });
       if (!Buffer.isBuffer(req.body) || req.body.length === 0)
         return res.status(400).json({ error: "Пустое тело чанка" });
 
       if (!_chunkStore.has(id) || _chunkStore.get(id)!.total !== total) {
+        // Validate before buffering anything: the id ends up in a file path.
+        if (!fileStorage.isSafeStorageId(id) || !(await storage.getMaterialVersion(id))) {
+          return res.status(404).json({ error: "Версия не найдена" });
+        }
+        if (!(await canManageVersionFiles(session.user, id))) {
+          return res.status(403).json({ error: "Недостаточно прав для загрузки файла" });
+        }
         _chunkStore.set(id, { chunks: new Array(total).fill(null), total, name, fileType, ts: Date.now() });
       }
       const entry = _chunkStore.get(id)!;
@@ -563,7 +772,7 @@ export async function registerRoutes(
       const received = entry.chunks.filter((c) => c !== null).length;
       res.json({ ok: true, done: false, received });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -571,6 +780,9 @@ export async function registerRoutes(
     try {
       const version = await storage.getMaterialVersion(req.params.id);
       if (!version) return res.status(404).json({ error: "Material version not found" });
+      if (!(await canManageVersionFiles((req as any).auth.user, req.params.id))) {
+        return res.status(403).json({ error: "Недостаточно прав для загрузки файла" });
+      }
       const buffer = req.body as Buffer;
       if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
         return res.status(400).json({ error: "Empty body" });
@@ -589,7 +801,7 @@ export async function registerRoutes(
       await storage.updateMaterialVersion(req.params.id, { contentFile: updatedFile } as any);
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -612,10 +824,17 @@ export async function registerRoutes(
       const fileType = typeof req.query.type === "string" ? req.query.type : undefined;
       const fileSize = typeof req.query.size === "string" ? parseInt(req.query.size) : undefined;
       if (!fileId) return res.status(400).json({ error: "fileId обязателен" });
-      if (isNaN(index) || isNaN(total) || index < 0 || index >= total) return res.status(400).json({ error: "Неверные параметры чанка" });
+      if (!fileStorage.isSafeStorageId(fileId)) return res.status(400).json({ error: "Недопустимый fileId" });
+      if (isNaN(index) || isNaN(total) || index < 0 || index >= total || total > MAX_UPLOAD_CHUNKS) return res.status(400).json({ error: "Неверные параметры чанка" });
       if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "Пустое тело чанка" });
       const storeKey = `${id}:${fileId}`;
       if (!_addChunkStore.has(storeKey) || _addChunkStore.get(storeKey)!.total !== total) {
+        if (!fileStorage.isSafeStorageId(id) || !(await storage.getMaterialVersion(id))) {
+          return res.status(404).json({ error: "Версия не найдена" });
+        }
+        if (!(await canManageVersionFiles(session.user, id))) {
+          return res.status(403).json({ error: "Недостаточно прав для загрузки файла" });
+        }
         _addChunkStore.set(storeKey, { chunks: new Array(total).fill(null), total, name, fileType, fileSize, ts: Date.now() });
       }
       const entry = _addChunkStore.get(storeKey)!;
@@ -634,7 +853,7 @@ export async function registerRoutes(
       }
       res.json({ ok: true, done: false, received: entry.chunks.filter(c => c !== null).length });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -645,6 +864,7 @@ export async function registerRoutes(
       const { id, fileId } = req.params;
       const version = await storage.getMaterialVersion(id);
       if (!version) return res.status(404).json({ error: "Версия не найдена" });
+      if (!(await canManageVersionFiles(session.user, id))) return res.status(403).json({ error: "Недостаточно прав" });
       fileStorage.deleteAdditionalFile(id, fileId);
       const existingFiles = (version.additionalFiles as any[]) ?? [];
       const updatedFiles = existingFiles.filter((f: any) => f.id !== fileId);
@@ -654,13 +874,13 @@ export async function registerRoutes(
       await storage.updateMaterialVersion(id, { additionalFiles: updatedFiles, additionalFilesData: updatedData } as any);
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/material-versions/:id/additional-file/:fileId", async (req, res) => {
     try {
-      const version = await storage.getMaterialVersion(req.params.id);
+      const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "Версия не найдена" });
       const { id, fileId } = req.params;
 
@@ -677,7 +897,8 @@ export async function registerRoutes(
           await storage.updateMaterialVersion(id, { additionalFilesData: updatedData } as any).catch(() => {});
         }
       }
-      if (!buffer) return res.status(404).json({ error: "Файл не найден" });
+      if (!buffer) buffer = await recoverAdditionalFile(id, version.materialId, fileId);
+      if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
 
       const fileInfo = ((version.additionalFiles as any[]) ?? []).find((f: any) => f.id === fileId);
       const fileName = fileInfo?.name || "file";
@@ -690,27 +911,62 @@ export async function registerRoutes(
       res.setHeader("Content-Length", buffer.length.toString());
       res.send(buffer);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.post("/api/material-versions", async (req, res) => {
     try {
-      const version = await storage.createMaterialVersion(coerceDates(sanitizeContentPage(req.body)));
+      const user = (req as any).auth.user;
+      // The author is always the signed-in user, whatever the client sent.
+      const data = { ...coerceDates(sanitizeContentPage(req.body)), createdBy: user.id };
+      if (typeof data.materialId !== "string" || !data.materialId) {
+        return res.status(400).json({ error: "materialId обязателен" });
+      }
+      const [existing, ctx] = await Promise.all([
+        storage.getMaterialVersionsByMaterialId(data.materialId),
+        loadAccessContext(),
+      ]);
+      const decision = canCreateVersion(user, data as VersionRow, existing as VersionRow[], ctx);
+      if (!decision.ok) return res.status(403).json({ error: decision.reason });
+      const version = await storage.createMaterialVersion(data);
+      // A new version of an existing material copies only file metadata from
+      // the client; copy the binaries too so preview/download work right away.
+      try {
+        if (version.contentKind === "file" && !fileStorage.hasContentFile(version.id)) {
+          await recoverContentFile(version.id, version.materialId, (version.contentFile as any)?.name);
+        }
+        for (const af of ((version.additionalFiles as any[]) ?? [])) {
+          if (af?.id && !fileStorage.readAdditionalFile(version.id, af.id)) {
+            await recoverAdditionalFile(version.id, version.materialId, af.id);
+          }
+        }
+      } catch (error) {
+        console.warn(`[file] copying files for new version ${version.id} failed:`, error);
+      }
       const { contentFileData: _cfd, additionalFilesData: _afd, ...rest } = version as any;
-      res.json(rest);
+      res.json(withFileStatus(rest));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.patch("/api/material-versions/:id", async (req, res) => {
     try {
+      const before = await storage.getMaterialVersion(req.params.id);
+      if (!before) return res.status(404).json({ error: "Material version not found" });
+      const [all, ctx] = await Promise.all([
+        storage.getMaterialVersionsByMaterialId(before.materialId),
+        loadAccessContext(),
+      ]);
+      const decision = canUpdateVersion((req as any).auth.user, before as VersionRow, req.body ?? {}, all as VersionRow[], ctx);
+      if (!decision.ok) return res.status(403).json({ error: decision.reason });
       const version = await storage.updateMaterialVersion(req.params.id, coerceDates(sanitizeContentPage(req.body)));
       if (!version) return res.status(404).json({ error: "Material version not found" });
-      res.json(version);
+      const { contentFileData: _cfd, additionalFilesData: _afd, ...rest } = version as any;
+      res.json(withFileStatus(rest));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -726,7 +982,7 @@ export async function registerRoutes(
       }
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -738,7 +994,7 @@ export async function registerRoutes(
       const envOverride = !!process.env.FILE_STORAGE_PATH;
       res.json({ path: fileStorage.getStorageDir(), totalFiles: stats.totalFiles, totalSizeMb: stats.totalBytes / 1024 / 1024, envOverride });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -758,92 +1014,124 @@ export async function registerRoutes(
       const stats = fileStorage.getStorageStats();
       res.json({ path: fileStorage.getStorageDir(), totalFiles: stats.totalFiles, totalSizeMb: stats.totalBytes / 1024 / 1024, envOverride: false });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // MATERIALS SUB-ROUTES
   app.get("/api/materials/:materialId/versions", async (req, res) => {
     try {
-      const versions = await storage.getMaterialVersionsByMaterialId(req.params.materialId);
-      res.json(versions);
+      const [versions, ctx] = await Promise.all([
+        storage.getMaterialVersionsByMaterialId(req.params.materialId),
+        loadAccessContext(),
+      ]);
+      const user = (req as any).auth.user;
+      res.json(
+        versions
+          .filter((v) => canViewVersion(user, v as VersionRow, ctx))
+          .map(({ contentFileData: _cfd, additionalFilesData: _afd, ...rest }: any) => withFileStatus(rest)),
+      );
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/materials/:materialId/subscribers", async (req, res) => {
     try {
+      if (!(await canViewMaterialId(req, req.params.materialId))) return res.status(404).json({ error: "Material not found" });
       const subs = await storage.getSubscribers(req.params.materialId);
       res.json(subs);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.post("/api/materials/:materialId/subscribers", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
+      if (req.body.userId !== me.id && !hasAdminRole(me)) return res.status(403).json({ error: "Можно подписать только себя" });
+      if (!(await canViewMaterialId(req, req.params.materialId))) return res.status(404).json({ error: "Material not found" });
       const sub = await storage.addSubscriber({ materialId: req.params.materialId, userId: req.body.userId });
       res.json(sub);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.delete("/api/materials/:materialId/subscribers/:userId", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
+      // Owners drop subscribers who lose access when visibility changes.
+      if (req.params.userId !== me.id && !(await canManageMaterialId(me, req.params.materialId))) {
+        return res.status(403).json({ error: "Можно отписать только себя" });
+      }
       const removed = await storage.removeSubscriber(req.params.materialId, req.params.userId);
       if (!removed) return res.status(404).json({ error: "Subscriber not found" });
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/materials/:materialId/audit-views", async (req, res) => {
     try {
+      if (!(await canViewMaterialId(req, req.params.materialId))) return res.status(404).json({ error: "Material not found" });
       const views = await storage.getAuditViews(req.params.materialId);
       res.json(views);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/materials/:materialId/rfcs", async (req, res) => {
     try {
+      if (!(await canViewMaterialId(req, req.params.materialId))) return res.status(404).json({ error: "Material not found" });
       const rfcs = await storage.getRfcsByMaterialId(req.params.materialId);
       res.json(rfcs);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/materials/:materialId/ratings", async (req, res) => {
     try {
+      if (!(await canViewMaterialId(req, req.params.materialId))) return res.status(404).json({ error: "Material not found" });
       const ratings = await storage.getRatingsByMaterial(req.params.materialId);
       res.json(ratings);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // AUDIT VIEWS
   app.post("/api/audit-views", async (req, res) => {
     try {
-      const view = await storage.createAuditView(coerceDates(req.body));
+      // Records are always attributed to the signed-in user.
+      const view = await storage.createAuditView({ ...coerceDates(req.body), userId: (req as any).auth.user.id });
       res.json(view);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // VIEW LOG
   app.post("/api/view-log", async (req, res) => {
     try {
-      const log = await storage.createViewLog(coerceDates(req.body));
+      const userId = (req as any).auth.user.id as string;
+      const materialId = req.body?.materialId;
+      if (typeof materialId !== "string" || !(await canViewMaterialId(req, materialId))) {
+        return res.status(404).json({ error: "Material not found" });
+      }
+      // One counted view per user and material per VIEW_DEDUP_MINUTES; the
+      // counter is incremented here, never set by the client.
+      const recent = await storage.getRecentViewLog(materialId, userId, VIEW_DEDUP_MINUTES);
+      if (recent.length > 0) return res.json(recent[0]);
+      const log = await storage.createViewLog({ materialId, userId });
+      const current = await storage.getCurrentMaterialVersion(materialId);
+      if (current) await storage.incrementVersionCounter(current.id, "views");
       res.json(log);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -853,6 +1141,7 @@ export async function registerRoutes(
       if (!materialId || !userId || !minutes) {
         return res.status(400).json({ error: "materialId, userId, and minutes query params are required" });
       }
+      if (!isSelfOrAdmin(req, userId)) return res.status(403).json({ error: "Недостаточно прав" });
       const logs = await storage.getRecentViewLog(
         materialId as string,
         userId as string,
@@ -860,75 +1149,91 @@ export async function registerRoutes(
       );
       res.json(logs);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // RFCS
-  app.get("/api/rfcs", async (_req, res) => {
+  app.get("/api/rfcs", async (req, res) => {
     try {
-      const rfcs = await storage.getRfcs();
-      res.json(rfcs);
+      const [rfcs, visible] = await Promise.all([storage.getRfcs(), visibleMaterialIds((req as any).auth.user)]);
+      res.json(rfcs.filter((r) => visible.has(r.materialId)));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/rfcs/:id", async (req, res) => {
     try {
       const rfc = await storage.getRfc(req.params.id);
-      if (!rfc) return res.status(404).json({ error: "RFC not found" });
+      if (!rfc || !(await canViewMaterialId(req, rfc.materialId))) return res.status(404).json({ error: "RFC not found" });
       res.json(rfc);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.post("/api/rfcs", async (req, res) => {
     try {
-      const rfc = await storage.createRfc(coerceDates(req.body));
+      if (!(await canViewMaterialId(req, req.body?.materialId))) return res.status(404).json({ error: "Material not found" });
+      const rfc = await storage.createRfc({ ...coerceDates(req.body), createdBy: (req as any).auth.user.id });
       res.json(rfc);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.patch("/api/rfcs/:id", async (req, res) => {
     try {
-      const rfc = await storage.updateRfc(req.params.id, coerceDates(req.body));
+      const me = (req as any).auth.user;
+      const existing = await storage.getRfc(req.params.id);
+      if (!existing || !(await canViewMaterialId(req, existing.materialId))) return res.status(404).json({ error: "RFC not found" });
+      const involved = existing.createdBy === me.id || existing.assignedTo === me.id;
+      if (!involved && !(await canManageMaterialId(me, existing.materialId))) {
+        return res.status(403).json({ error: "Недостаточно прав" });
+      }
+      const { materialId: _m, createdBy: _c, ...changes } = req.body ?? {};
+      const rfc = await storage.updateRfc(req.params.id, coerceDates(changes));
       if (!rfc) return res.status(404).json({ error: "RFC not found" });
       res.json(rfc);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // RFC COMMENTS
   app.get("/api/rfcs/:rfcId/comments", async (req, res) => {
     try {
+      const rfc = await storage.getRfc(req.params.rfcId);
+      if (!rfc || !(await canViewMaterialId(req, rfc.materialId))) return res.status(404).json({ error: "RFC not found" });
       const comments = await storage.getRfcComments(req.params.rfcId);
       res.json(comments);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.post("/api/rfcs/:rfcId/comments", async (req, res) => {
     try {
-      const comment = await storage.createRfcComment({ rfcId: req.params.rfcId, ...req.body });
+      const parent = await storage.getRfc(req.params.rfcId);
+      if (!parent || !(await canViewMaterialId(req, parent.materialId))) return res.status(404).json({ error: "RFC not found" });
+      const comment = await storage.createRfcComment({ ...req.body, rfcId: req.params.rfcId, createdBy: (req as any).auth.user.id });
       res.json(comment);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // NOTIFICATIONS
-  app.get("/api/notifications", async (_req, res) => {
+  app.get("/api/notifications", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
       const notifications = await storage.getNotifications();
-      res.json(notifications);
+      // Admins see the whole mail log; everyone else only their own mail.
+      const myEmail = String(me.email || "").toLowerCase();
+      res.json(hasAdminRole(me) ? notifications : notifications.filter((n) => myEmail && n.toAddress.toLowerCase() === myEmail));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -936,21 +1241,35 @@ export async function registerRoutes(
     try {
       // Статусом управляет сервер: новое уведомление всегда встаёт в очередь на отправку.
       const { status: _status, attempts: _a, nextAttemptAt: _n, lastError: _e, sentAt: _s, ...data } = coerceDates(req.body);
+      // Notifications are composed in the browser; only portal users may be
+      // recipients, otherwise the queue would mail any address on request.
+      const users = await storage.getUsers();
+      const known = new Set(users.map((u) => (u.email || "").toLowerCase()).filter(Boolean));
+      if (typeof data.toAddress !== "string" || !known.has(data.toAddress.toLowerCase())) {
+        return res.status(400).json({ error: "Получатель не найден среди пользователей портала" });
+      }
+      if (typeof data.subject !== "string" || data.subject.length > 300) {
+        return res.status(400).json({ error: "Недопустимая тема письма" });
+      }
+      // A notification about a material may only come from someone who sees it.
+      if (data.relatedMaterialId && !(await canViewMaterialId(req, data.relatedMaterialId))) {
+        return res.status(404).json({ error: "Material not found" });
+      }
       const notification = await storage.createNotification({ ...data, status: "LOGGED" });
       kickEmailQueue();
       res.json(notification);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // HELPFUL RATINGS
-  app.get("/api/ratings", async (_req, res) => {
+  app.get("/api/ratings", async (req, res) => {
     try {
-      const ratings = await storage.getRatings();
-      res.json(ratings);
+      const [ratings, visible] = await Promise.all([storage.getRatings(), visibleMaterialIds((req as any).auth.user)]);
+      res.json(ratings.filter((r) => visible.has(r.materialId)));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -960,6 +1279,7 @@ export async function registerRoutes(
       if (!userId || !materialId || !date) {
         return res.status(400).json({ error: "userId, materialId, and date query params are required" });
       }
+      if (!isSelfOrAdmin(req, userId)) return res.status(403).json({ error: "Недостаточно прав" });
       const rating = await storage.getRating(
         userId as string,
         materialId as string,
@@ -968,35 +1288,51 @@ export async function registerRoutes(
       if (!rating) return res.status(404).json({ error: "Rating not found" });
       res.json(rating);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.post("/api/ratings", async (req, res) => {
     try {
-      const rating = await storage.createRating(req.body);
+      const userId = (req as any).auth.user.id as string;
+      const { materialId, value } = req.body ?? {};
+      if (value !== "helpful" && value !== "not_helpful") return res.status(400).json({ error: "Недопустимая оценка" });
+      if (typeof materialId !== "string" || !(await canViewMaterialId(req, materialId))) {
+        return res.status(404).json({ error: "Material not found" });
+      }
+      // The date is the server's Moscow date: one rating per user, material and day.
+      const date = moscowDateString();
+      if (await storage.getRating(userId, materialId, date)) {
+        return res.status(409).json({ error: "Вы уже оценили этот материал сегодня" });
+      }
+      const rating = await storage.createRating({ userId, materialId, date, value });
+      const current = await storage.getCurrentMaterialVersion(materialId);
+      if (current) await storage.incrementVersionCounter(current.id, value === "helpful" ? "helpfulYes" : "helpfulNo");
       res.json(rating);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // EMAIL CONFIG
-  app.get("/api/email-config", async (_req, res) => {
+  app.get("/api/email-config", async (req, res) => {
     try {
       const config = await storage.getEmailConfig();
-      res.json(config || null);
+      res.json(config ? { ...config, smtpPassword: maskSecret(config.smtpPassword) } : null);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.put("/api/email-config", async (req, res) => {
     try {
-      const config = await storage.upsertEmailConfig(req.body);
-      res.json(config);
+      const { smtpPassword, ...rest } = req.body ?? {};
+      // The UI sends back the masked value; keep the stored secret then.
+      const data = isMaskedOrEmpty(smtpPassword) ? rest : { ...rest, smtpPassword };
+      const config = await storage.upsertEmailConfig(data);
+      res.json({ ...config, smtpPassword: maskSecret(config.smtpPassword) });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1025,12 +1361,12 @@ export async function registerRoutes(
   });
 
   // EMAIL TEMPLATES
-  app.get("/api/email-templates", async (_req, res) => {
+  app.get("/api/email-templates", async (req, res) => {
     try {
       const templates = await storage.getEmailTemplates();
       res.json(templates);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1040,7 +1376,7 @@ export async function registerRoutes(
       if (!template) return res.status(404).json({ error: "Email template not found" });
       res.json(template);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1100,7 +1436,7 @@ export async function registerRoutes(
 
   app.post("/api/materials/:materialId/report-error", async (req, res) => {
     try {
-      const userId = (req as any).session?.userId ?? req.headers["x-user-id"] as string;
+      const userId = (req as any).auth.user.id as string;
       const { message } = req.body;
       if (!message?.trim()) return res.status(400).json({ ok: false, message: "Текст сообщения не может быть пустым" });
       const result = await sendFeedbackEmail({
@@ -1117,7 +1453,7 @@ export async function registerRoutes(
 
   app.post("/api/materials/:materialId/suggest-improvement", async (req, res) => {
     try {
-      const userId = (req as any).session?.userId ?? req.headers["x-user-id"] as string;
+      const userId = (req as any).auth.user.id as string;
       const { message } = req.body;
       if (!message?.trim()) return res.status(400).json({ ok: false, message: "Текст сообщения не может быть пустым" });
       const result = await sendFeedbackEmail({
@@ -1133,12 +1469,12 @@ export async function registerRoutes(
   });
 
   // POLICY REVIEW PERIODS
-  app.get("/api/policy/review-periods", async (_req, res) => {
+  app.get("/api/policy/review-periods", async (req, res) => {
     try {
       const periods = await storage.getPolicyReviewPeriods();
       res.json(periods);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1148,17 +1484,17 @@ export async function registerRoutes(
       if (!period) return res.status(404).json({ error: "Policy review period not found" });
       res.json(period);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // POLICY RBAC DEFAULTS
-  app.get("/api/policy/rbac-defaults", async (_req, res) => {
+  app.get("/api/policy/rbac-defaults", async (req, res) => {
     try {
       const defaults = await storage.getPolicyRbacDefaults();
       res.json(defaults);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1168,17 +1504,17 @@ export async function registerRoutes(
       if (!rbac) return res.status(404).json({ error: "Policy RBAC default not found" });
       res.json(rbac);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // AD INTEGRATION CONFIG
-  app.get("/api/ad-config", async (_req, res) => {
+  app.get("/api/ad-config", async (req, res) => {
     try {
       const config = await storage.getAdIntegrationConfig();
-      res.json(config || null);
+      res.json(config ? { ...config, bindPassword: maskSecret(config.bindPassword) } : null);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1190,7 +1526,8 @@ export async function registerRoutes(
       if (body.mode !== undefined) dbData.mode = body.mode;
       if (body.ssoUrl !== undefined) dbData.ssoUrl = body.ssoUrl;
       if (body.bindDn !== undefined) dbData.bindDn = body.bindDn;
-      if (body.bindPassword !== undefined) dbData.bindPassword = body.bindPassword;
+      // The UI sends back the masked value; keep the stored secret then.
+      if (!isMaskedOrEmpty(body.bindPassword)) dbData.bindPassword = body.bindPassword;
       if (body.baseDn !== undefined) dbData.baseDn = body.baseDn;
       if (body.syncFrequencyMinutes !== undefined) dbData.syncFrequencyMinutes = body.syncFrequencyMinutes;
       if (body.syncStatus !== undefined) dbData.syncStatus = body.syncStatus;
@@ -1205,19 +1542,19 @@ export async function registerRoutes(
         if (body.mapping.email !== undefined) dbData.mappingEmail = body.mapping.email;
       }
       const config = await storage.upsertAdIntegrationConfig(dbData);
-      res.json(config);
+      res.json({ ...config, bindPassword: maskSecret(config.bindPassword) });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // AD SYNC LOG
-  app.get("/api/ad-sync-log", async (_req, res) => {
+  app.get("/api/ad-sync-log", async (req, res) => {
     try {
       const logs = await storage.getAdSyncLogs();
       res.json(logs);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1226,7 +1563,7 @@ export async function registerRoutes(
       const log = await storage.createAdSyncLog(coerceDates(req.body));
       res.json(log);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1254,41 +1591,47 @@ export async function registerRoutes(
   });
 
   // EFFECTIVE VIS GROUP MAP
-  app.get("/api/effective-vis-groups", async (_req, res) => {
+  app.get("/api/effective-vis-groups", async (req, res) => {
     try {
       const map = await storage.getEffectiveVisGroupMap();
       res.json(map);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.put("/api/effective-vis-groups/:materialId", async (req, res) => {
     try {
+      if (!(await canManageMaterialId((req as any).auth.user, req.params.materialId))) {
+        return res.status(403).json({ error: "Недостаточно прав" });
+      }
       const result = await storage.upsertEffectiveVisGroupMap(req.params.materialId, req.body.visibilityGroupIds);
       res.json(result);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.delete("/api/effective-vis-groups/:materialId", async (req, res) => {
     try {
+      if (!(await canManageMaterialId((req as any).auth.user, req.params.materialId))) {
+        return res.status(403).json({ error: "Недостаточно прав" });
+      }
       const deleted = await storage.deleteEffectiveVisGroupMap(req.params.materialId);
       if (!deleted) return res.status(404).json({ error: "Effective vis group map not found" });
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // NEW HIRES CONFIG
-  app.get("/api/new-hires/config", async (_req, res) => {
+  app.get("/api/new-hires/config", async (req, res) => {
     try {
       const config = await storage.getNewHiresConfig();
       res.json(config || { enabled: false });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1297,17 +1640,18 @@ export async function registerRoutes(
       const config = await storage.upsertNewHiresConfig(req.body);
       res.json(config);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // NEW HIRE PROFILES
-  app.get("/api/new-hires/profiles", async (_req, res) => {
+  app.get("/api/new-hires/profiles", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
       const profiles = await storage.getNewHireProfiles();
-      res.json(profiles);
+      res.json(hasAdminRole(me) ? profiles : profiles.filter((p) => p.userId === me.id));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1316,36 +1660,46 @@ export async function registerRoutes(
       const profile = await storage.createNewHireProfile(coerceDates(req.body));
       res.json(profile);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.patch("/api/new-hires/profiles/:id", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
+      if (!hasAdminRole(me)) {
+        // A new hire may only mark their own onboarding as completed.
+        const existing = await storage.getNewHireProfile(req.params.id);
+        const keys = Object.keys(req.body ?? {});
+        const ownCompletion = existing?.userId === me.id && keys.length === 1 && req.body.status === "Завершено";
+        if (!ownCompletion) return res.status(403).json({ error: "Недостаточно прав" });
+      }
       const profile = await storage.updateNewHireProfile(req.params.id, coerceDates(req.body));
       if (!profile) return res.status(404).json({ error: "New hire profile not found" });
       res.json(profile);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   // NEW HIRE ASSIGNMENTS
-  app.get("/api/new-hires/assignments", async (_req, res) => {
+  app.get("/api/new-hires/assignments", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
       const assignments = await storage.getNewHireAssignments();
-      res.json(assignments);
+      res.json(hasAdminRole(me) ? assignments : assignments.filter((a) => a.userId === me.id));
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.get("/api/new-hires/assignments/user/:userId", async (req, res) => {
     try {
+      if (!isSelfOrAdmin(req, req.params.userId)) return res.status(403).json({ error: "Недостаточно прав" });
       const assignments = await storage.getNewHireAssignmentsByUser(req.params.userId);
       res.json(assignments);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1358,12 +1712,16 @@ export async function registerRoutes(
       const assignment = await storage.createNewHireAssignment(data);
       res.json(assignment);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
   app.patch("/api/new-hires/assignments/:id/acknowledge", async (req, res) => {
     try {
+      const me = (req as any).auth.user;
+      const existing = await storage.getNewHireAssignment(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Assignment not found" });
+      if (existing.userId !== me.id && !hasAdminRole(me)) return res.status(403).json({ error: "Недостаточно прав" });
       const assignment = await storage.updateNewHireAssignment(req.params.id, {
         acknowledgedAt: new Date(),
         acknowledgedVersionId: req.body.acknowledgedVersionId,
@@ -1371,7 +1729,7 @@ export async function registerRoutes(
       if (!assignment) return res.status(404).json({ error: "Assignment not found" });
       res.json(assignment);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1395,11 +1753,15 @@ export async function registerRoutes(
       const user = await storage.getSessionUser(token);
       if (user) return { user, token };
     }
-    // Fallback: X-User-Id header (used when Bearer token is absent/expired)
-    const xUserId = (req.headers["x-user-id"] as string) || "";
-    if (xUserId) {
-      const user = await storage.getUser(xUserId);
-      if (user) return { user, token: "" };
+    // Cookie only for reads (downloads, images): state-changing requests must
+    // carry the Bearer token, which a cross-site page cannot attach.
+    const method = String(req.method || "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD") {
+      const cookieToken = readCookie(req, SESSION_COOKIE);
+      if (cookieToken) {
+        const user = await storage.getSessionUser(cookieToken);
+        if (user) return { user, token: cookieToken };
+      }
     }
     return null;
   }
@@ -1422,7 +1784,7 @@ export async function registerRoutes(
         : "";
       res.json({ ...rest, apiKey: maskedKey });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1453,7 +1815,7 @@ export async function registerRoutes(
         : "";
       res.json({ ...rest, apiKey: maskedKey });
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -1470,7 +1832,7 @@ export async function registerRoutes(
       const enriched = logs.map((l) => ({ ...l, userName: userMap[l.userId] || l.userId }));
       res.json(enriched);
     } catch (e) {
-      res.status(500).json({ error: String(e) });
+      sendServerError(req, res, e);
     }
   });
 
@@ -2209,10 +2571,33 @@ export async function registerRoutes(
           const msg = JSON.parse(buf.toString("utf8"));
           const session = await verifySession({ headers: { authorization: `Bearer ${msg.auth ?? ""}` } });
           if (!session) { ws.send(JSON.stringify({ type: "error", message: "Unauthorized" })); ws.close(1008, "Unauthorized"); return; }
-          meta = { versionId: msg.versionId, fileName: msg.fileName, fileType: msg.fileType, totalSize: Number(msg.totalSize), kind: msg.kind, additionalFileId: msg.additionalFileId };
+          // The ids end up in file paths: validate them and the version first.
+          const idsOk = fileStorage.isSafeStorageId(msg.versionId)
+            && (msg.kind !== "additional" || fileStorage.isSafeStorageId(msg.additionalFileId));
+          if (!idsOk || !(await storage.getMaterialVersion(msg.versionId))) {
+            ws.send(JSON.stringify({ type: "error", message: "Версия или файл не найдены" }));
+            ws.close();
+            return;
+          }
+          if (!(await canManageVersionFiles(session.user, msg.versionId))) {
+            ws.send(JSON.stringify({ type: "error", message: "Недостаточно прав для загрузки файла" }));
+            ws.close();
+            return;
+          }
+          const totalSize = Number(msg.totalSize);
+          if (!Number.isFinite(totalSize) || totalSize < 0 || totalSize > MAX_UPLOAD_BYTES) {
+            ws.send(JSON.stringify({ type: "error", message: "Файл слишком большой" }));
+            ws.close();
+            return;
+          }
+          meta = { versionId: msg.versionId, fileName: msg.fileName, fileType: msg.fileType, totalSize, kind: msg.kind, additionalFileId: msg.additionalFileId };
           ws.send(JSON.stringify({ type: "ready" }));
           if (meta.totalSize === 0) {
-            fileStorage.writeContentFile(meta.versionId, Buffer.alloc(0));
+            if (meta.kind === "additional" && meta.additionalFileId) {
+              fileStorage.writeAdditionalFile(meta.versionId, meta.additionalFileId, Buffer.alloc(0));
+            } else {
+              fileStorage.writeContentFile(meta.versionId, Buffer.alloc(0));
+            }
             ws.send(JSON.stringify({ type: "done" }));
             ws.close();
           }
