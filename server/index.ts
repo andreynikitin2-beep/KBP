@@ -2,9 +2,15 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { backfillSearchText, ensureFeedbackTemplates, storage } from "./storage";
+import { backfillSearchText, ensureFeedbackTemplates, migrateSecrets, storage } from "./storage";
 import { setStorageDir } from "./fileStorage";
 import { startEmailQueue } from "./mailer";
+import { startOverdueCheck } from "./reviewScheduler";
+import { assertSecretsKey } from "./secrets";
+
+// Stored SMTP/LDAP passwords and the AI key are encrypted with SECRETS_KEY:
+// refuse to start without it rather than fail on the first secret read.
+assertSecretsKey();
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,16 +21,18 @@ declare module "http" {
   }
 }
 
-app.use(
-  express.json({
-    limit: "100mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
+// Large JSON bodies only where content needs them (pages with images, image
+// uploads, AI generation, settings restore); everything else stays small so
+// a single request cannot exhaust memory.
+const LARGE_BODY_ROUTES = /^\/api\/(material-versions|images|ai\/|admin\/settings-restore)/;
+const jsonVerify = (req: any, _res: any, buf: Buffer) => {
+  req.rawBody = buf;
+};
+const largeJson = express.json({ limit: "50mb", verify: jsonVerify });
+const smallJson = express.json({ limit: "2mb", verify: jsonVerify });
+app.use((req, res, next) => (LARGE_BODY_ROUTES.test(req.path) ? largeJson : smallJson)(req, res, next));
 
-app.use(express.urlencoded({ extended: false, limit: "100mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -40,23 +48,13 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
+  // Response bodies are never logged: they contain session tokens, user data
+  // and configuration secrets.
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
     }
   });
 
@@ -73,10 +71,12 @@ app.use((req, res, next) => {
     }).catch(() => {});
   }
 
+  await migrateSecrets().catch((e) => console.error("[secrets] migration error:", e));
   await backfillSearchText().catch((e) => console.error("[search] backfill error:", e));
 
   await registerRoutes(httpServer, app);
   startEmailQueue();
+  startOverdueCheck();
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

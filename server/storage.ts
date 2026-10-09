@@ -2,6 +2,7 @@ import { eq, and, desc, gte, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import * as fileStorage from "./fileStorage";
 import { extractDocumentText, extractHtmlText } from "./documentText";
+import { decryptSecret, encryptSecret, hashPassword, hashToken, isEncrypted, isPasswordHash } from "./secrets";
 import * as schema from "@shared/schema";
 
 export interface IStorage {
@@ -166,6 +167,22 @@ function extractTextForSearch(data: {
   return "";
 }
 
+function withHashedPassword<T extends { password?: string | null }>(data: T): T {
+  if (typeof data.password !== "string") return data;
+  return { ...data, password: hashPassword(data.password) };
+}
+
+// Secrets are encrypted at rest; callers of storage always see plaintext.
+function encryptField<T extends Record<string, any>>(data: T, field: keyof T & string): T {
+  if (typeof data[field] !== "string") return data;
+  return { ...data, [field]: encryptSecret(data[field]) };
+}
+
+function decryptField<T extends Record<string, any> | undefined>(row: T, field: string): T {
+  if (!row || typeof row[field] !== "string") return row;
+  return { ...row, [field]: decryptSecret(row[field]) };
+}
+
 export class DatabaseStorage implements IStorage {
   async getUsers(): Promise<schema.User[]> {
     return db.select().from(schema.users);
@@ -182,12 +199,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(data: schema.InsertUser): Promise<schema.User> {
-    const [user] = await db.insert(schema.users).values(data).returning();
+    const [user] = await db.insert(schema.users).values(withHashedPassword(data)).returning();
     return user;
   }
 
   async updateUser(id: string, data: Partial<schema.InsertUser>): Promise<schema.User | undefined> {
-    const [user] = await db.update(schema.users).set(data).where(eq(schema.users.id, id)).returning();
+    const [user] = await db.update(schema.users).set(withHashedPassword(data)).where(eq(schema.users.id, id)).returning();
+    // New password or deactivation: end all of the user's sessions.
+    if (user && (typeof data.password === "string" || data.deactivatedAt)) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, id));
+    }
     return user;
   }
 
@@ -428,24 +449,52 @@ export class DatabaseStorage implements IStorage {
     return rating;
   }
 
+  /** The version readers see: the newest non-archived one, else the newest. */
+  async getCurrentMaterialVersion(materialId: string): Promise<schema.MaterialVersion | undefined> {
+    const versions = await db.select().from(schema.materialVersions)
+      .where(eq(schema.materialVersions.materialId, materialId))
+      .orderBy(desc(schema.materialVersions.createdAt));
+    return versions.find((v) => v.status !== "Архив") ?? versions[0];
+  }
+
+  /** Atomic +1 on a view/rating counter; counters are never taken from the client. */
+  async incrementVersionCounter(versionId: string, field: "views" | "helpfulYes" | "helpfulNo"): Promise<void> {
+    const column = schema.materialVersions[field];
+    await db.update(schema.materialVersions)
+      .set({ [field]: sql`${column} + 1` })
+      .where(eq(schema.materialVersions.id, versionId));
+  }
+
+  /** Move published versions whose review date has passed to "На пересмотре". */
+  async transitionOverdueVersions(now: Date): Promise<schema.MaterialVersion[]> {
+    return db.update(schema.materialVersions)
+      .set({ status: "На пересмотре" })
+      .where(and(
+        eq(schema.materialVersions.status, "Опубликовано"),
+        sql`${schema.materialVersions.nextReviewAt} < ${now}`,
+      ))
+      .returning();
+  }
+
   async getEmailConfig(): Promise<schema.EmailConfig | undefined> {
     const [config] = await db.select().from(schema.emailConfig);
-    return config;
+    return decryptField(config, "smtpPassword");
   }
 
   async upsertEmailConfig(data: schema.InsertEmailConfig): Promise<schema.EmailConfig> {
     const existing = await this.getEmailConfig();
+    const values = encryptField(data, "smtpPassword");
     if (existing) {
-      const [updated] = await db.update(schema.emailConfig).set(data).where(eq(schema.emailConfig.id, existing.id)).returning();
-      return updated;
+      const [updated] = await db.update(schema.emailConfig).set(values).where(eq(schema.emailConfig.id, existing.id)).returning();
+      return decryptField(updated, "smtpPassword");
     }
-    const [created] = await db.insert(schema.emailConfig).values(data).returning();
-    return created;
+    const [created] = await db.insert(schema.emailConfig).values(values).returning();
+    return decryptField(created, "smtpPassword");
   }
 
   async updateEmailConfig(id: string, data: Partial<schema.InsertEmailConfig>): Promise<schema.EmailConfig | undefined> {
-    const [config] = await db.update(schema.emailConfig).set(data).where(eq(schema.emailConfig.id, id)).returning();
-    return config;
+    const [config] = await db.update(schema.emailConfig).set(encryptField(data, "smtpPassword")).where(eq(schema.emailConfig.id, id)).returning();
+    return decryptField(config, "smtpPassword");
   }
 
   async getEmailTemplates(): Promise<schema.EmailTemplate[]> {
@@ -502,22 +551,23 @@ export class DatabaseStorage implements IStorage {
 
   async getAdIntegrationConfig(): Promise<schema.AdIntegrationConfig | undefined> {
     const [config] = await db.select().from(schema.adIntegrationConfig);
-    return config;
+    return decryptField(config, "bindPassword");
   }
 
   async upsertAdIntegrationConfig(data: schema.InsertAdIntegrationConfig): Promise<schema.AdIntegrationConfig> {
     const existing = await this.getAdIntegrationConfig();
+    const values = encryptField(data, "bindPassword");
     if (existing) {
-      const [updated] = await db.update(schema.adIntegrationConfig).set(data).where(eq(schema.adIntegrationConfig.id, existing.id)).returning();
-      return updated;
+      const [updated] = await db.update(schema.adIntegrationConfig).set(values).where(eq(schema.adIntegrationConfig.id, existing.id)).returning();
+      return decryptField(updated, "bindPassword");
     }
-    const [created] = await db.insert(schema.adIntegrationConfig).values(data).returning();
-    return created;
+    const [created] = await db.insert(schema.adIntegrationConfig).values(values).returning();
+    return decryptField(created, "bindPassword");
   }
 
   async updateAdIntegrationConfig(id: string, data: Partial<schema.InsertAdIntegrationConfig>): Promise<schema.AdIntegrationConfig | undefined> {
-    const [config] = await db.update(schema.adIntegrationConfig).set(data).where(eq(schema.adIntegrationConfig.id, id)).returning();
-    return config;
+    const [config] = await db.update(schema.adIntegrationConfig).set(encryptField(data, "bindPassword")).where(eq(schema.adIntegrationConfig.id, id)).returning();
+    return decryptField(config, "bindPassword");
   }
 
   async getAdSyncLogs(): Promise<schema.AdSyncLog[]> {
@@ -612,21 +662,22 @@ export class DatabaseStorage implements IStorage {
 
   async getAiSettings(): Promise<schema.AiSettings | undefined> {
     const [settings] = await db.select().from(schema.aiSettings);
-    return settings;
+    return decryptField(settings, "apiKey");
   }
 
   async upsertAiSettings(data: schema.InsertAiSettings): Promise<schema.AiSettings> {
     const existing = await this.getAiSettings();
+    const values = encryptField(data, "apiKey");
     if (existing) {
       const [updated] = await db
         .update(schema.aiSettings)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...values, updatedAt: new Date() })
         .where(eq(schema.aiSettings.id, existing.id))
         .returning();
-      return updated;
+      return decryptField(updated, "apiKey");
     }
-    const [created] = await db.insert(schema.aiSettings).values(data).returning();
-    return created;
+    const [created] = await db.insert(schema.aiSettings).values(values).returning();
+    return decryptField(created, "apiKey");
   }
 
   async createAiQueryLog(data: schema.InsertAiQueryLog): Promise<schema.AiQueryLog> {
@@ -738,25 +789,33 @@ export class DatabaseStorage implements IStorage {
     const { randomUUID } = await import("crypto");
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await db.insert(schema.sessions).values({ token, userId, expiresAt });
+    // Only the hash is stored: a DB dump must not yield usable tokens.
+    await db.insert(schema.sessions).values({ token: hashToken(token), userId, expiresAt });
     return token;
   }
 
   async getSessionUser(token: string): Promise<schema.User | undefined> {
+    const tokenHash = hashToken(token);
     const [session] = await db
       .select()
       .from(schema.sessions)
-      .where(eq(schema.sessions.token, token));
+      .where(eq(schema.sessions.token, tokenHash));
     if (!session) return undefined;
     if (session.expiresAt < new Date()) {
-      await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
+      await db.delete(schema.sessions).where(eq(schema.sessions.token, tokenHash));
       return undefined;
     }
-    return this.getUser(session.userId);
+    const user = await this.getUser(session.userId);
+    // A deactivated account loses access immediately, not when the session expires.
+    if (!user || user.deactivatedAt) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.token, tokenHash));
+      return undefined;
+    }
+    return user;
   }
 
   async deleteSession(token: string): Promise<void> {
-    await db.delete(schema.sessions).where(eq(schema.sessions.token, token));
+    await db.delete(schema.sessions).where(eq(schema.sessions.token, hashToken(token)));
   }
 
   async createImage(data: schema.InsertImage): Promise<schema.Image> {
@@ -771,6 +830,83 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+async function getPreviousVersions(versionId: string, materialId: string) {
+  return db.select({
+    id: schema.materialVersions.id,
+    contentFile: schema.materialVersions.contentFile,
+  })
+    .from(schema.materialVersions)
+    .where(and(
+      eq(schema.materialVersions.materialId, materialId),
+      sql`${schema.materialVersions.id} <> ${versionId}`,
+    ))
+    .orderBy(desc(schema.materialVersions.createdAt));
+}
+
+/** Restore a version's missing content file from an earlier version of the same material. */
+export async function recoverContentFile(
+  versionId: string,
+  materialId: string,
+  fileName: string | undefined,
+): Promise<{ buffer: Buffer; sourceVersionId: string } | null> {
+  if (!fileName) return null;
+  const previous = await getPreviousVersions(versionId, materialId);
+  return fileStorage.recoverContentFileFrom(versionId, fileName, previous);
+}
+
+/** Restore a version's missing additional file from an earlier version of the same material. */
+export async function recoverAdditionalFile(
+  versionId: string,
+  materialId: string,
+  fileId: string,
+): Promise<Buffer | null> {
+  const previous = await getPreviousVersions(versionId, materialId);
+  return fileStorage.recoverAdditionalFileFrom(versionId, fileId, previous.map((p) => p.id));
+}
+
+/**
+ * One-time, idempotent migration of secrets stored before encryption/hashing:
+ * hash plaintext user passwords, encrypt plaintext SMTP/LDAP passwords and the
+ * AI key, and drop sessions whose token was stored in clear (they cannot be
+ * looked up by hash anyway).
+ */
+export async function migrateSecrets(): Promise<void> {
+  const users = await db.select({ id: schema.users.id, password: schema.users.password }).from(schema.users);
+  let hashed = 0;
+  for (const u of users) {
+    if (u.password && !isPasswordHash(u.password)) {
+      await db.update(schema.users).set({ password: hashPassword(u.password) }).where(eq(schema.users.id, u.id));
+      hashed++;
+    }
+  }
+
+  let encrypted = 0;
+  const [email] = await db.select().from(schema.emailConfig);
+  if (email?.smtpPassword && !isEncrypted(email.smtpPassword)) {
+    await db.update(schema.emailConfig).set({ smtpPassword: encryptSecret(email.smtpPassword) }).where(eq(schema.emailConfig.id, email.id));
+    encrypted++;
+  }
+  const [ad] = await db.select().from(schema.adIntegrationConfig);
+  if (ad?.bindPassword && !isEncrypted(ad.bindPassword)) {
+    await db.update(schema.adIntegrationConfig).set({ bindPassword: encryptSecret(ad.bindPassword) }).where(eq(schema.adIntegrationConfig.id, ad.id));
+    encrypted++;
+  }
+  const [ai] = await db.select().from(schema.aiSettings);
+  if (ai?.apiKey && !isEncrypted(ai.apiKey)) {
+    await db.update(schema.aiSettings).set({ apiKey: encryptSecret(ai.apiKey) }).where(eq(schema.aiSettings.id, ai.id));
+    encrypted++;
+  }
+
+  // Hashed tokens are 64 hex chars; anything else is a legacy plaintext token.
+  const dropped = await db.delete(schema.sessions)
+    .where(sql`${schema.sessions.token} !~ '^[0-9a-f]{64}$'`)
+    .returning({ token: schema.sessions.token });
+
+  if (hashed || encrypted || dropped.length) {
+    console.log(`[secrets] hashed ${hashed} password(s), encrypted ${encrypted} secret(s), dropped ${dropped.length} legacy session(s)`);
+  }
+}
 
 export async function backfillSearchText(): Promise<void> {
   const { isNull, or } = await import("drizzle-orm");
@@ -805,39 +941,19 @@ export async function backfillSearchText(): Promise<void> {
       let recoveredFromVersionId: string | undefined;
 
       // A version can be created before its upload finishes (or after a
-      // transient upload failure). Reuse an earlier attachment only when it
-      // belongs to the same material and has the same filename; this avoids
-      // mixing unrelated documents while repairing an incomplete version.
+      // transient upload failure). Reuse an earlier attachment of the same
+      // material with the same filename to repair an incomplete version.
       if (!buffer && fileInfo.name) {
-        const previousVersions = await db.select({
-          id: schema.materialVersions.id,
-          contentFile: schema.materialVersions.contentFile,
-          createdAt: schema.materialVersions.createdAt,
-        })
-          .from(schema.materialVersions)
-          .where(and(
-            eq(schema.materialVersions.materialId, row.materialId),
-            eq(schema.materialVersions.contentKind, "file"),
-            sql`${schema.materialVersions.id} <> ${row.id}`,
-          ))
-          .orderBy(desc(schema.materialVersions.createdAt));
-
-        for (const previous of previousVersions) {
-          const previousFile = (previous.contentFile as any) || {};
-          if (previousFile.name !== fileInfo.name) continue;
-          const previousBuffer = fileStorage.readContentFile(previous.id);
-          if (previousBuffer) {
-            buffer = previousBuffer;
-            recoveredFromVersionId = previous.id;
-            break;
-          }
+        const recovered = await recoverContentFile(row.id, row.materialId, fileInfo.name);
+        if (recovered) {
+          buffer = recovered.buffer;
+          recoveredFromVersionId = recovered.sourceVersionId;
         }
       }
 
       if (buffer) {
         try {
           if (recoveredFromVersionId) {
-            fileStorage.writeContentFile(row.id, buffer);
             console.log(`[search] Recovered attachment for ${row.id} from ${recoveredFromVersionId}`);
           }
           searchText = await extractDocumentText(buffer, fileInfo.type, fileInfo.name);

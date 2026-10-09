@@ -7,6 +7,11 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       SESSION_SECRET: ${SESSION_SECRET}
+      # Ключ шифрования секретов в БД (пароли SMTP/LDAP, API-ключ AI)
+      SECRETS_KEY: ${SECRETS_KEY:?Задайте SECRETS_KEY в .env (openssl rand -hex 32)}
+      # Проверка сертификата LDAPS: путь к корпоративному CA внутри контейнера
+      LDAP_CA_FILE: ${LDAP_CA_FILE:-}
+      LDAP_TLS_INSECURE: ${LDAP_TLS_INSECURE:-false}
       # Адрес портала для ссылок в письмах, например https://kb.example.local
       PUBLIC_URL: ${PUBLIC_URL:-}
       FILE_STORAGE_PATH: /data/uploads
@@ -15,6 +20,8 @@ services:
     volumes:
       # Persistent file storage on the external server
       - ./uploads:/data/uploads
+      # Корпоративный CA для LDAPS (положите ca.pem в ./ldap-ca)
+      - ./ldap-ca:/app/ldap-ca:ro
     expose:
       - "5000"
     depends_on:

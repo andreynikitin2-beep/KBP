@@ -1,5 +1,20 @@
+import fs from "fs";
 import ldap from "ldapjs";
 import { storage } from "./storage";
+
+/**
+ * TLS options for ldaps:// connections. The server certificate is verified
+ * against the system CAs, or against LDAP_CA_FILE (corporate CA, PEM).
+ * LDAP_TLS_INSECURE=true turns verification off — only as a temporary
+ * workaround, since it lets anyone on the network intercept AD passwords.
+ */
+export function ldapTlsOptions(url: string): { rejectUnauthorized: boolean; ca?: Buffer } | undefined {
+  if (!url.startsWith("ldaps://")) return undefined;
+  if (process.env.LDAP_TLS_INSECURE === "true") return { rejectUnauthorized: false };
+  const caFile = process.env.LDAP_CA_FILE;
+  if (caFile) return { rejectUnauthorized: true, ca: fs.readFileSync(caFile) };
+  return { rejectUnauthorized: true };
+}
 
 interface LdapConfig {
   url: string;
@@ -279,7 +294,7 @@ export async function performLdapSync(): Promise<{
 
 function searchLdapUsers(config: LdapConfig, accountName?: string): Promise<LdapUserEntry[]> {
   return new Promise((resolve, reject) => {
-    const tlsOptions = config.url.startsWith("ldaps://") ? { rejectUnauthorized: false } : undefined;
+    const tlsOptions = ldapTlsOptions(config.url);
 
     const client = ldap.createClient({
       url: config.url,
@@ -467,7 +482,7 @@ export function authenticateViaLdap(
   password: string,
 ): Promise<{ ok: boolean; message: string }> {
   return new Promise((resolve) => {
-    const tlsOptions = ldapUrl.startsWith("ldaps://") ? { rejectUnauthorized: false } : undefined;
+    const tlsOptions = ldapTlsOptions(ldapUrl);
 
     const client = ldap.createClient({
       url: ldapUrl,
