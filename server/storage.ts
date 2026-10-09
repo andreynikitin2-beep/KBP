@@ -882,6 +882,18 @@ export async function recoverAdditionalFile(
   return fileStorage.recoverAdditionalFileFrom(versionId, fileId, previous.map((p) => p.id));
 }
 
+/** True when any stored secret is already encrypted (so a key must exist). */
+export async function hasEncryptedSecrets(): Promise<boolean> {
+  const result = await db.execute(sql`
+    select
+      exists(select 1 from ${schema.emailConfig} where ${schema.emailConfig.smtpPassword} like 'enc:v1:%')
+      or exists(select 1 from ${schema.adIntegrationConfig} where ${schema.adIntegrationConfig.bindPassword} like 'enc:v1:%')
+      or exists(select 1 from ${schema.aiSettings} where ${schema.aiSettings.apiKey} like 'enc:v1:%')
+      as found
+  `);
+  return Boolean((result as any).rows?.[0]?.found);
+}
+
 /**
  * One-time, idempotent migration of secrets stored before encryption/hashing:
  * hash plaintext user passwords, encrypt plaintext SMTP/LDAP passwords and the

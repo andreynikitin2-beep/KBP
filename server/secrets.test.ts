@@ -1,9 +1,13 @@
 // Шифрование секретов, хеши паролей и токенов сессий.
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {
   assertSecretsKey,
   decryptSecret,
   encryptSecret,
+  initSecretsKey,
   hashPassword,
   hashToken,
   isEncrypted,
@@ -21,9 +25,13 @@ beforeEach(() => {
   process.env.SECRETS_KEY = KEY_A;
 });
 
+const savedKeyFile = process.env.SECRETS_KEY_FILE;
+
 afterAll(() => {
   if (savedKey === undefined) delete process.env.SECRETS_KEY;
   else process.env.SECRETS_KEY = savedKey;
+  if (savedKeyFile === undefined) delete process.env.SECRETS_KEY_FILE;
+  else process.env.SECRETS_KEY_FILE = savedKeyFile;
 });
 
 describe("encryptSecret / decryptSecret", () => {
@@ -104,5 +112,52 @@ describe("hashToken", () => {
     expect(h).toMatch(/^[0-9a-f]{64}$/);
     expect(h).not.toBe(token);
     expect(hashToken(token)).toBe(h);
+  });
+});
+
+describe("initSecretsKey", () => {
+  let dir: string;
+  const noData = async () => false;
+  const hasData = async () => true;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "kbp-key-"));
+    process.env.SECRETS_KEY_FILE = path.join(dir, "secrets", "secrets.key");
+    delete process.env.SECRETS_KEY;
+  });
+
+  it("берёт SECRETS_KEY из окружения и не создаёт файл", async () => {
+    process.env.SECRETS_KEY = KEY_A;
+    expect(await initSecretsKey(noData)).toBe("env");
+    expect(fs.existsSync(process.env.SECRETS_KEY_FILE!)).toBe(false);
+  });
+
+  it("при первом запуске генерирует ключ и сохраняет его с правами 600", async () => {
+    expect(await initSecretsKey(noData)).toBe("generated");
+    const file = process.env.SECRETS_KEY_FILE!;
+    const stored = fs.readFileSync(file, "utf8").trim();
+    expect(stored).toMatch(/^[0-9a-f]{64}$/);
+    expect(process.env.SECRETS_KEY).toBe(stored);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it("при следующем запуске читает тот же ключ из файла", async () => {
+    await initSecretsKey(noData);
+    const first = process.env.SECRETS_KEY;
+    const enc = encryptSecret("smtp");
+    delete process.env.SECRETS_KEY;
+    expect(await initSecretsKey(hasData)).toBe("file");
+    expect(process.env.SECRETS_KEY).toBe(first);
+    expect(decryptSecret(enc)).toBe("smtp");
+  });
+
+  it("не создаёт новый ключ, если файл потерян, а в базе уже есть зашифрованные данные", async () => {
+    await expect(initSecretsKey(hasData)).rejects.toThrow(/Ключ шифрования не найден/);
+    expect(fs.existsSync(process.env.SECRETS_KEY_FILE!)).toBe(false);
+  });
+
+  it("отклоняет слишком короткий ключ из окружения", async () => {
+    process.env.SECRETS_KEY = "short";
+    await expect(initSecretsKey(noData)).rejects.toThrow(/SECRETS_KEY/);
   });
 });

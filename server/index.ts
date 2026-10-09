@@ -2,15 +2,11 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { backfillSearchText, ensureFeedbackTemplates, migrateSecrets, storage } from "./storage";
+import { backfillSearchText, ensureFeedbackTemplates, hasEncryptedSecrets, migrateSecrets, storage } from "./storage";
 import { setStorageDir } from "./fileStorage";
 import { startEmailQueue } from "./mailer";
 import { startOverdueCheck } from "./reviewScheduler";
-import { assertSecretsKey } from "./secrets";
-
-// Stored SMTP/LDAP passwords and the AI key are encrypted with SECRETS_KEY:
-// refuse to start without it rather than fail on the first secret read.
-assertSecretsKey();
+import { initSecretsKey, secretsKeyFile } from "./secrets";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,6 +58,25 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Stored SMTP/LDAP passwords and the AI key are encrypted with SECRETS_KEY.
+  // It comes from .env or the key file; on the first start it is generated.
+  // This must run before anything reads those settings.
+  try {
+    const source = await initSecretsKey(hasEncryptedSecrets);
+    if (source === "generated") {
+      console.log(
+        `[secrets] Сгенерирован ключ шифрования: ${secretsKeyFile()}\n` +
+        "[secrets] Сохраните копию этого файла вместе с резервными копиями БД: " +
+        "без него сохранённые пароли SMTP/LDAP и API-ключ AI не расшифровать.",
+      );
+    } else {
+      console.log(`[secrets] Ключ шифрования: ${source === "env" ? "SECRETS_KEY из окружения" : secretsKeyFile()}`);
+    }
+  } catch (e) {
+    console.error("[secrets]", e instanceof Error ? e.message : e);
+    process.exit(1);
+  }
+
   ensureFeedbackTemplates().catch((e) => console.error("[email] feedback templates error:", e));
 
   // Restore file storage path saved via admin UI (skipped when FILE_STORAGE_PATH env var is set)

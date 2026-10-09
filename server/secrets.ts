@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import bcrypt from "bcryptjs";
 
 // ── Encryption of stored secrets (SMTP / LDAP passwords, AI API key) ─────────
@@ -24,6 +26,48 @@ function getKey(): Buffer {
 /** Fail fast at startup instead of on the first secret read. */
 export function assertSecretsKey(): void {
   getKey();
+}
+
+/** Where the generated key is kept when SECRETS_KEY is not set. */
+export function secretsKeyFile(): string {
+  return process.env.SECRETS_KEY_FILE || path.resolve("secrets", "secrets.key");
+}
+
+export type KeySource = "env" | "file" | "generated";
+
+/**
+ * Provide SECRETS_KEY at startup:
+ *  1. the SECRETS_KEY env var, if set;
+ *  2. otherwise the key file (persistent volume);
+ *  3. otherwise a new random key, written to the key file.
+ * A new key is never generated while the database already holds encrypted
+ * values: that means the old key was lost, and a fresh one would silently make
+ * the stored passwords unreadable.
+ */
+export async function initSecretsKey(hasEncryptedData: () => Promise<boolean>): Promise<KeySource> {
+  if (process.env.SECRETS_KEY) {
+    assertSecretsKey();
+    return "env";
+  }
+  const file = secretsKeyFile();
+  if (fs.existsSync(file)) {
+    process.env.SECRETS_KEY = fs.readFileSync(file, "utf8").trim();
+    assertSecretsKey();
+    return "file";
+  }
+  if (await hasEncryptedData()) {
+    throw new Error(
+      `Ключ шифрования не найден (${file}), а в базе уже есть зашифрованные секреты. ` +
+      "Восстановите файл ключа из резервной копии или задайте SECRETS_KEY в .env. " +
+      "Новый ключ не создаётся, чтобы не потерять сохранённые пароли.",
+    );
+  }
+  const key = crypto.randomBytes(32).toString("hex");
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  // "wx": never overwrite a key written concurrently by another process.
+  fs.writeFileSync(file, key + "\n", { mode: 0o600, flag: "wx" });
+  process.env.SECRETS_KEY = key;
+  return "generated";
 }
 
 export function isEncrypted(value: string | null | undefined): boolean {

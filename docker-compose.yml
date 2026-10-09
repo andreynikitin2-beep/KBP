@@ -7,8 +7,11 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       SESSION_SECRET: ${SESSION_SECRET}
-      # Ключ шифрования секретов в БД (пароли SMTP/LDAP, API-ключ AI)
-      SECRETS_KEY: ${SECRETS_KEY:?Задайте SECRETS_KEY в .env (openssl rand -hex 32)}
+      # Ключ шифрования секретов в БД (пароли SMTP/LDAP, API-ключ AI).
+      # Если SECRETS_KEY не задан, ключ создаётся при первом запуске и хранится
+      # в ./secrets/secrets.key — сохраняйте этот файл вместе с бэкапами БД.
+      SECRETS_KEY: ${SECRETS_KEY:-}
+      SECRETS_KEY_FILE: /data/secrets/secrets.key
       # Проверка сертификата LDAPS: путь к корпоративному CA внутри контейнера
       LDAP_CA_FILE: ${LDAP_CA_FILE:-}
       LDAP_TLS_INSECURE: ${LDAP_TLS_INSECURE:-false}
@@ -20,6 +23,8 @@ services:
     volumes:
       # Persistent file storage on the external server
       - ./uploads:/data/uploads
+      # Ключ шифрования секретов (создаётся автоматически при первом запуске)
+      - ./secrets:/data/secrets
       # Корпоративный CA для LDAPS (положите ca.pem в ./ldap-ca)
       - ./ldap-ca:/app/ldap-ca:ro
     expose:
