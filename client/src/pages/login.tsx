@@ -3,19 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { AlertCircle, LogIn, Building2, Search, ChevronDown, X } from "lucide-react";
+import { AlertCircle, LogIn, Search, ChevronDown, X } from "lucide-react";
 
+/** The server returns only active users and only their names. */
 interface UserListItem {
   id: string;
-  username: string;
   displayName: string;
-  email?: string;
-  source: string;
-  department: string;
-  roles: string[];
-  isAvailable: boolean;
-  deactivatedAt: string | null;
 }
 
 export default function LoginPage({ onLogin }: { onLogin: (userId: string, token: string) => void }) {
@@ -35,9 +28,8 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string, token
   useEffect(() => {
     fetch("/api/auth/users-list")
       .then((r) => r.json())
-      .then((data) => {
-        const active = data.filter((u: UserListItem) => !u.deactivatedAt && u.isAvailable);
-        setUsersList(active);
+      .then((data: UserListItem[]) => {
+        setUsersList(data);
         setLoadingUsers(false);
       })
       .catch(() => setLoadingUsers(false));
@@ -46,16 +38,8 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string, token
   const filteredUsers = useMemo(() => {
     if (!searchQuery.trim()) return usersList;
     const q = searchQuery.toLowerCase().trim();
-    return usersList.filter(
-      (u) =>
-        u.displayName.toLowerCase().includes(q) ||
-        u.username.toLowerCase().includes(q) ||
-        u.department.toLowerCase().includes(q) ||
-        u.email?.toLowerCase().includes(q)
-    );
+    return usersList.filter((u) => u.displayName.toLowerCase().includes(q));
   }, [usersList, searchQuery]);
-
-  const selectedUser = usersList.find((u) => u.id === selectedUserId);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -254,11 +238,7 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string, token
                             >
                               <div className="min-w-0">
                                 <div className="truncate">{u.displayName}</div>
-                                <div className="text-xs text-muted-foreground truncate">{u.department}</div>
                               </div>
-                              <Badge variant="outline" className="text-[10px] shrink-0 ml-2">
-                                {u.source === "ad" ? "AD" : "Лок."}
-                              </Badge>
                             </button>
                           ))
                         )}
@@ -268,22 +248,13 @@ export default function LoginPage({ onLogin }: { onLogin: (userId: string, token
                 )}
               </div>
 
-              {selectedUser && (
-                <div className="rounded-lg bg-muted/50 p-3 space-y-1.5 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Building2 className="h-3.5 w-3.5" />
-                    <span>{selectedUser.department}, {selectedUser.source === "ad" ? "Доменная учётная запись" : "Локальная учётная запись"}</span>
-                  </div>
-                </div>
-              )}
-
               <div className="space-y-2">
                 <Label htmlFor="password-input">Пароль</Label>
                 <Input
                   id="password-input"
                   data-testid="input-password"
                   type="password"
-                  placeholder={selectedUser?.source === "ad" ? "Доменный пароль" : "Пароль"}
+                  placeholder="Пароль (для доменной учётной записи — доменный)"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setError(""); }}
                   autoComplete="current-password"

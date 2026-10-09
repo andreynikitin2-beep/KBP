@@ -106,7 +106,7 @@ function CompactMaterialRow({ id, label }: { id: string; label?: string }) {
 }
 
 export default function Home() {
-  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, autoDailyCheck, visibilityGroups, catalogNodes } = useKB();
+  const { me, users, visibleMaterials, materials: allMaterials, rfcs, notifications, visibilityGroups, catalogNodes } = useKB();
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "popularity" | "criticality" | "status">("date");
 

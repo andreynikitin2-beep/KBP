@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "@/hooks/use-toast";
 import type { CatalogNode, Criticality, EmailConfig, EmailTemplate, HelpfulRating, MaterialVersion, NewHireAssignment, NewHireProfile, NewHireStatus, NotificationLog, RFC, Role, User, UserSource, VisibilityGroup } from "./mockData";
 import { canApproveAndPublish, canConfirmActuality, canCreateNewVersion, canPublishDirectly, canReturnForRevision, canSubmitForApproval, canViewMaterial, getApprovalStep, getSectionOwnerIds, getMoscowDateString, isOverdue, seedEmail, validatePassport } from "./kbLogic";
 import { api } from "./api";
@@ -87,7 +88,6 @@ type Store = {
   approveAndPublish: (versionId: string) => { ok: boolean; message?: string };
   returnForRevision: (versionId: string, comment: string) => { ok: boolean; message?: string };
   adminForcePublish: (versionId: string, comment: string) => { ok: boolean; message?: string };
-  autoDailyCheck: () => { transitioned: string[]; emails: NotificationLog[] };
 
   updateAdConfig: (data: Partial<PolicyConfig["adIntegration"]>) => { ok: boolean; message?: string };
   syncADUsers: () => { ok: boolean; deactivated: string[]; message: string };
@@ -270,8 +270,10 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('kb_auth_token');
   };
 
-  useEffect(() => {
-    async function loadData() {
+  // The API requires a session, so data is loaded only once a user is signed
+  // in — and again after each login. `loadData` is also reused to resync the
+  // UI after a failed save.
+  const loadData = useCallback(async () => {
       try {
         const [
           usersData, materialsData, rfcsData, notificationsData,
@@ -291,12 +293,13 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           api.getCatalogNodes(),
           api.getVisibilityGroups(),
           api.getRatings(),
-          api.getEmailConfig(),
-          api.getEmailTemplates(),
+          // Admin-only on the server (403 for everyone else); used only by the admin page.
+          api.getEmailConfig().catch(() => null),
+          api.getEmailTemplates().catch(() => []),
           api.getReviewPeriods(),
           api.getRbacDefaults(),
-          api.getAdConfig(),
-          api.getAdSyncLog(),
+          api.getAdConfig().catch(() => null),
+          api.getAdSyncLog().catch(() => []),
           api.getEffectiveVisGroups(),
           api.getNewHiresConfig().catch(() => ({ enabled: false })),
           api.getNewHireProfiles().catch(() => []),
@@ -365,18 +368,48 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setNewHireProfiles(newHireProfilesData as NewHireProfile[]);
         setNewHireAssignments(newHireAssignmentsData as NewHireAssignment[]);
 
-        if (usersData.length > 0) {
-          const subs = await api.getUserSubscriptions(usersData[0].id);
-          setSubscriptionMap(prev => ({ ...prev, [usersData[0].id]: subs }));
+        // Subscriptions of the signed-in user (the API returns only one's own).
+        const currentUserId = localStorage.getItem('kb_auth_user');
+        if (currentUserId) {
+          const subs = await api.getUserSubscriptions(currentUserId);
+          setSubscriptionMap(prev => ({ ...prev, [currentUserId]: subs }));
         }
       } catch (err) {
         console.error("Failed to load data from API:", err);
       } finally {
         setLoading(false);
       }
-    }
-    loadData();
   }, []);
+
+  // UI changes are applied optimistically; when the server rejects one (no
+  // rights, validation, network) tell the user and re-read the data so the
+  // screen matches the database again.
+  const resyncTimer = useRef<number | null>(null);
+  const reportSaveError = useCallback((err: unknown) => {
+    console.error(err);
+    toast({
+      title: "Изменение не сохранено",
+      description: err instanceof Error ? err.message : "Сервер не принял изменение",
+      variant: "destructive",
+    });
+    if (resyncTimer.current) window.clearTimeout(resyncTimer.current);
+    resyncTimer.current = window.setTimeout(() => { loadData(); }, 300);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!meId || !localStorage.getItem('kb_auth_token')) {
+      // A stored user id without a token (older sessions) cannot call the API:
+      // show the login page instead of an empty portal.
+      if (meId) {
+        localStorage.removeItem('kb_auth_user');
+        setMeIdRaw('');
+      }
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    loadData();
+  }, [meId, loadData]);
 
   const me = useMemo(() => users.find((u) => u.id === meId) || {
     id: '', displayName: '', email: '', roles: [] as Role[], legalEntity: '', department: '', isAvailable: true, source: 'local' as const
@@ -397,7 +430,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const hasAccess = relevantGroups.some(g => g!.memberIds.includes(userId));
         if (!hasAccess) {
           next[userId] = subs.filter((id) => id !== materialId);
-          api.removeSubscriber(materialId, userId).catch(console.error);
+          api.removeSubscriber(materialId, userId).catch(reportSaveError);
         }
       }
       return next;
@@ -473,7 +506,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           };
           const rp = updated.reviewPeriods.find(p => p.criticality === criticality);
           if (rp && rp._id) {
-            api.updateReviewPeriod(rp._id, { ...data }).catch(console.error);
+            api.updateReviewPeriod(rp._id, { ...data }).catch(reportSaveError);
           }
           return updated;
         });
@@ -485,7 +518,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setPolicy((prev) => {
           const dbId = (prev.rbacDefaults as any)[`_id_${key}`];
           if (dbId) {
-            api.updateRbacDefault(dbId, { roles }).catch(console.error);
+            api.updateRbacDefault(dbId, { roles }).catch(reportSaveError);
           }
           return {
             ...prev,
@@ -531,14 +564,14 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         persistNotification(email);
 
         setEffectiveVisGroupMap((prev) => ({ ...prev, [version.materialId]: version.passport.visibilityGroupIds }));
-        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(reportSaveError);
 
         api.updateMaterialVersionRaw(versionId, {
           status: version.status === "На пересмотре" ? "Опубликовано" : version.status,
           lastReviewedAt,
           nextReviewAt: next,
           reviewPeriodDays: periodDays,
-        }).catch(console.error);
+        }).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -581,7 +614,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           persistNotification(email);
         }
 
-        api.updateMaterialVersionRaw(versionId, { status: "На согласовании", approvalStep: step }).catch(console.error);
+        api.updateMaterialVersionRaw(versionId, { status: "На согласовании", approvalStep: step }).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -631,11 +664,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           lastReviewedAt,
           nextReviewAt: next,
           reviewPeriodDays: periodDays,
-        }).catch(console.error);
+        }).catch(reportSaveError);
         for (const aid of archivedIds) {
-          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(console.error);
+          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(reportSaveError);
         }
-        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -671,7 +704,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
             persistNotification(email);
           }
 
-          api.updateMaterialVersionRaw(versionId, { approvalStep: nextStep, changelog: newChangelog }).catch(console.error);
+          api.updateMaterialVersionRaw(versionId, { approvalStep: nextStep, changelog: newChangelog }).catch(reportSaveError);
           return { ok: true };
         }
 
@@ -720,11 +753,11 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           lastReviewedAt,
           nextReviewAt: next,
           reviewPeriodDays: periodDays,
-        }).catch(console.error);
+        }).catch(reportSaveError);
         for (const aid of archivedIds) {
-          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(console.error);
+          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(reportSaveError);
         }
-        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -767,7 +800,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           changelog: newChangelog,
           rejectedAt,
           approvalStep: null,
-        }).catch(console.error);
+        }).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -821,52 +854,13 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           lastReviewedAt,
           nextReviewAt: next,
           reviewPeriodDays: periodDays,
-        }).catch(console.error);
+        }).catch(reportSaveError);
         for (const aid of archivedIds) {
-          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(console.error);
+          api.updateMaterialVersionRaw(aid, { status: "Архив" }).catch(reportSaveError);
         }
-        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(console.error);
+        api.upsertEffectiveVisGroup(version.materialId, version.passport.visibilityGroupIds).catch(reportSaveError);
 
         return { ok: true };
-      },
-
-      autoDailyCheck: () => {
-        const transitioned: string[] = [];
-        const emails: NotificationLog[] = [];
-
-        const nextMaterials: MaterialVersion[] = materials.map((m) => {
-          const overdue = isOverdue(m);
-          if (!overdue) return m;
-          if (m.status === "Опубликовано") {
-            transitioned.push(m.id);
-            const email = seedEmail(notifications, {
-              to:
-                users.find((u) => u.id === (m.passport.ownerId || ""))?.email ||
-                "unknown@demo.local",
-              subject: `Просрочка пересмотра: ${m.passport.title}`,
-              template: "overdue",
-              related: { materialId: m.materialId, versionId: m.id },
-            });
-            emails.push(email);
-            return { ...m, status: "На пересмотре" };
-          }
-          return m;
-        });
-
-        if (transitioned.length) {
-          setMaterials(nextMaterials);
-          for (const tid of transitioned) {
-            api.updateMaterialVersionRaw(tid, { status: "На пересмотре" }).catch(console.error);
-          }
-        }
-        if (emails.length) {
-          setNotifications((p) => [...emails, ...p]);
-          for (const email of emails) {
-            persistNotification(email);
-          }
-        }
-
-        return { transitioned, emails };
       },
 
       updateAdConfig: (data) => {
@@ -874,7 +868,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           adIntegration: { ...prev.adIntegration, ...data },
         }));
-        api.updateAdConfig(data).catch(console.error);
+        api.updateAdConfig(data).catch(reportSaveError);
         return { ok: true };
       },
 
@@ -912,7 +906,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           );
 
           for (const mid of affectedMaterials) {
-            api.updateMaterialVersionRaw(mid, { status: "На пересмотре" }).catch(console.error);
+            api.updateMaterialVersionRaw(mid, { status: "На пересмотре" }).catch(reportSaveError);
           }
 
           const adminEmail = users.find((u) => u.roles.includes("Администратор"))?.email || "admin@demo.local";
@@ -928,7 +922,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         for (const u of users) {
           if (u.source === "ad" && !u.deactivatedAt) {
-            api.updateUser(u.id, { lastSyncAt: now } as any).catch(console.error);
+            api.updateUser(u.id, { lastSyncAt: now } as any).catch(reportSaveError);
           }
         }
 
@@ -958,8 +952,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         api.createUser({
           ...newUser,
           username: data.email,
-          password: data.password || '1',
-        } as any).catch(console.error);
+          password: data.password,
+        } as any).catch(reportSaveError);
 
         return { ok: true, user: newUser };
       },
@@ -991,7 +985,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           );
 
           for (const o of owned) {
-            api.updateMaterialVersionRaw(o.id, { status: "На пересмотре" }).catch(console.error);
+            api.updateMaterialVersionRaw(o.id, { status: "На пересмотре" }).catch(reportSaveError);
           }
 
           const adminEmail = users.find((u) => u.roles.includes("Администратор"))?.email || "admin@demo.local";
@@ -1005,7 +999,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           persistNotification(email);
         }
 
-        api.updateUser(userId, { deactivatedAt: now, isAvailable: false } as any).catch(console.error);
+        api.updateUser(userId, { deactivatedAt: now, isAvailable: false } as any).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1021,7 +1015,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ),
         );
 
-        api.updateUser(userId, { deactivatedAt: null, isAvailable: true } as any).catch(console.error);
+        api.updateUser(userId, { deactivatedAt: null, isAvailable: true } as any).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1052,7 +1046,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           }),
         );
 
-        api.updateUser(userId, updateData).catch(console.error);
+        api.updateUser(userId, updateData).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1065,7 +1059,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         api.createVisibilityGroup({ title: data.title.trim(), isSystem: false, memberIds: data.memberIds }).then(created => {
           setGroups(prev => prev.map(g => g.id === id ? { ...g, id: created.id } : g));
-        }).catch(console.error);
+        }).catch(reportSaveError);
 
         return { ok: true, group };
       },
@@ -1089,7 +1083,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         api.updateVisibilityGroup(groupId, {
           title: data.title !== undefined ? data.title.trim() : undefined,
           memberIds: data.memberIds,
-        } as any).catch(console.error);
+        } as any).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1101,7 +1095,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         setGroups((prev) => prev.filter((g) => g.id !== groupId));
 
-        api.deleteVisibilityGroup(groupId).catch(console.error);
+        api.deleteVisibilityGroup(groupId).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1125,13 +1119,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           ),
         );
 
-        api.createRating(newRating).catch(console.error);
-        const version = materials.find(m => m.materialId === materialId && m.status !== "Архив");
-        if (version) {
-          api.updateMaterialVersionRaw(version.id, {
-            [statKey]: version.stats[statKey] + 1,
-          }).catch(console.error);
-        }
+        // The server stores the rating and increments the counter itself.
+        api.createRating(newRating).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1175,10 +1164,8 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           );
 
           api.createAuditView(materialId, meId).catch(console.error);
-          if (!recent) {
-            api.createViewLog(materialId, meId).catch(console.error);
-            api.updateMaterialVersionRaw(version.id, { views: version.stats.views + 1 }).catch(console.error);
-          }
+          // The server counts the view (deduplicated) when the log entry is created.
+          if (!recent) api.createViewLog(materialId, meId).catch(console.error);
         }
         setViewLog((prev) => [...prev, { userId: meId, materialId, at: now }]);
       },
@@ -1233,9 +1220,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (isCurrentlySub) {
-          api.removeSubscriber(materialId, meId).catch(console.error);
+          api.removeSubscriber(materialId, meId).catch(reportSaveError);
         } else {
-          api.addSubscriber(materialId, meId).catch(console.error);
+          api.addSubscriber(materialId, meId).catch(reportSaveError);
         }
       },
       isSubscribed: (materialId: string) => mySubscriptions.includes(materialId),
@@ -1283,9 +1270,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           return [...updated, newVersion];
         });
 
-        api.createMaterialVersion(newVersion).catch(console.error);
+        api.createMaterialVersion(newVersion).catch(reportSaveError);
         if (current.status !== "Архив") {
-          api.updateMaterialVersionRaw(current.id, { status: "Архив" }).catch(console.error);
+          api.updateMaterialVersionRaw(current.id, { status: "Архив" }).catch(reportSaveError);
         }
 
         return { ok: true, version: newVersion };
@@ -1308,7 +1295,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setMaterials((prev) =>
           prev.map((m) => m.id === current.id ? { ...m, status: "Архив" as MaterialVersion["status"], archivedBy: meId, archivedAt: now } : m)
         );
-        api.updateMaterialVersionRaw(current.id, { status: "Архив", archivedBy: meId, archivedAt: now } as any).catch(console.error);
+        api.updateMaterialVersionRaw(current.id, { status: "Архив", archivedBy: meId, archivedAt: now } as any).catch(reportSaveError);
         return { ok: true };
       },
 
@@ -1318,7 +1305,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setMaterials((prev) =>
           prev.map((m) => m.id === archived.id ? { ...m, status: "Опубликовано" as MaterialVersion["status"], archivedBy: undefined, archivedAt: undefined } : m)
         );
-        api.updateMaterialVersionRaw(archived.id, { status: "Опубликовано", archivedBy: null, archivedAt: null } as any).catch(console.error);
+        api.updateMaterialVersionRaw(archived.id, { status: "Опубликовано", archivedBy: null, archivedAt: null } as any).catch(reportSaveError);
         return { ok: true };
       },
 
@@ -1343,7 +1330,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           prev.map((n) => (n.id === sectionId ? { ...n, ownerIds } : n)),
         );
 
-        api.updateCatalogNode(sectionId, { ownerIds } as any).catch(console.error);
+        api.updateCatalogNode(sectionId, { ownerIds } as any).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1356,7 +1343,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         api.createCatalogNode({ title: title.trim(), type: "section", ownerIds: [], sortOrder: sortOrder ?? 0 } as any).then(created => {
           setCatalogNodes(prev => prev.map(n => n.id === id ? { ...n, id: created.id } : n));
-        }).catch(console.error);
+        }).catch(reportSaveError);
 
         return { ok: true, node };
       },
@@ -1372,7 +1359,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           prev.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
         );
 
-        api.updateCatalogNode(nodeId, updates as any).catch(console.error);
+        api.updateCatalogNode(nodeId, updates as any).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1388,9 +1375,9 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         const subIds = subs.map(s => s.id);
         setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId && n.parentId !== nodeId));
 
-        api.deleteCatalogNode(nodeId).catch(console.error);
+        api.deleteCatalogNode(nodeId).catch(reportSaveError);
         for (const sid of subIds) {
-          api.deleteCatalogNode(sid).catch(console.error);
+          api.deleteCatalogNode(sid).catch(reportSaveError);
         }
 
         return { ok: true };
@@ -1407,7 +1394,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         api.createCatalogNode({ title: title.trim(), type: "subsection", parentId }).then(created => {
           setCatalogNodes(prev => prev.map(n => n.id === id ? { ...n, id: created.id } : n));
-        }).catch(console.error);
+        }).catch(reportSaveError);
 
         return { ok: true, node };
       },
@@ -1421,7 +1408,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
           prev.map((n) => (n.id === nodeId ? { ...n, title: title.trim() } : n)),
         );
 
-        api.updateCatalogNode(nodeId, { title: title.trim() }).catch(console.error);
+        api.updateCatalogNode(nodeId, { title: title.trim() }).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1436,7 +1423,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         setCatalogNodes((prev) => prev.filter((n) => n.id !== nodeId));
 
-        api.deleteCatalogNode(nodeId).catch(console.error);
+        api.deleteCatalogNode(nodeId).catch(reportSaveError);
 
         return { ok: true };
       },
@@ -1446,7 +1433,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
       updateEmailConfig: (data: Partial<EmailConfig>) => {
         setEmailConfig((prev) => ({ ...prev, ...data }));
-        api.updateEmailConfig(data).catch(console.error);
+        api.updateEmailConfig(data).catch(reportSaveError);
         return { ok: true };
       },
 
@@ -1459,7 +1446,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
         const tplRecord = emailTemplates.find(t => t.key === key);
         if (tplRecord && (tplRecord as any).id) {
-          api.updateEmailTemplate((tplRecord as any).id, data).catch(console.error);
+          api.updateEmailTemplate((tplRecord as any).id, data).catch(reportSaveError);
         }
 
         return { ok: true };
@@ -1467,14 +1454,14 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
 
       updateCatalogNode: (nodeId: string, updates: Partial<CatalogNode>) => {
         setCatalogNodes(prev => prev.map(n => n.id === nodeId ? { ...n, ...updates } : n));
-        api.updateCatalogNode(nodeId, updates).catch(console.error);
+        api.updateCatalogNode(nodeId, updates).catch(reportSaveError);
         return { ok: true };
       },
 
       newHiresEnabled,
       setNewHiresEnabled: (enabled: boolean) => {
         setNewHiresEnabledRaw(enabled);
-        api.updateNewHiresConfig({ enabled }).catch(console.error);
+        api.updateNewHiresConfig({ enabled }).catch(reportSaveError);
       },
       newHireProfiles,
       newHireAssignments,
@@ -1578,7 +1565,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setNewHireProfiles(prev => prev.map(p =>
           p.id === profileId ? { ...p, status } : p
         ));
-        api.updateNewHireProfile(profileId, { status }).catch(console.error);
+        api.updateNewHireProfile(profileId, { status }).catch(reportSaveError);
       },
 
       acknowledgeAssignment: (assignmentId: string, versionId: string) => {
@@ -1586,7 +1573,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         setNewHireAssignments(prev => prev.map(a =>
           a.id === assignmentId ? { ...a, acknowledgedAt: now, acknowledgedVersionId: versionId } : a
         ));
-        api.acknowledgeAssignment(assignmentId, versionId).catch(console.error);
+        api.acknowledgeAssignment(assignmentId, versionId).catch(reportSaveError);
         const assignment = newHireAssignments.find(a => a.id === assignmentId);
         if (assignment) {
           const userAssignments = newHireAssignments.filter(a => a.userId === assignment.userId);
@@ -1599,7 +1586,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
               setNewHireProfiles(prev => prev.map(p =>
                 p.id === profile.id ? { ...p, status: "Завершено" as const } : p
               ));
-              api.updateNewHireProfile(profile.id, { status: "Завершено" }).catch(console.error);
+              api.updateNewHireProfile(profile.id, { status: "Завершено" }).catch(reportSaveError);
             }
           }
         }
@@ -1609,7 +1596,7 @@ export function KBStoreProvider({ children }: { children: React.ReactNode }) {
         return newHireAssignments.filter(a => a.userId === meId);
       },
     };
-  }, [catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, newHireAssignments, newHireProfiles, newHiresEnabled, notifications, policy, ratings, rfcs, users, viewLog]);
+  }, [reportSaveError, catalogNodes, effectiveVisGroupMap, emailConfig, emailTemplates, groups, materials, me, meId, mySubscriptions, newHireAssignments, newHireProfiles, newHiresEnabled, notifications, policy, ratings, rfcs, users, viewLog]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen">

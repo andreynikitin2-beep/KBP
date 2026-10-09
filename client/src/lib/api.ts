@@ -14,11 +14,25 @@ import type {
 
 export function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem("kb_auth_token");
-  const userId = localStorage.getItem("kb_auth_user");
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (userId) headers["X-User-Id"] = userId;
   return headers;
+}
+
+/** Error carrying the server's message (e.g. "Недостаточно прав") and HTTP status. */
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
+async function apiError(method: string, url: string, res: Response): Promise<ApiError> {
+  let message = "";
+  try {
+    const body = await res.json();
+    message = body?.error || body?.message || "";
+  } catch { /* not JSON */ }
+  return new ApiError(message || `${method} ${url}: ошибка ${res.status}`, res.status);
 }
 
 function handleUnauthorized() {
@@ -38,7 +52,7 @@ async function fetchJson<T>(url: string): Promise<T> {
     handleUnauthorized();
     throw new Error("Сессия истекла");
   }
-  if (!res.ok) throw new Error(`GET ${url} failed: ${res.status}`);
+  if (!res.ok) throw await apiError("GET", url, res);
   return res.json();
 }
 
@@ -53,7 +67,7 @@ async function postJson<T>(url: string, body: any): Promise<T> {
     handleUnauthorized();
     throw new Error("Сессия истекла");
   }
-  if (!res.ok) throw new Error(`POST ${url} failed: ${res.status}`);
+  if (!res.ok) throw await apiError("POST", url, res);
   return res.json();
 }
 
@@ -68,7 +82,7 @@ async function patchJson<T>(url: string, body: any): Promise<T> {
     handleUnauthorized();
     throw new Error("Сессия истекла");
   }
-  if (!res.ok) throw new Error(`PATCH ${url} failed: ${res.status}`);
+  if (!res.ok) throw await apiError("PATCH", url, res);
   return res.json();
 }
 
@@ -83,7 +97,7 @@ async function putJson<T>(url: string, body: any): Promise<T> {
     handleUnauthorized();
     throw new Error("Сессия истекла");
   }
-  if (!res.ok) throw new Error(`PUT ${url} failed: ${res.status}`);
+  if (!res.ok) throw await apiError("PUT", url, res);
   return res.json();
 }
 
@@ -112,7 +126,7 @@ async function deleteJson(url: string): Promise<void> {
     handleUnauthorized();
     throw new Error("Сессия истекла");
   }
-  if (!res.ok) throw new Error(`DELETE ${url} failed: ${res.status}`);
+  if (!res.ok) throw await apiError("DELETE", url, res);
 }
 
 function dbMaterialToFrontend(
@@ -166,6 +180,7 @@ function dbMaterialToFrontend(
     auditDownloads,
     auditPreviews,
     additionalFiles: (dbMat.additionalFiles as any[]) ?? [],
+    contentFileStored: dbMat.contentFileStored,
     archivedBy: dbMat.archivedBy ?? undefined,
     archivedAt: dbMat.archivedAt ? (typeof dbMat.archivedAt === "string" ? dbMat.archivedAt : new Date(dbMat.archivedAt).toISOString()) : undefined,
     approvalStep: (dbMat.approvalStep ?? undefined) as "material_owner" | "section_owner" | undefined,
@@ -174,7 +189,7 @@ function dbMaterialToFrontend(
 }
 
 function frontendMaterialToDb(mat: MaterialVersion): any {
-  const { passport, content, stats, subscribers: _s, auditViews: _a, auditDownloads: _d, auditPreviews: _p, ...rest } = mat;
+  const { passport, content, stats, subscribers: _s, auditViews: _a, auditDownloads: _d, auditPreviews: _p, contentFileStored: _cfs, ...rest } = mat;
   return {
     ...rest,
     title: passport.title,
@@ -337,15 +352,23 @@ function uploadFileViaWebSocket(
     let offset = 0;
     let settled = false;
     const finish = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
+    // onerror, onclose and the open timeout can all fire for one failure —
+    // start the HTTP fallback only once.
+    let fallbackStarted = false;
+    const fallbackToHttp = () => {
+      if (settled || fallbackStarted) return;
+      fallbackStarted = true;
+      uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
+        () => finish(resolve),
+        (e) => finish(() => reject(e)),
+      );
+    };
 
     // If WS fails to open within 5 s, fall back to HTTP
     const wsTimeout = setTimeout(() => {
       if (!settled) {
         try { ws.close(); } catch { /* ignore */ }
-        uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
-          () => finish(resolve),
-          (e) => finish(() => reject(e)),
-        );
+        fallbackToHttp();
       }
     }, 5000);
 
@@ -383,22 +406,14 @@ function uploadFileViaWebSocket(
 
     ws.onerror = () => {
       clearTimeout(wsTimeout);
-      if (!settled) {
-        // WS failed (likely reverse proxy doesn't support upgrades) — fall back to HTTP
-        uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
-          () => finish(resolve),
-          (e) => finish(() => reject(e)),
-        );
-      }
+      // WS failed (likely reverse proxy doesn't support upgrades) — fall back to HTTP
+      fallbackToHttp();
     };
-    ws.onclose = (e) => {
+    ws.onclose = () => {
       clearTimeout(wsTimeout);
-      if (!e.wasClean && !settled) {
-        uploadFileViaHttp(versionId, file, kind, onProgress, additionalFileId).then(
-          () => finish(resolve),
-          (e2) => finish(() => reject(e2)),
-        );
-      }
+      // Any close before "done" (clean or not) means the server did not store
+      // the file — retry over HTTP instead of leaving the promise pending.
+      fallbackToHttp();
     };
   });
 }

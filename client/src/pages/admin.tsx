@@ -1478,7 +1478,7 @@ export default function Admin() {
     try {
       const res = await fetch("/api/email/test", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ to: addr }),
       });
       if (res.ok) {
@@ -1565,13 +1565,17 @@ export default function Admin() {
       toast({ title: "Ошибка", description: "Имя и email обязательны" });
       return;
     }
+    if (newPassword.length < 8) {
+      toast({ title: "Ошибка", description: "Пароль должен быть не короче 8 символов", variant: "destructive" });
+      return;
+    }
     const res = createLocalUser({
       displayName: newName.trim(),
       email: newEmail.trim(),
       department: newDept.trim(),
       legalEntity: newEntity.trim(),
       roles: newRoles.length ? newRoles : ["Читатель"],
-      password: newPassword || "1",
+      password: newPassword,
     });
     if (res.ok) {
       toast({ title: "Пользователь создан", description: `${res.user?.displayName} добавлен` });
@@ -2221,7 +2225,7 @@ export default function Admin() {
                           </div>
                           <div>
                             <Label htmlFor="new-user-password">Пароль</Label>
-                            <Input data-testid="input-new-user-password" id="new-user-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Пароль для входа" className="mt-1" />
+                            <Input data-testid="input-new-user-password" id="new-user-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Не короче 8 символов" className="mt-1" />
                           </div>
                           <div>
                             <Label>Роли</Label>
