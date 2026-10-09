@@ -13,6 +13,7 @@ import { isMaskedOrEmpty, maskSecret, verifyPassword } from "./secrets";
 import { canChangeCatalogNode, hasAdminRole, isAdminRoute, isPublicRoute } from "./apiAccess";
 import { LoginThrottle } from "./loginThrottle";
 import { ALLOWED_TEMPLATES, buildMaterialSubject, sanitizeSystemSubject } from "./notificationPolicy";
+import { ConversionFailedError, ConverterUnavailableError, UnsupportedFormatError, getPreviewPdf, warmPreview } from "./docPreview";
 
 const loginThrottle = new LoginThrottle();
 
@@ -685,48 +686,129 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * The main file of a version: filesystem first, then legacy inline base64
+   * (lazily migrated to disk), then a copy from an earlier version.
+   */
+  async function loadContentFile(version: any): Promise<Buffer | null> {
+    const versionId = version.id as string;
+    // Try filesystem first, then support both legacy inline storage formats.
+    // Older records may have kept the base64 payload in contentFileData or
+    // inside contentFile before the filesystem migration.
+    let buffer = fileStorage.readContentFile(versionId);
+    const contentFile = (version.contentFile as any) || {};
+    const legacyBase64Candidates = [
+      (version as any).contentFileData,
+      contentFile.dataBase64,
+      contentFile.base64,
+    ];
+    const legacyBase64 = legacyBase64Candidates.find(
+      (value) => typeof value === "string" && value.length > 0,
+    );
+
+    if (!buffer && legacyBase64) {
+      buffer = Buffer.from(legacyBase64, "base64");
+      // Lazy-migrate: write to FS and remove all inline payload copies.
+      fileStorage.writeContentFile(versionId, buffer);
+      const {
+        dataBase64: _dataBase64,
+        base64: _base64,
+        ...fileMetadata
+      } = contentFile;
+      await storage.updateMaterialVersion(versionId, {
+        contentFileData: null,
+        contentFile: fileMetadata,
+      } as any).catch(() => {});
+    }
+    if (!buffer) {
+      // A copied version (or one whose upload was interrupted) may lack the
+      // binary while an earlier version of the same material still has it.
+      const recovered = await recoverContentFile(versionId, version.materialId, contentFile.name);
+      if (recovered) {
+        buffer = recovered.buffer;
+        console.log(`[file] Recovered attachment for ${versionId} from ${recovered.sourceVersionId}`);
+      }
+    }
+    return buffer;
+  }
+
+  /** An additional file: filesystem, legacy base64 in the DB, or a copy from an earlier version. */
+  async function loadAdditionalFile(version: any, fileId: string): Promise<Buffer | null> {
+    let buffer = fileStorage.readAdditionalFile(version.id, fileId);
+    if (!buffer) {
+      const legacyData = ((version.additionalFilesData as any) ?? {})[fileId];
+      if (legacyData) {
+        buffer = Buffer.from(legacyData, "base64");
+        fileStorage.writeAdditionalFile(version.id, fileId, buffer);
+        const updatedData = { ...(version.additionalFilesData as any) };
+        delete updatedData[fileId];
+        await storage.updateMaterialVersion(version.id, { additionalFilesData: updatedData } as any).catch(() => {});
+      }
+    }
+    if (!buffer) buffer = await recoverAdditionalFile(version.id, version.materialId, fileId);
+    return buffer;
+  }
+
+  /** Send a PDF preview, mapping converter errors to HTTP statuses. */
+  async function sendPreview(req: any, res: any, request: { versionId: string; fileId?: string; fileName: string; original: Buffer }) {
+    try {
+      const pdf = await getPreviewPdf(request);
+      const pdfName = request.fileName.replace(/\.[^.]+$/, "") + ".pdf";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(pdfName)}`);
+      res.setHeader("Content-Length", pdf.length);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "private, no-cache");
+      res.send(pdf);
+    } catch (e) {
+      if (e instanceof UnsupportedFormatError) return res.status(415).json({ error: e.message });
+      if (e instanceof ConverterUnavailableError) {
+        console.warn("[preview]", e.message);
+        return res.status(503).json({ error: "Предпросмотр временно недоступен" });
+      }
+      if (e instanceof ConversionFailedError) {
+        console.warn("[preview]", e.message);
+        return res.status(502).json({ error: "Не удалось подготовить предпросмотр документа" });
+      }
+      throw e;
+    }
+  }
+
+  app.get("/api/material-versions/:id/preview", async (req, res) => {
+    try {
+      const version = await getVisibleVersion(req, req.params.id);
+      if (!version) return res.status(404).json({ error: "File not found" });
+      const buffer = await loadContentFile(version);
+      if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
+      const fileName = ((version.contentFile as any) || {}).name || "file";
+      await sendPreview(req, res, { versionId: version.id, fileName, original: buffer });
+    } catch (e) {
+      sendServerError(req, res, e);
+    }
+  });
+
+  app.get("/api/material-versions/:id/additional-file/:fileId/preview", async (req, res) => {
+    try {
+      const version = await getVisibleVersion(req, req.params.id);
+      if (!version) return res.status(404).json({ error: "Версия не найдена" });
+      const { fileId } = req.params;
+      const info = ((version.additionalFiles as any[]) ?? []).find((f: any) => f.id === fileId);
+      if (!info) return res.status(404).json({ error: "Файл не найден" });
+      const buffer = await loadAdditionalFile(version, fileId);
+      if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
+      await sendPreview(req, res, { versionId: version.id, fileId, fileName: info.name || "file", original: buffer });
+    } catch (e) {
+      sendServerError(req, res, e);
+    }
+  });
+
   app.get("/api/material-versions/:id/file", async (req, res) => {
     try {
       const version = await getVisibleVersion(req, req.params.id);
       if (!version) return res.status(404).json({ error: "File not found" });
 
-      // Try filesystem first, then support both legacy inline storage formats.
-      // Older records may have kept the base64 payload in contentFileData or
-      // inside contentFile before the filesystem migration.
-      let buffer = fileStorage.readContentFile(req.params.id);
+      const buffer = await loadContentFile(version);
       const contentFile = (version.contentFile as any) || {};
-      const legacyBase64Candidates = [
-        (version as any).contentFileData,
-        contentFile.dataBase64,
-        contentFile.base64,
-      ];
-      const legacyBase64 = legacyBase64Candidates.find(
-        (value) => typeof value === "string" && value.length > 0,
-      );
-
-      if (!buffer && legacyBase64) {
-        buffer = Buffer.from(legacyBase64, "base64");
-        // Lazy-migrate: write to FS and remove all inline payload copies.
-        fileStorage.writeContentFile(req.params.id, buffer);
-        const {
-          dataBase64: _dataBase64,
-          base64: _base64,
-          ...fileMetadata
-        } = contentFile;
-        await storage.updateMaterialVersion(req.params.id, {
-          contentFileData: null,
-          contentFile: fileMetadata,
-        } as any).catch(() => {});
-      }
-      if (!buffer) {
-        // A copied version (or one whose upload was interrupted) may lack the
-        // binary while an earlier version of the same material still has it.
-        const recovered = await recoverContentFile(req.params.id, version.materialId, contentFile.name);
-        if (recovered) {
-          buffer = recovered.buffer;
-          console.log(`[file] Recovered attachment for ${req.params.id} from ${recovered.sourceVersionId}`);
-        }
-      }
       if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
 
       const fileInfo = contentFile;
@@ -794,6 +876,7 @@ export async function registerRoutes(
         const version = await storage.getMaterialVersion(id);
         const existingFile = (version?.contentFile as any) || {};
         const updatedFile = { ...existingFile, ...(entry.name ? { name: entry.name } : {}), ...(entry.fileType ? { type: entry.fileType } : {}) };
+        warmPreview({ versionId: id, fileName: updatedFile.name, original: full });
         try {
           const extractedText = await extractDocumentText(full, entry.fileType, entry.name);
           if (extractedText) updatedFile.extractedText = extractedText;
@@ -827,6 +910,7 @@ export async function registerRoutes(
       const type = typeof req.query.type === "string" ? req.query.type : undefined;
       const existingFile = (version.contentFile as any) || {};
       const updatedFile = { ...existingFile, ...(name ? { name } : {}), ...(type ? { type } : {}) };
+      warmPreview({ versionId: req.params.id, fileName: updatedFile.name, original: buffer });
       try {
         const extractedText = await extractDocumentText(buffer, type, name);
         if (extractedText) updatedFile.extractedText = extractedText;
@@ -878,6 +962,7 @@ export async function registerRoutes(
       if (entry.chunks.every(c => c !== null)) {
         const full = Buffer.concat(entry.chunks as Buffer[]);
         fileStorage.writeAdditionalFile(id, fileId, full);
+        warmPreview({ versionId: id, fileId, fileName: entry.name || "", original: full });
         const version = await storage.getMaterialVersion(id);
         if (!version) return res.status(404).json({ error: "Версия не найдена" });
         const existingFiles = (version.additionalFiles as any[]) ?? [];
@@ -919,20 +1004,7 @@ export async function registerRoutes(
       if (!version) return res.status(404).json({ error: "Версия не найдена" });
       const { id, fileId } = req.params;
 
-      // Try filesystem first, fall back to legacy base64 in DB
-      let buffer = fileStorage.readAdditionalFile(id, fileId);
-      if (!buffer) {
-        const legacyData = ((version.additionalFilesData as any) ?? {})[fileId];
-        if (legacyData) {
-          buffer = Buffer.from(legacyData, "base64");
-          // Lazy-migrate to FS and remove from DB
-          fileStorage.writeAdditionalFile(id, fileId, buffer);
-          const updatedData = { ...(version.additionalFilesData as any) };
-          delete updatedData[fileId];
-          await storage.updateMaterialVersion(id, { additionalFilesData: updatedData } as any).catch(() => {});
-        }
-      }
-      if (!buffer) buffer = await recoverAdditionalFile(id, version.materialId, fileId);
+      const buffer = await loadAdditionalFile(version, fileId);
       if (!buffer) return res.status(404).json({ error: "Файл не загружен на сервер" });
 
       const fileInfo = ((version.additionalFiles as any[]) ?? []).find((f: any) => f.id === fileId);
@@ -2669,6 +2741,7 @@ export async function registerRoutes(
         try {
           if (meta.kind === "additional" && meta.additionalFileId) {
             fileStorage.writeAdditionalFile(meta.versionId, meta.additionalFileId, full);
+            warmPreview({ versionId: meta.versionId, fileId: meta.additionalFileId, fileName: meta.fileName, original: full });
             const version = await storage.getMaterialVersion(meta.versionId);
             if (version) {
               const files = (version.additionalFiles as any[]) ?? [];
@@ -2677,6 +2750,7 @@ export async function registerRoutes(
             }
           } else {
             fileStorage.writeContentFile(meta.versionId, full);
+            warmPreview({ versionId: meta.versionId, fileName: meta.fileName, original: full });
             const version = await storage.getMaterialVersion(meta.versionId);
             const existingFile = (version?.contentFile as any) || {};
             const updatedFile = {

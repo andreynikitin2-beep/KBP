@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import mammoth from "mammoth";
+import { FileFetchError, isPdfName, isPreviewable, openPdfPreview } from "@/lib/filePreview";
 import { useLocation, useRoute } from "wouter";
 import {
   AlertTriangle,
@@ -140,12 +141,6 @@ function computeAccessGain(
   };
 }
 
-class FileFetchError extends Error {
-  constructor(public status: number) {
-    super(`HTTP ${status}`);
-  }
-}
-
 function fmt(iso?: string) {
   if (!iso) return "—";
   return format(new Date(iso), "d MMM yyyy, HH:mm", { locale: ru });
@@ -261,6 +256,7 @@ export default function MaterialView() {
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const reuploadFileInputRef = useRef<HTMLInputElement>(null);
   const [reuploadProgress, setReuploadProgress] = useState<number | null>(null);
+  const [addFilePreviewing, setAddFilePreviewing] = useState<string | null>(null);
   const [addFileUploading, setAddFileUploading] = useState<string | null>(null);
 
   async function handleEditFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -497,6 +493,50 @@ export default function MaterialView() {
     dv.passport.deputyId === me.id ||
     (catalogNodes.find((n) => n.id === dv.passport.sectionId)?.ownerIds ?? []).includes(me.id)
   );
+
+  /** Additional files: PDF as is, office formats rendered to PDF on the server. */
+  const previewAdditionalFile = async (af: { id: string; name: string }) => {
+    if (!dv) return;
+    setAddFilePreviewing(af.id);
+    try {
+      const result = await openPdfPreview({
+        url: `/api/material-versions/${dv.id}/additional-file/${af.id}/preview`,
+        fileName: af.name,
+        preparing: !isPdfName(af.name),
+      });
+      if (result === "downloaded") {
+        toast({ title: "Попапы заблокированы", description: "Файл скачан. Разрешите всплывающие окна для предпросмотра.", duration: 5000 });
+      }
+      recordPreview(dv.materialId);
+    } catch (err) {
+      const status = err instanceof FileFetchError ? err.status : 0;
+      toast({
+        title: status === 404 ? "Файл отсутствует на сервере" : "Предпросмотр недоступен",
+        description: status === 404
+          ? "Загрузка файла не была завершена."
+          : status === 503 ? "Сервис предпросмотра временно недоступен. Скачайте файл." : "Не удалось открыть предпросмотр. Скачайте файл.",
+        variant: "destructive",
+      });
+    } finally {
+      setAddFilePreviewing(null);
+    }
+  };
+
+  const previewAddFileButton = (af: { id: string; name: string }) =>
+    isPreviewable(af.name) ? (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="rounded-xl h-7 gap-1 shrink-0"
+        disabled={addFilePreviewing !== null}
+        data-testid={`button-preview-addfile-${af.id}`}
+        onClick={() => previewAdditionalFile(af)}
+      >
+        {addFilePreviewing === af.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+        Предпросмотр
+      </Button>
+    ) : null;
 
   const handleReuploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1674,6 +1714,7 @@ export default function MaterialView() {
                               <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                               <span className="text-sm flex-1 truncate">{af.name}</span>
                               <span className="text-xs text-muted-foreground shrink-0">{af.size >= 1048576 ? `${(af.size / 1048576).toFixed(1)} МБ` : af.size >= 1024 ? `${(af.size / 1024).toFixed(0)} КБ` : `${af.size} Б`}</span>
+                              {previewAddFileButton(af)}
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1826,86 +1867,49 @@ export default function MaterialView() {
                                   disabled={previewLoading || fileMissingOnServer}
                                   onClick={async () => {
                                     setPreviewLoading(true);
-                                    try {
-                                      if (dv.content.file?.type === "pdf") {
-                                        // Открываем вкладку сразу — иначе popup-blocker заблокирует
-                                        const newTab = window.open("about:blank", "_blank");
-                                        // Показываем страницу-заглушку с прогресс-баром пока файл скачивается
-                                        if (newTab) {
-                                          const fileName = dv.content.file?.name ?? "документ";
-                                          newTab.document.write(`<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>Загрузка — ${fileName}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#333}.card{background:#fff;border-radius:16px;padding:40px 48px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:420px;width:90%;text-align:center}.icon{font-size:48px;margin-bottom:20px}.title{font-size:18px;font-weight:600;margin-bottom:6px}.name{font-size:13px;color:#666;margin-bottom:28px;word-break:break-all}.bar-wrap{width:100%;height:8px;background:#e9ecef;border-radius:99px;overflow:hidden;margin-bottom:12px}.bar{height:100%;background:linear-gradient(90deg,#6366f1,#818cf8);border-radius:99px;transition:width .3s ease;width:0%}.pct{font-size:14px;color:#6366f1;font-weight:600}.hint{margin-top:16px;font-size:12px;color:#aaa}</style></head><body><div class="card"><div class="icon">📄</div><div class="title">Загрузка документа</div><div class="name">${fileName}</div><div class="bar-wrap"><div class="bar" id="bar"></div></div><div class="pct" id="pct">0%</div><div class="hint">Пожалуйста, подождите…</div></div></body></html>`);
-                                          newTab.document.close();
-                                        }
-                                        setPreviewDownloadProgress(0);
-                                        let blobUrl: string;
-                                        try {
-                                          blobUrl = await new Promise<string>((resolve, reject) => {
-                                            const xhr = new XMLHttpRequest();
-                                            xhr.open("GET", `/api/material-versions/${dv.id}/file?inline=true`);
-                                            xhr.responseType = "blob";
-                                            xhr.onprogress = (e) => {
-                                              if (e.lengthComputable) {
-                                                const pct = Math.round((e.loaded / e.total) * 100);
-                                                setPreviewDownloadProgress(pct);
-                                                try {
-                                                  if (newTab && !newTab.closed) {
-                                                    const bar = newTab.document.getElementById("bar");
-                                                    const pctEl = newTab.document.getElementById("pct");
-                                                    if (bar) bar.style.width = pct + "%";
-                                                    if (pctEl) pctEl.textContent = pct + "%";
-                                                  }
-                                                } catch {}
-                                              }
-                                            };
-                                            xhr.onload = () => {
-                                              if (xhr.status >= 200 && xhr.status < 300) resolve(URL.createObjectURL(xhr.response));
-                                              else reject(new FileFetchError(xhr.status));
-                                            };
-                                            xhr.onerror = () => reject(new Error("Network error"));
-                                            xhr.send();
-                                          });
-                                        } catch (err) {
-                                          newTab?.close();
-                                          throw err;
-                                        }
-                                        setPreviewDownloadProgress(null);
-                                        if (newTab) {
-                                          newTab.location.href = blobUrl;
-                                        } else {
-                                          // Popup заблокирован — скачиваем как файл
-                                          const a = document.createElement("a");
-                                          a.href = blobUrl;
-                                          a.download = dv.content.file?.name ?? "file.pdf";
-                                          a.click();
-                                          URL.revokeObjectURL(blobUrl);
-                                          toast({ title: "Попапы заблокированы", description: "Файл скачан. Разрешите всплывающие окна для предпросмотра.", duration: 5000 });
-                                        }
-                                        recordPreview(dv.materialId);
-                                        return;
-                                      } else {
-                                        // Для DOCX загружаем blob для извлечения текста через mammoth
-                                        const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
-                                        if (!resp.ok) throw new FileFetchError(resp.status);
-                                        const blob = await resp.blob();
-                                        if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
-                                        const url = URL.createObjectURL(blob);
-                                        setPreviewBlobUrl(url);
-                                        try {
-                                          const arrayBuffer = await blob.arrayBuffer();
-                                          const result = await mammoth.extractRawText({ arrayBuffer });
-                                          setPreviewDocxText(result.value);
-                                        } catch {
-                                          setPreviewDocxText(dv.content.file?.extractedText || null);
-                                        }
+                                    const fileName = dv.content.file?.name ?? "документ";
+                                    // PDF as is; Word and other office formats rendered to PDF on the server.
+                                    const asPdf = dv.content.file?.type === "pdf" || isPdfName(fileName);
+                                    // Fallback when the converter is unavailable: plain text of the document.
+                                    const showTextPreview = async () => {
+                                      const resp = await fetch(`/api/material-versions/${dv.id}/file?inline=true`);
+                                      if (!resp.ok) throw new FileFetchError(resp.status);
+                                      const blob = await resp.blob();
+                                      if (previewBlobUrl && previewBlobUrl.startsWith("blob:")) URL.revokeObjectURL(previewBlobUrl);
+                                      setPreviewBlobUrl(URL.createObjectURL(blob));
+                                      try {
+                                        const result = await mammoth.extractRawText({ arrayBuffer: await blob.arrayBuffer() });
+                                        setPreviewDocxText(result.value);
+                                      } catch {
+                                        setPreviewDocxText(dv.content.file?.extractedText || null);
                                       }
                                       setPreviewOpen(true);
+                                    };
+                                    try {
+                                      try {
+                                        const result = await openPdfPreview({
+                                          url: asPdf
+                                            ? `/api/material-versions/${dv.id}/file?inline=true`
+                                            : `/api/material-versions/${dv.id}/preview`,
+                                          fileName,
+                                          preparing: !asPdf,
+                                          onProgress: setPreviewDownloadProgress,
+                                        });
+                                        if (result === "downloaded") {
+                                          toast({ title: "Попапы заблокированы", description: "Файл скачан. Разрешите всплывающие окна для предпросмотра.", duration: 5000 });
+                                        }
+                                      } catch (err) {
+                                        const converterDown = !asPdf && err instanceof FileFetchError && (err.status === 502 || err.status === 503);
+                                        if (!converterDown) throw err;
+                                        await showTextPreview();
+                                      }
                                       recordPreview(dv.materialId);
                                     } catch (err) {
                                       if (err instanceof FileFetchError && err.status === 404) {
                                         setMaterials(prev => prev.map(m => m.id === dv.id ? { ...m, contentFileStored: false } : m));
                                         toast({ title: "Файл отсутствует на сервере", description: "Загрузка файла не была завершена. Загрузите файл заново.", variant: "destructive" });
                                       } else {
-                                        toast({ title: "Ошибка", description: "Не удалось загрузить файл для предпросмотра", variant: "destructive" });
+                                        toast({ title: "Ошибка", description: "Не удалось открыть предпросмотр. Скачайте файл.", variant: "destructive" });
                                       }
                                     } finally {
                                       setPreviewLoading(false);
@@ -1957,6 +1961,7 @@ export default function MaterialView() {
                               <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
                               <span className="text-sm flex-1 truncate">{af.name}</span>
                               <span className="text-xs text-muted-foreground shrink-0">{af.size >= 1048576 ? `${(af.size / 1048576).toFixed(1)} МБ` : af.size >= 1024 ? `${(af.size / 1024).toFixed(0)} КБ` : `${af.size} Б`}</span>
+                              {previewAddFileButton(af)}
                               <Button
                                 variant="ghost"
                                 size="sm"

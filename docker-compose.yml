@@ -18,6 +18,8 @@ services:
       # Адрес портала для ссылок в письмах, например https://kb.example.local
       PUBLIC_URL: ${PUBLIC_URL:-}
       FILE_STORAGE_PATH: /data/uploads
+      # Конвертер документов для предпросмотра Word/Excel/PowerPoint в PDF
+      DOC_CONVERTER_URL: http://converter:3000
       NODE_ENV: production
       PORT: 5000
     volumes:
@@ -32,12 +34,32 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      converter:
+        condition: service_started
+    networks:
+      - default
+      - converter-net
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/api/health 2>/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # LibreOffice в контейнере Gotenberg: «печать в PDF» для предпросмотра
+  # документов. Сеть converter-net внутренняя: у конвертера нет выхода в
+  # интернет и доступа к БД, файлам и ключам — только запросы от app.
+  converter:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-timeout=90s
+      - --log-level=warn
+      # Start LibreOffice with the container: the first preview takes ~0.5 s instead of ~20 s.
+      - --libreoffice-auto-start=true
+    networks:
+      - converter-net
 
   db:
     image: postgres:16-alpine
@@ -96,3 +118,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  converter-net:
+    internal: true

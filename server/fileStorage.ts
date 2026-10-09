@@ -58,9 +58,37 @@ function addFilePath(versionId: string, fileId: string): string {
   return path.join(versionDir(versionId), `add_${fileId}`);
 }
 
+/**
+ * Cached PDF rendering of a document for preview (see docPreview.ts).
+ * `fileId` omitted = the version's main file.
+ */
+function previewPath(versionId: string, fileId?: string): string {
+  if (fileId === undefined) return path.join(versionDir(versionId), "content.preview.pdf");
+  assertSafeId(fileId, "файла");
+  return path.join(versionDir(versionId), `add_${fileId}.preview.pdf`);
+}
+
+export function readPreview(versionId: string, fileId?: string): Buffer | null {
+  if (!isSafeStorageId(versionId) || (fileId !== undefined && !isSafeStorageId(fileId))) return null;
+  const p = previewPath(versionId, fileId);
+  return fs.existsSync(p) ? fs.readFileSync(p) : null;
+}
+
+export function writePreview(versionId: string, fileId: string | undefined, buf: Buffer): void {
+  fs.mkdirSync(versionDir(versionId), { recursive: true });
+  fs.writeFileSync(previewPath(versionId, fileId), buf);
+}
+
+export function deletePreview(versionId: string, fileId?: string): void {
+  if (!isSafeStorageId(versionId) || (fileId !== undefined && !isSafeStorageId(fileId))) return;
+  const p = previewPath(versionId, fileId);
+  try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch { /* ignore */ }
+}
+
 export function writeContentFile(versionId: string, buf: Buffer): void {
   fs.mkdirSync(versionDir(versionId), { recursive: true });
   fs.writeFileSync(contentFilePath(versionId), buf);
+  deletePreview(versionId); // a new file invalidates its cached preview
 }
 
 export function readContentFile(versionId: string): Buffer | null {
@@ -78,6 +106,7 @@ export function deleteContentFile(versionId: string): void {
 export function writeAdditionalFile(versionId: string, fileId: string, buf: Buffer): void {
   fs.mkdirSync(versionDir(versionId), { recursive: true });
   fs.writeFileSync(addFilePath(versionId, fileId), buf);
+  deletePreview(versionId, fileId);
 }
 
 export function readAdditionalFile(versionId: string, fileId: string): Buffer | null {
@@ -90,6 +119,7 @@ export function deleteAdditionalFile(versionId: string, fileId: string): void {
   if (!isSafeStorageId(versionId) || !isSafeStorageId(fileId)) return;
   const p = addFilePath(versionId, fileId);
   try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch { /* ignore */ }
+  deletePreview(versionId, fileId);
 }
 
 export function deleteVersionFiles(versionId: string): void {
