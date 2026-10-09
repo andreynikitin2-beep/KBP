@@ -11,6 +11,15 @@ import * as fileStorage from "./fileStorage";
 import { extractDocumentText } from "./documentText";
 import { isMaskedOrEmpty, maskSecret, verifyPassword } from "./secrets";
 import { canChangeCatalogNode, hasAdminRole, isAdminRoute, isPublicRoute } from "./apiAccess";
+import { LoginThrottle } from "./loginThrottle";
+import { ALLOWED_TEMPLATES, buildMaterialSubject, sanitizeSystemSubject } from "./notificationPolicy";
+
+const loginThrottle = new LoginThrottle();
+
+/** Client address; behind nginx the real one is in X-Real-IP (the app port is not exposed). */
+function clientAddress(req: any): string {
+  return String(req.headers["x-real-ip"] || req.socket?.remoteAddress || "unknown");
+}
 import {
   canCreateVersion,
   canUpdateVersion,
@@ -48,19 +57,28 @@ function readCookie(req: any, name: string): string {
 }
 
 /**
- * Links, <img> and the PDF preview cannot send the Authorization header, so
- * the session token is mirrored into an HttpOnly cookie. It is accepted only
- * for GET requests (see verifySession); SameSite=Strict blocks cross-site use.
+ * The browser authenticates with an HttpOnly cookie only: page scripts never
+ * see the session token, so an XSS cannot steal it. Path "/" so the upload
+ * WebSocket (/ws/upload) gets it too. SameSite=Strict plus the CSRF header
+ * check in verifySession keep other sites from using it.
  */
 function setSessionCookie(req: any, res: any, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "strict",
     secure: req.secure || req.headers["x-forwarded-proto"] === "https",
-    path: "/api",
+    path: "/",
     maxAge: SESSION_COOKIE_MAX_AGE_MS,
   });
 }
+
+function clearSessionCookie(res: any): void {
+  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.clearCookie(SESSION_COOKIE, { path: "/api" }); // cookies issued before the path change
+}
+
+/** Header the portal's own scripts add; a cross-site form or image cannot. */
+const CSRF_HEADER = "x-kb-request";
 
 function encryptPortalSettings(json: string, password: string): Buffer {
   const salt = crypto.randomBytes(32);
@@ -277,9 +295,13 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Доступ только для администраторов" });
       }
       (req as any).auth = session;
-      // Sessions created before the cookie existed: give the browser one so
+      // Keep active users signed in; refresh the cookie with the new expiry.
+      // Also gives a cookie to sessions created before it existed, so
       // downloads and images keep working.
-      if (session.token && readCookie(req, SESSION_COOKIE) !== session.token) {
+      const extended = session.token
+        ? await storage.extendSession(session.token).catch((e) => { console.warn("[auth] session extend failed:", e); return false; })
+        : false;
+      if (session.token && (extended || readCookie(req, SESSION_COOKIE) !== session.token)) {
         setSessionCookie(req, res, session.token);
       }
       next();
@@ -312,6 +334,18 @@ export async function registerRoutes(
       if (!userId || !password) {
         return res.status(400).json({ error: "Не указан пользователь или пароль" });
       }
+      const account = String(userId);
+      const address = clientAddress(req);
+      const wait = loginThrottle.retryAfter(account, address);
+      if (wait > 0) {
+        res.setHeader("Retry-After", String(wait));
+        return res.status(429).json({ error: `Слишком много неудачных попыток. Повторите через ${Math.ceil(wait / 60)} мин.` });
+      }
+      // Every 401 below is a failed attempt; a successful login clears the account counter.
+      res.once("finish", () => {
+        if (res.statusCode === 401) loginThrottle.recordFailure(account, address);
+        else if (res.statusCode === 200) loginThrottle.recordSuccess(account);
+      });
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(401).json({ error: "Пользователь не найден" });
@@ -359,7 +393,8 @@ export async function registerRoutes(
       const token = await storage.createSession(user.id);
       setSessionCookie(req, res, token);
       const { password: _p, ...safeUser } = user;
-      res.json({ ok: true, user: { ...safeUser, lastLoginAt: new Date().toISOString() }, token });
+      // The token goes only into the HttpOnly cookie, never to page scripts.
+      res.json({ ok: true, user: { ...safeUser, lastLoginAt: new Date().toISOString() } });
     } catch (e) {
       sendServerError(req, res, e);
     }
@@ -368,9 +403,9 @@ export async function registerRoutes(
   app.post("/api/auth/logout", async (req, res) => {
     try {
       const authHeader = req.headers.authorization || "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : readCookie(req, SESSION_COOKIE);
       if (token) await storage.deleteSession(token);
-      res.clearCookie(SESSION_COOKIE, { path: "/api" });
+      clearSessionCookie(res);
       res.json({ ok: true });
     } catch {
       res.json({ ok: true });
@@ -1248,13 +1283,23 @@ export async function registerRoutes(
       if (typeof data.toAddress !== "string" || !known.has(data.toAddress.toLowerCase())) {
         return res.status(400).json({ error: "Получатель не найден среди пользователей портала" });
       }
-      if (typeof data.subject !== "string" || data.subject.length > 300) {
-        return res.status(400).json({ error: "Недопустимая тема письма" });
+      if (!ALLOWED_TEMPLATES.has(data.template)) return res.status(400).json({ error: "Недопустимый шаблон письма" });
+      // The subject text is rebuilt here, never taken from the browser.
+      let decision;
+      if (data.relatedMaterialId) {
+        // A notification about a material may only come from someone who sees it.
+        if (!(await canViewMaterialId(req, data.relatedMaterialId))) return res.status(404).json({ error: "Material not found" });
+        const version = (data.relatedVersionId && (await storage.getMaterialVersion(data.relatedVersionId)))
+          || (await storage.getCurrentMaterialVersion(data.relatedMaterialId));
+        if (!version || version.materialId !== data.relatedMaterialId) return res.status(404).json({ error: "Material not found" });
+        decision = buildMaterialSubject(data.subject, version.title, version.version);
+      } else {
+        // System notices without a material (AD sync, deactivation) come from admin actions only.
+        if (!hasAdminRole((req as any).auth.user)) return res.status(403).json({ error: "Недостаточно прав" });
+        decision = sanitizeSystemSubject(data.subject);
       }
-      // A notification about a material may only come from someone who sees it.
-      if (data.relatedMaterialId && !(await canViewMaterialId(req, data.relatedMaterialId))) {
-        return res.status(404).json({ error: "Material not found" });
-      }
+      if (!decision.ok) return res.status(400).json({ error: decision.reason });
+      data.subject = decision.subject;
       const notification = await storage.createNotification({ ...data, status: "LOGGED" });
       kickEmailQueue();
       res.json(notification);
@@ -1753,15 +1798,14 @@ export async function registerRoutes(
       const user = await storage.getSessionUser(token);
       if (user) return { user, token };
     }
-    // Cookie only for reads (downloads, images): state-changing requests must
-    // carry the Bearer token, which a cross-site page cannot attach.
+    // Cookie session (the browser). State-changing requests must also carry
+    // the CSRF header, which a cross-site page cannot set without CORS.
     const method = String(req.method || "GET").toUpperCase();
-    if (method === "GET" || method === "HEAD") {
-      const cookieToken = readCookie(req, SESSION_COOKIE);
-      if (cookieToken) {
-        const user = await storage.getSessionUser(cookieToken);
-        if (user) return { user, token: cookieToken };
-      }
+    const safeMethod = method === "GET" || method === "HEAD";
+    const cookieToken = readCookie(req, SESSION_COOKIE);
+    if (cookieToken && (safeMethod || req.headers?.[CSRF_HEADER] === "1")) {
+      const user = await storage.getSessionUser(cookieToken);
+      if (user) return { user, token: cookieToken };
     }
     return null;
   }
@@ -2557,7 +2601,7 @@ export async function registerRoutes(
     }
   });
 
-  uploadWss.on("connection", (ws) => {
+  uploadWss.on("connection", (ws, upgradeReq: any) => {
     type Meta = { versionId: string; fileName: string; fileType: string; totalSize: number; kind: "content" | "additional"; additionalFileId?: string };
     let meta: Meta | null = null;
     const chunks: Buffer[] = [];
@@ -2569,7 +2613,19 @@ export async function registerRoutes(
       if (!meta) {
         try {
           const msg = JSON.parse(buf.toString("utf8"));
-          const session = await verifySession({ headers: { authorization: `Bearer ${msg.auth ?? ""}` } });
+          // Browser: the session cookie sent with the upgrade request (same
+          // origin only). API clients may still pass a token in the message.
+          const sameOrigin = (() => {
+            const origin = upgradeReq?.headers?.origin;
+            if (!origin) return true;
+            // nginx passes Host without the port ($host): compare host names only.
+            try { return new URL(origin).hostname === String(upgradeReq.headers.host || "").split(":")[0]; } catch { return false; }
+          })();
+          const session = msg.auth
+            ? await verifySession({ method: "GET", headers: { authorization: `Bearer ${msg.auth}` } })
+            : sameOrigin
+              ? await verifySession({ method: "GET", headers: { cookie: upgradeReq?.headers?.cookie } })
+              : null;
           if (!session) { ws.send(JSON.stringify({ type: "error", message: "Unauthorized" })); ws.close(1008, "Unauthorized"); return; }
           // The ids end up in file paths: validate them and the version first.
           const idsOk = fileStorage.isSafeStorageId(msg.versionId)

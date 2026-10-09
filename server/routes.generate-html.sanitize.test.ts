@@ -20,6 +20,7 @@ const { getSessionUser, getAiSettings } = vi.hoisted(() => ({
 vi.mock("./storage", () => ({
   storage: {
     getSessionUser,
+    extendSession: vi.fn(async () => false),
     getAiSettings,
   },
 }));

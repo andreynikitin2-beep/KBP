@@ -814,6 +814,23 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  /**
+   * Sliding expiry: an active session is pushed to SESSION_TTL from now, at
+   * most once a day (one cheap UPDATE). Returns true when it was extended.
+   */
+  async extendSession(token: string): Promise<boolean> {
+    const ttl = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const extended = await db.update(schema.sessions)
+      .set({ expiresAt: new Date(now + ttl) })
+      .where(and(
+        eq(schema.sessions.token, hashToken(token)),
+        sql`${schema.sessions.expiresAt} < ${new Date(now + ttl - 24 * 60 * 60 * 1000)}`,
+      ))
+      .returning({ token: schema.sessions.token });
+    return extended.length > 0;
+  }
+
   async deleteSession(token: string): Promise<void> {
     await db.delete(schema.sessions).where(eq(schema.sessions.token, hashToken(token)));
   }

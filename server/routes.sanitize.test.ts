@@ -37,6 +37,7 @@ vi.mock("./storage", () => ({
     createMaterialVersion,
     updateMaterialVersion,
     getSessionUser,
+    extendSession: vi.fn(async () => false),
     getMaterialVersion,
     getMaterialVersionsByMaterialId: vi.fn(async (materialId: string) => (materialId === "m1" ? [DRAFT] : [])),
     getVisibilityGroups: vi.fn(async () => []),
@@ -105,8 +106,13 @@ describe("API requires a session", () => {
     expect((await patch({ "X-User-Id": "u-admin" })).status).toBe(401);
   });
 
-  it("does not accept the session cookie for writes", async () => {
+  it("rejects a cookie-authenticated write without the CSRF header", async () => {
     expect((await patch({ Cookie: "kb_session=test-token" })).status).toBe(401);
+    expect(updateMaterialVersion).not.toHaveBeenCalled();
+  });
+
+  it("accepts the session cookie with the CSRF header (the browser's way)", async () => {
+    expect((await patch({ Cookie: "kb_session=test-token", "X-KB-Request": "1" })).status).toBe(200);
   });
 
   it("forbids admin routes to non-admins", async () => {
